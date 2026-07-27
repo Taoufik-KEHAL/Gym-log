@@ -20,11 +20,8 @@
     "Legs": ["Squat", "Front Squat", "Leg Press", "Lunges", "Bulgarian Split Squat", "Romanian Deadlift", "Leg Curl", "Leg Extension", "Calf Raise", "Hip Thrust"],
     "Arms": ["Barbell Curl", "Dumbbell Curl", "Hammer Curl", "Preacher Curl", "Tricep Pushdown", "Tricep Extension", "Skull Crusher", "Close-Grip Bench Press"],
     "Core": ["Plank", "Crunch", "Sit-Up", "Hanging Leg Raise", "Russian Twist", "Cable Woodchopper", "Ab Wheel Rollout"],
-    "Cardio": ["Running", "Cycling", "Rowing Machine", "Jump Rope", "Stair Climber", "Elliptical"]
+    "Cardio": ["Running", "Walking", "Cycling", "Rowing Machine", "Jump Rope", "Stair Climber", "Elliptical"]
   };
-
-  var CARDIO_EXERCISE_NAMES = {};
-  EXERCISE_LIBRARY["Cardio"].forEach(function (name) { CARDIO_EXERCISE_NAMES[name] = true; });
 
   // ---------- storage helpers ----------
 
@@ -118,8 +115,18 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
+    document.getElementById("sumSets").textContent = countSetsForDate(today);
     renderDayStatus(entry);
     drawWeightChart(daily);
+  }
+
+  function countSetsForDate(date) {
+    var workouts = loadWorkouts().filter(function (w) { return w.date === date; });
+    return workouts.reduce(function (sum, w) {
+      return sum + w.exercises.reduce(function (exSum, ex) {
+        return exSum + (ex.type === "cardio" ? 0 : ex.sets.length);
+      }, 0);
+    }, 0);
   }
 
   function renderDayStatus(entry) {
@@ -371,20 +378,32 @@
     return wrap;
   }
 
-  function populateExerciseSelect() {
+  function populateExerciseSelect(type) {
     var select = document.getElementById("exerciseSelect");
     select.innerHTML = "";
-    Object.keys(EXERCISE_LIBRARY).forEach(function (group) {
-      var optgroup = document.createElement("optgroup");
-      optgroup.label = group;
-      EXERCISE_LIBRARY[group].forEach(function (name) {
+
+    if (type === "cardio") {
+      EXERCISE_LIBRARY["Cardio"].forEach(function (name) {
         var option = document.createElement("option");
         option.value = name;
         option.textContent = name;
-        optgroup.appendChild(option);
+        select.appendChild(option);
       });
-      select.appendChild(optgroup);
-    });
+    } else {
+      Object.keys(EXERCISE_LIBRARY).forEach(function (group) {
+        if (group === "Cardio") return;
+        var optgroup = document.createElement("optgroup");
+        optgroup.label = group;
+        EXERCISE_LIBRARY[group].forEach(function (name) {
+          var option = document.createElement("option");
+          option.value = name;
+          option.textContent = name;
+          optgroup.appendChild(option);
+        });
+        select.appendChild(optgroup);
+      });
+    }
+
     var customOption = document.createElement("option");
     customOption.value = CUSTOM_EXERCISE_VALUE;
     customOption.textContent = "Other (type your own)…";
@@ -396,6 +415,10 @@
     document.querySelectorAll("#exerciseTypeToggle .segment").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.exType === type);
     });
+    populateExerciseSelect(type);
+    var customInput = document.getElementById("exerciseCustomInput");
+    customInput.value = "";
+    customInput.style.display = "none";
   }
 
   function handleExerciseSelectChange() {
@@ -404,7 +427,6 @@
     var isCustom = select.value === CUSTOM_EXERCISE_VALUE;
     customInput.style.display = isCustom ? "block" : "none";
     if (isCustom) customInput.focus();
-    setExerciseTypeToggle(CARDIO_EXERCISE_NAMES[select.value] ? "cardio" : "strength");
   }
 
   function handleAddExercise() {
@@ -646,7 +668,7 @@
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
 
-    populateExerciseSelect();
+    populateExerciseSelect(currentExerciseType);
     document.getElementById("exerciseSelect").addEventListener("change", handleExerciseSelectChange);
     document.querySelectorAll("#exerciseTypeToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () { setExerciseTypeToggle(btn.dataset.exType); });

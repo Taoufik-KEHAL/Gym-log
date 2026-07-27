@@ -105,6 +105,10 @@ main {
   gap: 10px;
 }
 
+.summary-grid.cols-4 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .stat {
   background: var(--bg-elev-2);
   border-radius: 10px;
