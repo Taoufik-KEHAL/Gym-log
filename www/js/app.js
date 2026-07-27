@@ -572,12 +572,20 @@
     foodSearchDebounceTimer = setTimeout(function () { runFoodSearch(query); }, 450);
   }
 
+  function fetchWithRetry(url, options, retries) {
+    return fetch(url, options).catch(function (err) {
+      if (retries <= 0 || (err && err.name === "AbortError")) throw err;
+      return new Promise(function (resolve) { setTimeout(resolve, 700); })
+        .then(function () { return fetchWithRetry(url, options, retries - 1); });
+    });
+  }
+
   function searchOpenFoodFacts(query, signal) {
     var url = OFF_SEARCH_URL + "?json=1&action=process&page_size=8" +
       "&search_terms=" + encodeURIComponent(query) +
       "&fields=product_name,brands,nutriments";
 
-    return fetch(url, signal ? { signal: signal } : {})
+    return fetchWithRetry(url, signal ? { signal: signal } : {}, 1)
       .then(function (res) { return res.json(); })
       .then(function (data) {
         return (data.products || [])
@@ -602,7 +610,7 @@
     var url = USDA_SEARCH_URL + "?api_key=" + encodeURIComponent(apiKey) +
       "&query=" + encodeURIComponent(query) + "&pageSize=8";
 
-    return fetch(url, signal ? { signal: signal } : {})
+    return fetchWithRetry(url, signal ? { signal: signal } : {}, 1)
       .then(function (res) { return res.json(); })
       .then(function (data) {
         return (data.foods || [])
@@ -664,7 +672,7 @@
 
       if (products.length === 0) {
         statusEl.textContent = anyFailed
-          ? "Couldn't reach the food database. Check your connection or log a custom food."
+          ? "Open Food Facts couldn't be reached right now (their server is sometimes flaky) — try again in a moment, add a free USDA FoodData Central key in Data for a more reliable source, or log a custom food."
           : "No results. Try another search or log a custom food.";
         statusEl.style.display = "block";
         return;
