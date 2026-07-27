@@ -190,6 +190,40 @@
   <!-- DATA VIEW -->
   <section class="view" id="view-data">
     <div class="card">
+      <h2>Maintenance Calories</h2>
+      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
+        Estimated from your most recent logged body weight using the Mifflin-St Jeor formula. This is a rough estimate, not medical advice.
+      </p>
+      <div class="field">
+        <label>Sex (for the BMR formula)</label>
+        <div class="segmented" id="sexToggle">
+          <button type="button" class="segment" data-sex="male">Male</button>
+          <button type="button" class="segment" data-sex="female">Female</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="ageInput">Age (years)</label>
+        <input type="number" id="ageInput" step="1" min="0" placeholder="e.g. 30" inputmode="numeric" />
+      </div>
+      <div class="field">
+        <label for="heightInput">Height (cm)</label>
+        <input type="number" id="heightInput" step="1" min="0" placeholder="e.g. 178" inputmode="numeric" />
+      </div>
+      <div class="field">
+        <label for="activityLevelSelect">Activity level</label>
+        <select id="activityLevelSelect">
+          <option value="sedentary">Sedentary (little/no exercise)</option>
+          <option value="light">Light (exercise 1-3 days/week)</option>
+          <option value="moderate">Moderate (exercise 3-5 days/week)</option>
+          <option value="active">Active (exercise 6-7 days/week)</option>
+          <option value="very_active">Very active (hard exercise + physical job)</option>
+        </select>
+      </div>
+      <div class="day-status" id="maintenanceResult" style="display:none;"></div>
+      <button type="button" class="secondary" id="applyMaintenanceBtn" style="margin-top:10px;">Use as my calorie targets</button>
+    </div>
+
+    <div class="card">
       <h2>Calorie Targets</h2>
       <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
         Set a target for rest days and workout days. Pick a day type on the Today tab to see how you're tracking against it.

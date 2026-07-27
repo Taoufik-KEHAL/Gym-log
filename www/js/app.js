@@ -26,6 +26,15 @@
     "elliptical": 5.0
   };
 
+  var ACTIVITY_MULTIPLIERS = {
+    sedentary: 1.2,
+    light: 1.375,
+    moderate: 1.55,
+    active: 1.725,
+    very_active: 1.9
+  };
+  var currentSex = "male"; // 'male' | 'female', for the maintenance-calorie form
+
   var currentExercises = []; // in-progress workout builder state
   var currentDayType = null; // 'rest' | 'workout' | null, for the Today form
   var currentExerciseType = "strength"; // 'strength' | 'cardio', for the exercise about to be added
@@ -136,6 +145,7 @@
     if (name === "history") renderHistory();
     if (name === "workout") renderWorkoutBuilder();
     if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
+    if (name === "data") renderMaintenanceEstimate();
   }
 
   // ---------- today view ----------
@@ -1055,6 +1065,11 @@
     document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
     document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
+    document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
+    document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
+    document.getElementById("activityLevelSelect").value = settings.activityLevel || "moderate";
+    setSexToggle(settings.sex || "male");
+    renderMaintenanceEstimate();
   }
 
   function handleSettingsChange() {
@@ -1074,6 +1089,79 @@
     if (key !== "") settings.usdaApiKey = key; else delete settings.usdaApiKey;
     saveSettings(settings);
     toast(key !== "" ? "USDA API key saved" : "USDA API key removed");
+  }
+
+  // ---------- maintenance calories ----------
+
+  function setSexToggle(sex) {
+    currentSex = sex;
+    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.sex === sex);
+    });
+  }
+
+  function getLatestLoggedWeight() {
+    var daily = loadDaily();
+    var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
+    if (dates.length === 0) return null;
+    var date = dates[dates.length - 1];
+    return { weight: daily[date].weight, date: date };
+  }
+
+  function computeMaintenanceCalories() {
+    var settings = loadSettings();
+    var age = settings.age;
+    var heightCm = settings.heightCm;
+    if (age == null || heightCm == null) return null;
+
+    var latest = getLatestLoggedWeight();
+    var weight = latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
+
+    var bmr = 10 * weight + 6.25 * heightCm - 5 * age + (currentSex === "female" ? -161 : 5);
+    var multiplier = ACTIVITY_MULTIPLIERS[settings.activityLevel] || ACTIVITY_MULTIPLIERS.moderate;
+    var tdee = Math.round((bmr * multiplier) / 10) * 10;
+
+    return { tdee: tdee, weight: weight, usedDefaultWeight: !latest, weightDate: latest ? latest.date : null };
+  }
+
+  function renderMaintenanceEstimate() {
+    var el = document.getElementById("maintenanceResult");
+    var result = computeMaintenanceCalories();
+    if (!result) {
+      el.innerHTML = "<span>Enter your age and height above to estimate maintenance calories.</span>";
+      el.style.display = "flex";
+      return;
+    }
+    var weightNote = result.usedDefaultWeight
+      ? DEFAULT_BODYWEIGHT_KG + " kg assumed — log a weight on Today for a real estimate"
+      : "using " + result.weight + " kg from " + formatDateLong(result.weightDate);
+    el.innerHTML = '<span class="day-badge">Estimated maintenance: ' + result.tdee + " kcal</span>" +
+      "<span>" + weightNote + "</span>";
+    el.style.display = "flex";
+  }
+
+  function handleMaintenanceInputChange() {
+    var age = document.getElementById("ageInput").value;
+    var height = document.getElementById("heightInput").value;
+    var activityLevel = document.getElementById("activityLevelSelect").value;
+    var settings = loadSettings();
+    if (age !== "") settings.age = Math.round(parseFloat(age)); else delete settings.age;
+    if (height !== "") settings.heightCm = Math.round(parseFloat(height)); else delete settings.heightCm;
+    settings.activityLevel = activityLevel;
+    settings.sex = currentSex;
+    saveSettings(settings);
+    renderMaintenanceEstimate();
+  }
+
+  function handleApplyMaintenance() {
+    var result = computeMaintenanceCalories();
+    if (!result) {
+      toast("Enter your age and height first");
+      return;
+    }
+    document.getElementById("restCaloriesInput").value = result.tdee;
+    document.getElementById("workoutCaloriesInput").value = result.tdee;
+    handleSettingsChange();
   }
 
   // ---------- init ----------
@@ -1105,6 +1193,17 @@
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("usdaApiKeyInput").addEventListener("change", handleUsdaKeyChange);
+
+    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setSexToggle(btn.dataset.sex);
+        handleMaintenanceInputChange();
+      });
+    });
+    document.getElementById("ageInput").addEventListener("change", handleMaintenanceInputChange);
+    document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
+    document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
+    document.getElementById("applyMaintenanceBtn").addEventListener("click", handleApplyMaintenance);
 
     populateExerciseSelect(currentExerciseType);
     document.getElementById("exerciseSelect").addEventListener("change", handleExerciseSelectChange);
