@@ -43,9 +43,7 @@
 
     <div class="card">
       <h2>Log Today</h2>
-      <p style="color:var(--text-dim); font-size:0.8rem; margin-top:0;">
-        Calories, protein, carbs and fat fill in automatically as you log food on the Food tab — you can still edit them here directly.
-      </p>
+      <p class="log-today-hint" id="logTodayHint" style="color:var(--text-dim); font-size:0.8rem; margin-top:0;"></p>
       <form id="dailyForm">
         <div class="field">
           <label for="logDate">Date</label>
@@ -194,6 +192,7 @@
       </div>
 
       <button type="button" class="primary" id="saveWorkoutBtn">Save Workout</button>
+      <button type="button" class="secondary" id="cancelEditWorkoutBtn" style="display:none; margin-top:8px;">Cancel edit</button>
     </div>
   </section>
 
