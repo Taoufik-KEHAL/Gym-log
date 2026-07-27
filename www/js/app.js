@@ -13,7 +13,8 @@
   var USDA_NUTRIENT_IDS = { calories: 1008, protein: 1003, carbs: 1005, fat: 1004 };
   var foodSearchAbortControllers = [];
   var foodSearchDebounceTimer = null;
-  var selectedFoodProduct = null; // { name, source, per100: { calories, protein, carbs, fat } }
+  var selectedFoodProduct = null; // { name, source, servingGrams, per100: { calories, protein, carbs, fat } }
+  var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
@@ -592,10 +593,16 @@
     });
   }
 
+  function parseServingGrams(text) {
+    if (!text) return null;
+    var match = String(text).match(/([\d.]+)\s*g\b/i);
+    return match ? parseFloat(match[1]) : null;
+  }
+
   function searchOpenFoodFacts(query, signal) {
     var url = OFF_SEARCH_URL + "?json=1&action=process&page_size=8" +
       "&search_terms=" + encodeURIComponent(query) +
-      "&fields=product_name,brands,nutriments";
+      "&fields=product_name,brands,nutriments,serving_size";
 
     return fetchWithRetry(url, signal ? { signal: signal } : {}, 1)
       .then(function (res) { return res.json(); })
@@ -607,6 +614,7 @@
               name: p.product_name,
               brand: p.brands || "",
               source: "Open Food Facts",
+              servingGrams: parseServingGrams(p.serving_size),
               per100: {
                 calories: p.nutriments["energy-kcal_100g"] || 0,
                 protein: p.nutriments["proteins_100g"] || 0,
@@ -632,10 +640,12 @@
               var found = nutrients.filter(function (n) { return n.nutrientId === id; })[0];
               return found ? found.value : 0;
             }
+            var servingGrams = (f.servingSize != null && /^g/i.test(f.servingSizeUnit || "")) ? f.servingSize : null;
             return {
               name: f.description,
               brand: f.brandOwner || f.dataType || "",
               source: "USDA FoodData Central",
+              servingGrams: servingGrams,
               per100: {
                 calories: nutrientValue(USDA_NUTRIENT_IDS.calories),
                 protein: nutrientValue(USDA_NUTRIENT_IDS.protein),
@@ -728,19 +738,40 @@
     });
   }
 
+  function setQtyMode(mode) {
+    currentQtyMode = mode;
+    document.querySelectorAll("#quantityModeToggle .segment").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.qtyMode === mode);
+    });
+    document.getElementById("gramsField").style.display = mode === "grams" ? "block" : "none";
+    document.getElementById("unitsField").style.display = mode === "units" ? "grid" : "none";
+    updateFoodPreview();
+  }
+
+  function getEffectiveGrams() {
+    if (currentQtyMode === "units") {
+      var units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
+      var perUnit = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
+      return units * perUnit;
+    }
+    return parseFloat(document.getElementById("foodGramsInput").value) || 0;
+  }
+
   function selectFoodProduct(p) {
     selectedFoodProduct = p;
     document.getElementById("foodQuantityName").textContent = p.name;
     document.getElementById("foodGramsInput").value = 100;
+    document.getElementById("foodUnitsInput").value = 1;
+    document.getElementById("foodUnitGramsInput").value = p.servingGrams || 50;
     document.getElementById("foodQuantityCard").style.display = "block";
     document.getElementById("foodSearchResults").innerHTML = "";
     document.getElementById("foodSearchStatus").style.display = "none";
-    updateFoodPreview();
+    setQtyMode("grams");
   }
 
   function updateFoodPreview() {
     if (!selectedFoodProduct) return;
-    var grams = parseFloat(document.getElementById("foodGramsInput").value) || 0;
+    var grams = getEffectiveGrams();
     var factor = grams / 100;
     var cal = Math.round(selectedFoodProduct.per100.calories * factor);
     var protein = Math.round(selectedFoodProduct.per100.protein * factor);
@@ -755,19 +786,23 @@
 
   function handleAddFoodFromSearch() {
     if (!selectedFoodProduct) return;
-    var grams = parseFloat(document.getElementById("foodGramsInput").value) || 0;
+    var grams = getEffectiveGrams();
     if (grams <= 0) { toast("Enter a quantity"); return; }
     var factor = grams / 100;
     var date = document.getElementById("foodDate").value || todayISO();
     var entry = {
       id: makeId(),
       name: selectedFoodProduct.name,
-      grams: grams,
+      grams: Math.round(grams),
       calories: Math.round(selectedFoodProduct.per100.calories * factor),
       protein: Math.round(selectedFoodProduct.per100.protein * factor),
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
       fat: Math.round(selectedFoodProduct.per100.fat * factor)
     };
+    if (currentQtyMode === "units") {
+      entry.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
+      entry.unitGrams = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
+    }
     addFoodEntry(date, entry);
 
     selectedFoodProduct = null;
@@ -871,7 +906,10 @@
       var info = document.createElement("div");
       var nameEl = document.createElement("div");
       nameEl.className = "food-log-name";
-      nameEl.textContent = entry.name + (entry.grams != null ? " (" + entry.grams + " g)" : "");
+      var qtyLabel = entry.units != null
+        ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
+        : (entry.grams != null ? " (" + entry.grams + " g)" : "");
+      nameEl.textContent = entry.name + qtyLabel;
       var macrosEl = document.createElement("div");
       macrosEl.className = "food-log-macros";
       macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
@@ -1231,6 +1269,11 @@
 
     document.getElementById("foodSearchInput").addEventListener("input", handleFoodSearchInput);
     document.getElementById("foodGramsInput").addEventListener("input", updateFoodPreview);
+    document.getElementById("foodUnitsInput").addEventListener("input", updateFoodPreview);
+    document.getElementById("foodUnitGramsInput").addEventListener("input", updateFoodPreview);
+    document.querySelectorAll("#quantityModeToggle .segment").forEach(function (btn) {
+      btn.addEventListener("click", function () { setQtyMode(btn.dataset.qtyMode); });
+    });
     document.getElementById("addFoodBtn").addEventListener("click", handleAddFoodFromSearch);
     document.getElementById("showCustomFoodBtn").addEventListener("click", function () {
       var card = document.getElementById("customFoodCard");
