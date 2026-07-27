@@ -1205,7 +1205,27 @@
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
 
-    var canUseSavePicker = typeof window.showSaveFilePicker === "function" && !window.Capacitor;
+    var isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+    if (isNative) {
+      try {
+        var plugins = window.Capacitor.Plugins;
+        await plugins.Filesystem.writeFile({ path: filename, data: json, directory: "CACHE", encoding: "utf8" });
+        var uriResult = await plugins.Filesystem.getUri({ directory: "CACHE", path: filename });
+        await plugins.Share.share({
+          title: "Gym Log backup",
+          text: "Gym Log backup " + todayISO(),
+          url: uriResult.uri,
+          dialogTitle: "Save or send your backup"
+        });
+        toast("Choose where to save your backup");
+        return;
+      } catch (e) {
+        // Fall through to the plain download as a last resort.
+      }
+    }
+
+    var canUseSavePicker = typeof window.showSaveFilePicker === "function" && !isNative;
     if (canUseSavePicker) {
       try {
         var handle = await window.showSaveFilePicker({
