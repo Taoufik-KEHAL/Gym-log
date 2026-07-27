@@ -1205,7 +1205,8 @@
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
 
-    if (window.showSaveFilePicker) {
+    var canUseSavePicker = typeof window.showSaveFilePicker === "function" && !window.Capacitor;
+    if (canUseSavePicker) {
       try {
         var handle = await window.showSaveFilePicker({
           suggestedName: filename,
