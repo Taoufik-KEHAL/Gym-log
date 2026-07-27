@@ -29,8 +29,10 @@
       <h2>Today's Summary</h2>
       <div class="summary-grid">
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
+        <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
         <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div></div>
         <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
+        <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
@@ -54,12 +56,20 @@
           <input type="number" id="weightInput" step="0.1" min="0" placeholder="e.g. 82.4" inputmode="decimal" />
         </div>
         <div class="field">
+          <label for="sleepInput">Sleep (hours)</label>
+          <input type="number" id="sleepInput" step="0.25" min="0" max="24" placeholder="e.g. 7.5" inputmode="decimal" />
+        </div>
+        <div class="field">
           <label for="caloriesInput">Calories eaten (kcal)</label>
           <input type="number" id="caloriesInput" step="1" min="0" placeholder="e.g. 2200" inputmode="numeric" />
         </div>
         <div class="field">
           <label for="proteinInput">Protein (g)</label>
           <input type="number" id="proteinInput" step="1" min="0" placeholder="e.g. 160" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="stepsInput">Steps</label>
+          <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
         </div>
         <button type="submit" class="primary">Save Day</button>
       </form>
