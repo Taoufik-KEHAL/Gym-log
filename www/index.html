@@ -113,9 +113,17 @@
 
       <div class="card food-quantity-card" id="foodQuantityCard" style="display:none;">
         <div class="ex-title" id="foodQuantityName"></div>
-        <div class="field">
+        <div class="segmented" id="quantityModeToggle" style="margin-top:10px;">
+          <button type="button" class="segment active" data-qty-mode="grams">By weight (g)</button>
+          <button type="button" class="segment" data-qty-mode="units">By count (units)</button>
+        </div>
+        <div class="field" id="gramsField">
           <label for="foodGramsInput">Quantity (g)</label>
           <input type="number" id="foodGramsInput" step="1" min="1" value="100" inputmode="numeric" />
+        </div>
+        <div class="add-set-row" id="unitsField" style="grid-template-columns: 1fr 1fr; display:none;">
+          <div class="mini-field"><label>Number of units</label><input type="number" id="foodUnitsInput" step="1" min="1" value="1" inputmode="numeric" /></div>
+          <div class="mini-field"><label>Weight per unit (g)</label><input type="number" id="foodUnitGramsInput" step="1" min="1" value="50" inputmode="numeric" /></div>
         </div>
         <div class="food-preview" id="foodPreview"></div>
         <button type="button" class="primary" id="addFoodBtn">Add to log</button>
