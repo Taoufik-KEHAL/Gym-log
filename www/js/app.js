@@ -350,6 +350,18 @@
       }
     }
 
+    var settings = loadSettings();
+    var target = entry.dayType === "rest" ? settings.restCalories : entry.dayType === "workout" ? settings.workoutCalories : null;
+    if (target != null) {
+      var consumed = entry.calories != null ? entry.calories : 0;
+      var remaining = target - consumed + burned;
+      if (remaining >= 0) {
+        parts.push('<span class="diff-under">' + remaining + " kcal remaining</span>");
+      } else {
+        parts.push('<span class="diff-over">' + Math.abs(remaining) + " kcal over budget</span>");
+      }
+    }
+
     if (parts.length === 0) {
       el.style.display = "none";
       el.innerHTML = "";
