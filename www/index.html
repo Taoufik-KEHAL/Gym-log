@@ -35,6 +35,8 @@
         <div class="stat"><div class="value" id="sumCarbs">—</div><div class="label">Carbs (g)</div></div>
         <div class="stat"><div class="value" id="sumFat">—</div><div class="label">Fat (g)</div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
+        <div class="stat"><div class="value" id="sumWater">—</div><div class="label">Water (L)</div></div>
+        <div class="stat"><div class="value" id="sumCigarettes">—</div><div class="label">Cigarettes</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
@@ -83,6 +85,14 @@
         <div class="field">
           <label for="stepsInput">Steps</label>
           <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="waterInput">Water (L)</label>
+          <input type="number" id="waterInput" step="0.1" min="0" placeholder="e.g. 2.5" inputmode="decimal" />
+        </div>
+        <div class="field">
+          <label for="cigarettesInput">Cigarettes</label>
+          <input type="number" id="cigarettesInput" step="1" min="0" placeholder="e.g. 5" inputmode="numeric" />
         </div>
         <button type="submit" class="primary">Save Day</button>
       </form>
