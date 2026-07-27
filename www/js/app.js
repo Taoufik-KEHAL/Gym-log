@@ -51,6 +51,8 @@
     very_active: 1.9
   };
   var currentSex = "male"; // 'male' | 'female', for the maintenance-calorie form
+  var WORKOUT_DAY_DEFICIT_PCT = 0.02; // 2% below maintenance, applied by "Use as my calorie targets"
+  var REST_DAY_DEFICIT_PCT = 0.10; // 10% below maintenance, applied by "Use as my calorie targets"
 
   var currentExercises = []; // in-progress workout builder state
   var currentDayType = null; // 'rest' | 'workout' | null, for the Today form
@@ -1332,8 +1334,10 @@
       toast("Enter your age and height first");
       return;
     }
-    document.getElementById("restCaloriesInput").value = result.tdee;
-    document.getElementById("workoutCaloriesInput").value = result.tdee;
+    var workoutTarget = Math.round((result.tdee * (1 - WORKOUT_DAY_DEFICIT_PCT)) / 10) * 10;
+    var restTarget = Math.round((result.tdee * (1 - REST_DAY_DEFICIT_PCT)) / 10) * 10;
+    document.getElementById("restCaloriesInput").value = restTarget;
+    document.getElementById("workoutCaloriesInput").value = workoutTarget;
     handleSettingsChange();
   }
 
