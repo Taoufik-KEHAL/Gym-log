@@ -32,6 +32,7 @@
         <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div></div>
         <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
       </div>
+      <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
 
     <div class="card">
@@ -40,6 +41,13 @@
         <div class="field">
           <label for="logDate">Date</label>
           <input type="date" id="logDate" required />
+        </div>
+        <div class="field">
+          <label>Day type</label>
+          <div class="segmented" id="dayTypeToggle">
+            <button type="button" class="segment" data-day-type="rest">😴 Rest day</button>
+            <button type="button" class="segment" data-day-type="workout">🏋️ Workout day</button>
+          </div>
         </div>
         <div class="field">
           <label for="weightInput">Body weight (kg)</label>
@@ -101,6 +109,21 @@
 
   <!-- DATA VIEW -->
   <section class="view" id="view-data">
+    <div class="card">
+      <h2>Calorie Targets</h2>
+      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
+        Set a target for rest days and workout days. Pick a day type on the Today tab to see how you're tracking against it.
+      </p>
+      <div class="field">
+        <label for="restCaloriesInput">Rest day target (kcal)</label>
+        <input type="number" id="restCaloriesInput" step="1" min="0" placeholder="e.g. 2000" inputmode="numeric" />
+      </div>
+      <div class="field">
+        <label for="workoutCaloriesInput">Workout day target (kcal)</label>
+        <input type="number" id="workoutCaloriesInput" step="1" min="0" placeholder="e.g. 2600" inputmode="numeric" />
+      </div>
+    </div>
+
     <div class="card">
       <h2>Backup &amp; Restore</h2>
       <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
