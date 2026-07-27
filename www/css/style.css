@@ -273,6 +273,19 @@ button:active { transform: scale(0.98); }
   margin-top: 6px;
 }
 
+.cardio-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cardio-fields .mini-field label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 4px;
+}
+
 .history-entry {
   border-bottom: 1px solid var(--border);
   padding: 10px 0;
