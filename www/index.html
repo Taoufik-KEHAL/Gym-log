@@ -27,8 +27,9 @@
   <section class="view active" id="view-today">
     <div class="card">
       <h2>Today's Summary</h2>
-      <div class="summary-grid cols-4">
+      <div class="summary-grid">
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
+        <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
         <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div></div>
         <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
@@ -53,6 +54,10 @@
         <div class="field">
           <label for="weightInput">Body weight (kg)</label>
           <input type="number" id="weightInput" step="0.1" min="0" placeholder="e.g. 82.4" inputmode="decimal" />
+        </div>
+        <div class="field">
+          <label for="sleepInput">Sleep (hours)</label>
+          <input type="number" id="sleepInput" step="0.25" min="0" max="24" placeholder="e.g. 7.5" inputmode="decimal" />
         </div>
         <div class="field">
           <label for="caloriesInput">Calories eaten (kcal)</label>

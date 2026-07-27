@@ -113,6 +113,7 @@
     var today = document.getElementById("logDate").value || todayISO();
     var entry = daily[today] || {};
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
+    document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
@@ -158,6 +159,7 @@
     var daily = loadDaily();
     var entry = daily[iso] || {};
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
+    document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("caloriesInput").value = entry.calories != null ? entry.calories : "";
     document.getElementById("proteinInput").value = entry.protein != null ? entry.protein : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
@@ -168,6 +170,7 @@
     e.preventDefault();
     var date = document.getElementById("logDate").value || todayISO();
     var weight = document.getElementById("weightInput").value;
+    var sleepHours = document.getElementById("sleepInput").value;
     var calories = document.getElementById("caloriesInput").value;
     var protein = document.getElementById("proteinInput").value;
     var steps = document.getElementById("stepsInput").value;
@@ -175,6 +178,7 @@
     var daily = loadDaily();
     var entry = {};
     if (weight !== "") entry.weight = parseFloat(weight);
+    if (sleepHours !== "") entry.sleepHours = parseFloat(sleepHours);
     if (calories !== "") entry.calories = Math.round(parseFloat(calories));
     if (protein !== "") entry.protein = Math.round(parseFloat(protein));
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
@@ -503,6 +507,7 @@
         line.className = "h-line";
         var parts = [];
         if (entry.weight != null) parts.push(entry.weight + " kg");
+        if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
         if (entry.calories != null) parts.push(entry.calories + " kcal");
         if (entry.protein != null) parts.push(entry.protein + " g protein");
         if (entry.steps != null) parts.push(entry.steps + " steps");
