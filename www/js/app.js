@@ -5,8 +5,24 @@
     daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
     settings: "gymlog.settings", // { restCalories, workoutCalories }
-    foodlog: "gymlog.foodlog"    // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
+    foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
+    customFoods: "gymlog.customfoods" // [ { id, name, per100: {calories, protein, carbs, fat} } ]
   };
+
+  var CUSTOM_FOOD_SEED = [
+    { name: "Perly nature (Jaouda fromage frais)", per100: { calories: 101, protein: 7.6, carbs: 0, fat: 0 } },
+    { name: "Joly thon au naturel (canned tuna in water)", per100: { calories: 108.8, protein: 24.8, carbs: 0.6, fat: 0.8 } },
+    { name: "Horse minced meat", per100: { calories: 133, protein: 21.4, carbs: 0, fat: 4.8 } },
+    { name: "Beef minced meat (5-10% fat)", per100: { calories: 176, protein: 20.0, carbs: 0, fat: 10.0 } },
+    { name: "Chicken breast (skinless)", per100: { calories: 165, protein: 31.0, carbs: 0, fat: 3.6 } },
+    { name: "Eggs (whole, boiled)", per100: { calories: 155, protein: 13.0, carbs: 1.1, fat: 11.0 } },
+    { name: "Rice (white, cooked)", per100: { calories: 130, protein: 2.7, carbs: 28.0, fat: 0.3 } },
+    { name: "Tajine (chicken/meat + veg, home-style)", per100: { calories: 130, protein: 12.0, carbs: 8.0, fat: 6.0 } },
+    { name: "Couscous (cooked, plain)", per100: { calories: 112, protein: 3.8, carbs: 23.2, fat: 0.2 } },
+    { name: "Msemen (Moroccan flatbread, plain)", per100: { calories: 330, protein: 7.0, carbs: 45.0, fat: 14.0 } },
+    { name: "Mille-feuille (pastry)", per100: { calories: 340, protein: 4.5, carbs: 32.0, fat: 22.0 } },
+    { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
+  ];
 
   var OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
   var USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
@@ -102,6 +118,92 @@
     localStorage.setItem(STORAGE.foodlog, JSON.stringify(log));
   }
 
+  function loadCustomFoods() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.customFoods) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveCustomFoods(list) {
+    localStorage.setItem(STORAGE.customFoods, JSON.stringify(list));
+  }
+
+  function seedCustomFoodsIfNeeded() {
+    if (localStorage.getItem(STORAGE.customFoods) != null) return;
+    var seeded = CUSTOM_FOOD_SEED.map(function (f) {
+      return { id: makeId(), name: f.name, per100: f.per100 };
+    });
+    saveCustomFoods(seeded);
+  }
+
+  function renderCustomFoodList() {
+    var list = document.getElementById("customFoodList");
+    var foods = loadCustomFoods();
+    if (foods.length === 0) {
+      list.innerHTML = '<div class="empty-state">No foods saved yet.</div>';
+      return;
+    }
+    list.innerHTML = "";
+    foods.forEach(function (f) {
+      var item = document.createElement("div");
+      item.className = "food-log-item";
+
+      var info = document.createElement("div");
+      var nameEl = document.createElement("div");
+      nameEl.className = "food-log-name";
+      nameEl.textContent = f.name;
+      var macrosEl = document.createElement("div");
+      macrosEl.className = "food-log-macros";
+      macrosEl.textContent = f.per100.calories + " kcal · " + f.per100.protein + " g protein · " +
+        f.per100.carbs + " g carbs · " + f.per100.fat + " g fat (per 100g)";
+      info.appendChild(nameEl);
+      info.appendChild(macrosEl);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "remove";
+      removeBtn.textContent = "✕";
+      removeBtn.addEventListener("click", function () { handleRemoveMyFood(f.id); });
+
+      item.appendChild(info);
+      item.appendChild(removeBtn);
+      list.appendChild(item);
+    });
+  }
+
+  function handleAddMyFood() {
+    var name = document.getElementById("myFoodName").value.trim();
+    if (!name) { toast("Enter a food name"); return; }
+    var food = {
+      id: makeId(),
+      name: name,
+      per100: {
+        calories: parseFloat(document.getElementById("myFoodCalories").value) || 0,
+        protein: parseFloat(document.getElementById("myFoodProtein").value) || 0,
+        carbs: parseFloat(document.getElementById("myFoodCarbs").value) || 0,
+        fat: parseFloat(document.getElementById("myFoodFat").value) || 0
+      }
+    };
+    var foods = loadCustomFoods();
+    foods.push(food);
+    saveCustomFoods(foods);
+
+    ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
+      document.getElementById(id).value = "";
+    });
+    renderCustomFoodList();
+    toast("Added to My Foods");
+  }
+
+  function handleRemoveMyFood(id) {
+    var foods = loadCustomFoods().filter(function (f) { return f.id !== id; });
+    saveCustomFoods(foods);
+    renderCustomFoodList();
+    toast("Removed from My Foods");
+  }
+
   function makeId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return "id-" + Date.now() + "-" + Math.random().toString(16).slice(2);
@@ -146,7 +248,7 @@
     if (name === "history") renderHistory();
     if (name === "workout") renderWorkoutBuilder();
     if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
-    if (name === "data") renderMaintenanceEstimate();
+    if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); }
   }
 
   // ---------- today view ----------
@@ -669,11 +771,26 @@
       });
   }
 
+  function searchMyFoods(query) {
+    var q = query.toLowerCase();
+    var matches = loadCustomFoods()
+      .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
+      .map(function (f) {
+        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100 };
+      });
+    return Promise.resolve(matches);
+  }
+
+  function sourceRank(source) {
+    if (source === "My Foods") return 0;
+    if (source === "USDA FoodData Central") return 1;
+    return 2;
+  }
+
   function sortFoodResults(products) {
     return products.slice().sort(function (a, b) {
-      var aUsda = a.source === "USDA FoodData Central" ? 0 : 1;
-      var bUsda = b.source === "USDA FoodData Central" ? 0 : 1;
-      if (aUsda !== bUsda) return aUsda - bUsda;
+      var rankDiff = sourceRank(a.source) - sourceRank(b.source);
+      if (rankDiff !== 0) return rankDiff;
       var aBranded = a.brand ? 1 : 0;
       var bBranded = b.brand ? 1 : 0;
       return aBranded - bBranded;
@@ -692,7 +809,7 @@
     statusEl.style.display = "block";
 
     var settings = loadSettings();
-    var searches = [];
+    var searches = [searchMyFoods(query)];
 
     if (settings.usdaApiKey) {
       var usdaController = (typeof AbortController !== "undefined") ? new AbortController() : null;
@@ -732,7 +849,7 @@
     products.forEach(function (p) {
       var li = document.createElement("li");
       var kcal = Math.round(p.per100.calories);
-      var sourceTag = p.source === "USDA FoodData Central" ? "USDA" : "OFF";
+      var sourceTag = p.source === "My Foods" ? "MINE" : (p.source === "USDA FoodData Central" ? "USDA" : "OFF");
 
       var name = document.createElement("div");
       name.className = "food-result-name";
@@ -1061,7 +1178,8 @@
       daily: loadDaily(),
       workouts: loadWorkouts(),
       settings: loadSettings(),
-      foodlog: loadFoodLog()
+      foodlog: loadFoodLog(),
+      customFoods: loadCustomFoods()
     };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
@@ -1087,11 +1205,13 @@
     if (payload.workouts) saveWorkouts(payload.workouts);
     if (payload.settings) saveSettings(payload.settings);
     if (payload.foodlog) saveFoodLog(payload.foodlog);
+    if (payload.customFoods) saveCustomFoods(payload.customFoods);
     toast("Import complete");
     fillSettingsForm();
     renderToday();
     renderHistory();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
+    renderCustomFoodList();
   }
 
   function handleClear() {
@@ -1100,12 +1220,14 @@
     localStorage.removeItem(STORAGE.workouts);
     localStorage.removeItem(STORAGE.settings);
     localStorage.removeItem(STORAGE.foodlog);
+    localStorage.removeItem(STORAGE.customFoods);
     currentExercises = [];
     fillSettingsForm();
     renderToday();
     renderHistory();
     renderWorkoutBuilder();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
+    renderCustomFoodList();
     toast("All data erased");
   }
 
@@ -1218,6 +1340,8 @@
   // ---------- init ----------
 
   function init() {
+    seedCustomFoodsIfNeeded();
+
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
     document.getElementById("logDate").value = todayISO();
     document.getElementById("workoutDate").value = todayISO();
@@ -1255,6 +1379,9 @@
     document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("applyMaintenanceBtn").addEventListener("click", handleApplyMaintenance);
+
+    renderCustomFoodList();
+    document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
 
     populateExerciseSelect(currentExerciseType);
     document.getElementById("exerciseSelect").addEventListener("change", handleExerciseSelectChange);

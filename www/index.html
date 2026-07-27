@@ -268,6 +268,27 @@
     </div>
 
     <div class="card">
+      <h2>My Foods</h2>
+      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
+        Your own known foods and home-cooked dishes (tajine, msemen, etc.) — tagged "MINE" and shown first when you search on the Food tab.
+      </p>
+      <div id="customFoodList"></div>
+      <div class="field" style="margin-top:10px;">
+        <label for="myFoodName">Food name</label>
+        <input type="text" id="myFoodName" placeholder="e.g. Tajine (home-style)" />
+      </div>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr;">
+        <div class="mini-field"><label>Calories / 100g</label><input type="number" id="myFoodCalories" min="0" step="0.1" inputmode="decimal" /></div>
+        <div class="mini-field"><label>Protein / 100g</label><input type="number" id="myFoodProtein" min="0" step="0.1" inputmode="decimal" /></div>
+      </div>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
+        <div class="mini-field"><label>Carbs / 100g</label><input type="number" id="myFoodCarbs" min="0" step="0.1" inputmode="decimal" /></div>
+        <div class="mini-field"><label>Fat / 100g</label><input type="number" id="myFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
+      </div>
+      <button type="button" class="secondary" id="addMyFoodBtn" style="margin-top:10px;">Add to My Foods</button>
+    </div>
+
+    <div class="card">
       <h2>Backup &amp; Restore</h2>
       <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
         All data is stored only on this device. Export a backup regularly, especially before clearing browser data.
