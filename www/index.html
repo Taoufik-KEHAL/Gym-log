@@ -32,6 +32,8 @@
         <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
         <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div></div>
         <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
+        <div class="stat"><div class="value" id="sumCarbs">—</div><div class="label">Carbs (g)</div></div>
+        <div class="stat"><div class="value" id="sumFat">—</div><div class="label">Fat (g)</div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
@@ -39,6 +41,9 @@
 
     <div class="card">
       <h2>Log Today</h2>
+      <p style="color:var(--text-dim); font-size:0.8rem; margin-top:0;">
+        Calories, protein, carbs and fat fill in automatically as you log food on the Food tab — you can still edit them here directly.
+      </p>
       <form id="dailyForm">
         <div class="field">
           <label for="logDate">Date</label>
@@ -68,6 +73,14 @@
           <input type="number" id="proteinInput" step="1" min="0" placeholder="e.g. 160" inputmode="numeric" />
         </div>
         <div class="field">
+          <label for="carbsInput">Carbs (g)</label>
+          <input type="number" id="carbsInput" step="1" min="0" placeholder="e.g. 220" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="fatInput">Fat (g)</label>
+          <input type="number" id="fatInput" step="1" min="0" placeholder="e.g. 70" inputmode="numeric" />
+        </div>
+        <div class="field">
           <label for="stepsInput">Steps</label>
           <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
         </div>
@@ -79,6 +92,58 @@
       <h2>Weight Trend</h2>
       <canvas id="weightChart"></canvas>
       <div class="empty-state" id="chartEmpty" style="display:none;">Log your weight on a few days to see a trend.</div>
+    </div>
+  </section>
+
+  <!-- FOOD VIEW -->
+  <section class="view" id="view-food">
+    <div class="card">
+      <h2>Log Food</h2>
+      <div class="field">
+        <label for="foodDate">Date</label>
+        <input type="date" id="foodDate" />
+      </div>
+
+      <div class="field">
+        <label for="foodSearchInput">Search a food (Open Food Facts)</label>
+        <input type="text" id="foodSearchInput" placeholder="e.g. chicken breast" autocomplete="off" />
+        <div id="foodSearchStatus" class="empty-state" style="display:none; padding:10px 0;"></div>
+        <ul id="foodSearchResults" class="food-results"></ul>
+      </div>
+
+      <div class="card food-quantity-card" id="foodQuantityCard" style="display:none;">
+        <div class="ex-title" id="foodQuantityName"></div>
+        <div class="field">
+          <label for="foodGramsInput">Quantity (g)</label>
+          <input type="number" id="foodGramsInput" step="1" min="1" value="100" inputmode="numeric" />
+        </div>
+        <div class="food-preview" id="foodPreview"></div>
+        <button type="button" class="primary" id="addFoodBtn">Add to log</button>
+      </div>
+
+      <button type="button" class="secondary" id="showCustomFoodBtn" style="margin-top:6px;">Or log a custom food</button>
+
+      <div class="card food-quantity-card" id="customFoodCard" style="display:none;">
+        <div class="field">
+          <label for="customFoodName">Food name</label>
+          <input type="text" id="customFoodName" placeholder="e.g. Homemade lasagna" />
+        </div>
+        <div class="add-set-row" style="grid-template-columns: 1fr 1fr;">
+          <div class="mini-field"><label>Calories (kcal)</label><input type="number" id="customFoodCalories" min="0" step="1" inputmode="numeric" /></div>
+          <div class="mini-field"><label>Protein (g)</label><input type="number" id="customFoodProtein" min="0" step="1" inputmode="numeric" /></div>
+        </div>
+        <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
+          <div class="mini-field"><label>Carbs (g)</label><input type="number" id="customFoodCarbs" min="0" step="1" inputmode="numeric" /></div>
+          <div class="mini-field"><label>Fat (g)</label><input type="number" id="customFoodFat" min="0" step="1" inputmode="numeric" /></div>
+        </div>
+        <button type="button" class="primary" id="addCustomFoodBtn" style="margin-top:10px;">Add to log</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Logged Today</h2>
+      <div id="foodLogList"></div>
+      <div class="day-status" id="foodLogTotals" style="display:none;"></div>
     </div>
   </section>
 
@@ -159,6 +224,7 @@
 
 <nav class="tabbar">
   <button class="tab-btn active" data-view="today"><span class="tab-icon">📅</span>Today</button>
+  <button class="tab-btn" data-view="food"><span class="tab-icon">🍎</span>Food</button>
   <button class="tab-btn" data-view="workout"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" data-view="history"><span class="tab-icon">📈</span>History</button>
   <button class="tab-btn" data-view="data"><span class="tab-icon">💾</span>Data</button>

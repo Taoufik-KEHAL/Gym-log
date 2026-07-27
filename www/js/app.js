@@ -2,9 +2,25 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, calories, protein, dayType } }
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
-    settings: "gymlog.settings"  // { restCalories, workoutCalories }
+    settings: "gymlog.settings", // { restCalories, workoutCalories }
+    foodlog: "gymlog.foodlog"    // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
+  };
+
+  var FOOD_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
+  var foodSearchAbortController = null;
+  var foodSearchDebounceTimer = null;
+  var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
+
+  var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
+  var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
+  var CARDIO_MET_TABLE = {
+    "cycling": 7.5,
+    "rowing machine": 7.0,
+    "jump rope": 10.0,
+    "stair climber": 8.0,
+    "elliptical": 5.0
   };
 
   var currentExercises = []; // in-progress workout builder state
@@ -61,6 +77,18 @@
     localStorage.setItem(STORAGE.settings, JSON.stringify(settings));
   }
 
+  function loadFoodLog() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.foodlog) || "{}");
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveFoodLog(log) {
+    localStorage.setItem(STORAGE.foodlog, JSON.stringify(log));
+  }
+
   function makeId() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
     return "id-" + Date.now() + "-" + Math.random().toString(16).slice(2);
@@ -104,6 +132,7 @@
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
     if (name === "workout") renderWorkoutBuilder();
+    if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
   }
 
   // ---------- today view ----------
@@ -116,35 +145,89 @@
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
+    document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
+    document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
-    renderDayStatus(entry);
+    renderDayStatus(entry, today);
     drawWeightChart(daily);
   }
 
-  function renderDayStatus(entry) {
+  function getCardioMET(name, pace) {
+    var lname = (name || "").toLowerCase();
+    if (lname === "running") {
+      if (pace == null) return 9.8;
+      if (pace <= 4) return 14.5;
+      if (pace <= 5) return 12.8;
+      if (pace <= 6) return 10.5;
+      if (pace <= 7) return 9.0;
+      if (pace <= 8) return 8.0;
+      return 6.0;
+    }
+    if (lname === "walking") {
+      if (pace == null) return 3.5;
+      if (pace <= 9) return 5.0;
+      if (pace <= 12) return 3.8;
+      return 3.0;
+    }
+    return CARDIO_MET_TABLE[lname] != null ? CARDIO_MET_TABLE[lname] : 6.0;
+  }
+
+  function estimateCaloriesBurned(date, weightKg) {
+    var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
+    var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
+    var total = 0;
+    workouts.forEach(function (wk) {
+      wk.exercises.forEach(function (ex) {
+        if (ex.type === "cardio") {
+          var duration = ex.duration || 0;
+          if (duration <= 0) return;
+          total += getCardioMET(ex.name, ex.pace) * w * (duration / 60);
+        } else {
+          var sets = ex.sets ? ex.sets.length : 0;
+          total += sets * STRENGTH_MET * w / 60;
+        }
+      });
+    });
+    return Math.round(total);
+  }
+
+  function renderDayStatus(entry, date) {
     var el = document.getElementById("dayStatus");
-    var dayType = entry.dayType;
-    if (!dayType) {
+    var settings = loadSettings();
+    var parts = [];
+
+    if (entry.dayType) {
+      var target = entry.dayType === "rest" ? settings.restCalories : settings.workoutCalories;
+      var label = entry.dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
+      parts.push('<span class="day-badge">' + label + "</span>");
+      if (target != null) {
+        parts.push("<span>Target: " + target + " kcal</span>");
+        if (entry.calories != null) {
+          var diff = entry.calories - target;
+          if (diff <= 0) {
+            parts.push('<span class="diff-under">' + Math.abs(diff) + " kcal under</span>");
+          } else {
+            parts.push('<span class="diff-over">' + diff + " kcal over</span>");
+          }
+        }
+      }
+    }
+
+    var burned = estimateCaloriesBurned(date, entry.weight);
+    if (burned > 0) {
+      var usedDefaultWeight = entry.weight == null;
+      parts.push("<span>🔥 " + burned + " kcal burned (est." + (usedDefaultWeight ? ", " + DEFAULT_BODYWEIGHT_KG + " kg assumed" : "") + ")</span>");
+      if (entry.calories != null) {
+        parts.push('<span class="day-badge">Net: ' + (entry.calories - burned) + " kcal</span>");
+      }
+    }
+
+    if (parts.length === 0) {
       el.style.display = "none";
       el.innerHTML = "";
       return;
     }
-    var settings = loadSettings();
-    var target = dayType === "rest" ? settings.restCalories : settings.workoutCalories;
-    var label = dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
-    var html = '<span class="day-badge">' + label + "</span>";
-    if (target != null) {
-      html += "<span>Target: " + target + " kcal</span>";
-      if (entry.calories != null) {
-        var diff = entry.calories - target;
-        if (diff <= 0) {
-          html += '<span class="diff-under">' + Math.abs(diff) + " kcal under</span>";
-        } else {
-          html += '<span class="diff-over">' + diff + " kcal over</span>";
-        }
-      }
-    }
-    el.innerHTML = html;
+    el.innerHTML = parts.join("");
     el.style.display = "flex";
   }
 
@@ -162,6 +245,8 @@
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("caloriesInput").value = entry.calories != null ? entry.calories : "";
     document.getElementById("proteinInput").value = entry.protein != null ? entry.protein : "";
+    document.getElementById("carbsInput").value = entry.carbs != null ? entry.carbs : "";
+    document.getElementById("fatInput").value = entry.fat != null ? entry.fat : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
     setDayTypeToggle(entry.dayType || null);
   }
@@ -173,6 +258,8 @@
     var sleepHours = document.getElementById("sleepInput").value;
     var calories = document.getElementById("caloriesInput").value;
     var protein = document.getElementById("proteinInput").value;
+    var carbs = document.getElementById("carbsInput").value;
+    var fat = document.getElementById("fatInput").value;
     var steps = document.getElementById("stepsInput").value;
 
     var daily = loadDaily();
@@ -181,6 +268,8 @@
     if (sleepHours !== "") entry.sleepHours = parseFloat(sleepHours);
     if (calories !== "") entry.calories = Math.round(parseFloat(calories));
     if (protein !== "") entry.protein = Math.round(parseFloat(protein));
+    if (carbs !== "") entry.carbs = Math.round(parseFloat(carbs));
+    if (fat !== "") entry.fat = Math.round(parseFloat(fat));
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
     if (currentDayType) entry.dayType = currentDayType;
 
@@ -467,6 +556,255 @@
     switchView("history");
   }
 
+  // ---------- food log ----------
+
+  function handleFoodSearchInput() {
+    clearTimeout(foodSearchDebounceTimer);
+    var query = document.getElementById("foodSearchInput").value.trim();
+    var statusEl = document.getElementById("foodSearchStatus");
+    document.getElementById("foodSearchResults").innerHTML = "";
+    if (query.length < 2) {
+      statusEl.style.display = "none";
+      return;
+    }
+    foodSearchDebounceTimer = setTimeout(function () { runFoodSearch(query); }, 450);
+  }
+
+  function runFoodSearch(query) {
+    var statusEl = document.getElementById("foodSearchStatus");
+    var resultsEl = document.getElementById("foodSearchResults");
+
+    if (foodSearchAbortController) foodSearchAbortController.abort();
+    foodSearchAbortController = (typeof AbortController !== "undefined") ? new AbortController() : null;
+
+    resultsEl.innerHTML = "";
+    statusEl.textContent = "Searching…";
+    statusEl.style.display = "block";
+
+    var url = FOOD_SEARCH_URL + "?json=1&action=process&page_size=8" +
+      "&search_terms=" + encodeURIComponent(query) +
+      "&fields=product_name,brands,nutriments";
+
+    fetch(url, foodSearchAbortController ? { signal: foodSearchAbortController.signal } : {})
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var products = (data.products || []).filter(function (p) {
+          return p.product_name && p.nutriments && p.nutriments["energy-kcal_100g"] != null;
+        });
+        if (products.length === 0) {
+          statusEl.textContent = "No results. Try another search or log a custom food.";
+          statusEl.style.display = "block";
+          return;
+        }
+        statusEl.style.display = "none";
+        renderFoodSearchResults(products);
+      })
+      .catch(function (err) {
+        if (err && err.name === "AbortError") return;
+        statusEl.textContent = "Couldn't reach the food database. Check your connection or log a custom food.";
+        statusEl.style.display = "block";
+      });
+  }
+
+  function renderFoodSearchResults(products) {
+    var resultsEl = document.getElementById("foodSearchResults");
+    resultsEl.innerHTML = "";
+    products.forEach(function (p) {
+      var li = document.createElement("li");
+      var kcal = Math.round(p.nutriments["energy-kcal_100g"]);
+
+      var name = document.createElement("div");
+      name.className = "food-result-name";
+      name.textContent = p.product_name;
+
+      var meta = document.createElement("div");
+      meta.className = "food-result-meta";
+      meta.textContent = (p.brands ? p.brands + " · " : "") + kcal + " kcal / 100 g";
+
+      li.appendChild(name);
+      li.appendChild(meta);
+      li.addEventListener("click", function () { selectFoodProduct(p); });
+      resultsEl.appendChild(li);
+    });
+  }
+
+  function selectFoodProduct(p) {
+    selectedFoodProduct = {
+      name: p.product_name,
+      per100: {
+        calories: p.nutriments["energy-kcal_100g"] || 0,
+        protein: p.nutriments["proteins_100g"] || 0,
+        carbs: p.nutriments["carbohydrates_100g"] || 0,
+        fat: p.nutriments["fat_100g"] || 0
+      }
+    };
+    document.getElementById("foodQuantityName").textContent = selectedFoodProduct.name;
+    document.getElementById("foodGramsInput").value = 100;
+    document.getElementById("foodQuantityCard").style.display = "block";
+    document.getElementById("foodSearchResults").innerHTML = "";
+    document.getElementById("foodSearchStatus").style.display = "none";
+    updateFoodPreview();
+  }
+
+  function updateFoodPreview() {
+    if (!selectedFoodProduct) return;
+    var grams = parseFloat(document.getElementById("foodGramsInput").value) || 0;
+    var factor = grams / 100;
+    var cal = Math.round(selectedFoodProduct.per100.calories * factor);
+    var protein = Math.round(selectedFoodProduct.per100.protein * factor);
+    var carbs = Math.round(selectedFoodProduct.per100.carbs * factor);
+    var fat = Math.round(selectedFoodProduct.per100.fat * factor);
+    document.getElementById("foodPreview").innerHTML =
+      "<span><strong>" + cal + "</strong> kcal</span>" +
+      "<span><strong>" + protein + "</strong> g protein</span>" +
+      "<span><strong>" + carbs + "</strong> g carbs</span>" +
+      "<span><strong>" + fat + "</strong> g fat</span>";
+  }
+
+  function handleAddFoodFromSearch() {
+    if (!selectedFoodProduct) return;
+    var grams = parseFloat(document.getElementById("foodGramsInput").value) || 0;
+    if (grams <= 0) { toast("Enter a quantity"); return; }
+    var factor = grams / 100;
+    var date = document.getElementById("foodDate").value || todayISO();
+    var entry = {
+      id: makeId(),
+      name: selectedFoodProduct.name,
+      grams: grams,
+      calories: Math.round(selectedFoodProduct.per100.calories * factor),
+      protein: Math.round(selectedFoodProduct.per100.protein * factor),
+      carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
+      fat: Math.round(selectedFoodProduct.per100.fat * factor)
+    };
+    addFoodEntry(date, entry);
+
+    selectedFoodProduct = null;
+    document.getElementById("foodQuantityCard").style.display = "none";
+    document.getElementById("foodSearchInput").value = "";
+  }
+
+  function handleAddCustomFood() {
+    var date = document.getElementById("foodDate").value || todayISO();
+    var name = document.getElementById("customFoodName").value.trim();
+    if (!name) { toast("Enter a food name"); return; }
+    var entry = {
+      id: makeId(),
+      name: name,
+      calories: Math.round(parseFloat(document.getElementById("customFoodCalories").value) || 0),
+      protein: Math.round(parseFloat(document.getElementById("customFoodProtein").value) || 0),
+      carbs: Math.round(parseFloat(document.getElementById("customFoodCarbs").value) || 0),
+      fat: Math.round(parseFloat(document.getElementById("customFoodFat").value) || 0)
+    };
+    addFoodEntry(date, entry);
+
+    ["customFoodName", "customFoodCalories", "customFoodProtein", "customFoodCarbs", "customFoodFat"].forEach(function (id) {
+      document.getElementById(id).value = "";
+    });
+    document.getElementById("customFoodCard").style.display = "none";
+  }
+
+  function addFoodEntry(date, entry) {
+    var log = loadFoodLog();
+    log[date] = log[date] || [];
+    log[date].push(entry);
+    saveFoodLog(log);
+
+    var daily = loadDaily();
+    var d = daily[date] || {};
+    d.calories = (d.calories || 0) + entry.calories;
+    d.protein = (d.protein || 0) + entry.protein;
+    d.carbs = (d.carbs || 0) + entry.carbs;
+    d.fat = (d.fat || 0) + entry.fat;
+    daily[date] = d;
+    saveDaily(daily);
+
+    toast("Added to food log");
+    renderFoodLog(date);
+    syncTodayIfSameDate(date);
+  }
+
+  function removeFoodEntry(date, id) {
+    var log = loadFoodLog();
+    var entries = log[date] || [];
+    var idx = -1;
+    entries.forEach(function (entry, i) { if (entry.id === id) idx = i; });
+    if (idx === -1) return;
+    var removed = entries.splice(idx, 1)[0];
+    saveFoodLog(log);
+
+    var daily = loadDaily();
+    var d = daily[date];
+    if (d) {
+      d.calories = Math.max(0, (d.calories || 0) - removed.calories);
+      d.protein = Math.max(0, (d.protein || 0) - removed.protein);
+      d.carbs = Math.max(0, (d.carbs || 0) - removed.carbs);
+      d.fat = Math.max(0, (d.fat || 0) - removed.fat);
+      saveDaily(daily);
+    }
+
+    toast("Removed from food log");
+    renderFoodLog(date);
+    syncTodayIfSameDate(date);
+  }
+
+  function syncTodayIfSameDate(date) {
+    if (date === (document.getElementById("logDate").value || todayISO())) {
+      fillFormFromDate(date);
+      renderToday();
+    }
+  }
+
+  function renderFoodLog(date) {
+    var list = document.getElementById("foodLogList");
+    var totalsEl = document.getElementById("foodLogTotals");
+    var entries = loadFoodLog()[date] || [];
+
+    if (entries.length === 0) {
+      list.innerHTML = '<div class="empty-state">No food logged for this day.</div>';
+      totalsEl.style.display = "none";
+      return;
+    }
+
+    list.innerHTML = "";
+    var totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    entries.forEach(function (entry) {
+      totals.calories += entry.calories;
+      totals.protein += entry.protein;
+      totals.carbs += entry.carbs;
+      totals.fat += entry.fat;
+
+      var item = document.createElement("div");
+      item.className = "food-log-item";
+
+      var info = document.createElement("div");
+      var nameEl = document.createElement("div");
+      nameEl.className = "food-log-name";
+      nameEl.textContent = entry.name + (entry.grams != null ? " (" + entry.grams + " g)" : "");
+      var macrosEl = document.createElement("div");
+      macrosEl.className = "food-log-macros";
+      macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
+      info.appendChild(nameEl);
+      info.appendChild(macrosEl);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "remove";
+      removeBtn.textContent = "✕";
+      removeBtn.addEventListener("click", function () { removeFoodEntry(date, entry.id); });
+
+      item.appendChild(info);
+      item.appendChild(removeBtn);
+      list.appendChild(item);
+    });
+
+    totalsEl.innerHTML = '<span class="day-badge">Total</span>' +
+      "<span>" + totals.calories + " kcal</span>" +
+      "<span>" + totals.protein + " g protein</span>" +
+      "<span>" + totals.carbs + " g carbs</span>" +
+      "<span>" + totals.fat + " g fat</span>";
+    totalsEl.style.display = "flex";
+  }
+
   // ---------- history view ----------
 
   function renderHistory() {
@@ -510,6 +848,8 @@
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
         if (entry.calories != null) parts.push(entry.calories + " kcal");
         if (entry.protein != null) parts.push(entry.protein + " g protein");
+        if (entry.carbs != null) parts.push(entry.carbs + " g carbs");
+        if (entry.fat != null) parts.push(entry.fat + " g fat");
         if (entry.steps != null) parts.push(entry.steps + " steps");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
@@ -577,7 +917,8 @@
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
       workouts: loadWorkouts(),
-      settings: loadSettings()
+      settings: loadSettings(),
+      foodlog: loadFoodLog()
     };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
@@ -602,10 +943,12 @@
     if (payload.daily) saveDaily(payload.daily);
     if (payload.workouts) saveWorkouts(payload.workouts);
     if (payload.settings) saveSettings(payload.settings);
+    if (payload.foodlog) saveFoodLog(payload.foodlog);
     toast("Import complete");
     fillSettingsForm();
     renderToday();
     renderHistory();
+    renderFoodLog(document.getElementById("foodDate").value || todayISO());
   }
 
   function handleClear() {
@@ -613,11 +956,13 @@
     localStorage.removeItem(STORAGE.daily);
     localStorage.removeItem(STORAGE.workouts);
     localStorage.removeItem(STORAGE.settings);
+    localStorage.removeItem(STORAGE.foodlog);
     currentExercises = [];
     fillSettingsForm();
     renderToday();
     renderHistory();
     renderWorkoutBuilder();
+    renderFoodLog(document.getElementById("foodDate").value || todayISO());
     toast("All data erased");
   }
 
@@ -646,6 +991,7 @@
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
     document.getElementById("logDate").value = todayISO();
     document.getElementById("workoutDate").value = todayISO();
+    document.getElementById("foodDate").value = todayISO();
 
     fillFormFromDate(todayISO());
 
@@ -692,6 +1038,18 @@
     });
     document.getElementById("clearBtn").addEventListener("click", handleClear);
 
+    document.getElementById("foodSearchInput").addEventListener("input", handleFoodSearchInput);
+    document.getElementById("foodGramsInput").addEventListener("input", updateFoodPreview);
+    document.getElementById("addFoodBtn").addEventListener("click", handleAddFoodFromSearch);
+    document.getElementById("showCustomFoodBtn").addEventListener("click", function () {
+      var card = document.getElementById("customFoodCard");
+      card.style.display = card.style.display === "none" ? "block" : "none";
+    });
+    document.getElementById("addCustomFoodBtn").addEventListener("click", handleAddCustomFood);
+    document.getElementById("foodDate").addEventListener("change", function (e) {
+      renderFoodLog(e.target.value);
+    });
+
     window.addEventListener("resize", function () { renderToday(); });
 
     if ("serviceWorker" in navigator) {
@@ -702,6 +1060,7 @@
 
     renderToday();
     renderHistory();
+    renderFoodLog(todayISO());
   }
 
   document.addEventListener("DOMContentLoaded", init);
