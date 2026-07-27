@@ -1181,7 +1181,7 @@
 
   // ---------- data export / import / clear ----------
 
-  function handleExport() {
+  async function handleExport() {
     var payload = {
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
@@ -1190,11 +1190,31 @@
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods()
     };
-    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var json = JSON.stringify(payload, null, 2);
+    var filename = "gymlog-backup-" + todayISO() + ".json";
+
+    if (window.showSaveFilePicker) {
+      try {
+        var handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: "JSON backup", accept: { "application/json": [".json"] } }]
+        });
+        var writable = await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        toast("Backup saved");
+        return;
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        // Fall through to the plain download if the picker isn't usable here.
+      }
+    }
+
+    var blob = new Blob([json], { type: "application/json" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
     a.href = url;
-    a.download = "gymlog-backup-" + todayISO() + ".json";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
