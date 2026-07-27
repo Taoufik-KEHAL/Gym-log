@@ -55,6 +55,7 @@
   var REST_DAY_DEFICIT_PCT = 0.10; // 10% below maintenance, applied by "Use as my calorie targets"
 
   var currentExercises = []; // in-progress workout builder state
+  var editingWorkoutId = null; // id of the workout being edited, or null when building a new one
   var currentDayType = null; // 'rest' | 'workout' | null, for the Today form
   var currentExerciseType = "strength"; // 'strength' | 'cardio', for the exercise about to be added
 
@@ -270,7 +271,19 @@
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     renderDayStatus(entry, today);
+    renderLogTodayHint(entry, today);
     drawWeightChart(daily);
+  }
+
+  function renderLogTodayHint(entry, date) {
+    var el = document.getElementById("logTodayHint");
+    var breakdown = getCaloriesBurnedBreakdown(date, entry.weight, entry.steps);
+    if (breakdown.total <= 0) {
+      el.textContent = "Calories, protein, carbs and fat fill in automatically as you log food on the Food tab — you can still edit them here directly.";
+      return;
+    }
+    var detail = breakdown.parts.map(function (p) { return p.label + " — " + p.kcal + " kcal"; }).join(", ");
+    el.textContent = "🔥 Estimated " + breakdown.total + " kcal burned today: " + detail + ".";
   }
 
   function renderCaloriesGoalDelta(entry) {
@@ -312,24 +325,50 @@
     return CARDIO_MET_TABLE[lname] != null ? CARDIO_MET_TABLE[lname] : 6.0;
   }
 
+  function estimateExerciseCalories(ex, weightKg) {
+    var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
+    if (ex.type === "cardio") {
+      var duration = ex.duration || 0;
+      if (duration <= 0) return 0;
+      return getCardioMET(ex.name, ex.pace) * w * (duration / 60);
+    }
+    var sets = ex.sets ? ex.sets.length : 0;
+    return sets * STRENGTH_MET * w / 60;
+  }
+
   function estimateCaloriesBurned(date, weightKg, steps) {
     var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
     var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
     var total = 0;
     workouts.forEach(function (wk) {
       wk.exercises.forEach(function (ex) {
-        if (ex.type === "cardio") {
-          var duration = ex.duration || 0;
-          if (duration <= 0) return;
-          total += getCardioMET(ex.name, ex.pace) * w * (duration / 60);
-        } else {
-          var sets = ex.sets ? ex.sets.length : 0;
-          total += sets * STRENGTH_MET * w / 60;
-        }
+        total += estimateExerciseCalories(ex, w);
       });
     });
     if (steps) total += steps * w * STEPS_KCAL_PER_STEP_PER_KG;
     return Math.round(total);
+  }
+
+  function getCaloriesBurnedBreakdown(date, weightKg, steps) {
+    var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
+    var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
+    var parts = [];
+    workouts.forEach(function (wk) {
+      wk.exercises.forEach(function (ex) {
+        var kcal = Math.round(estimateExerciseCalories(ex, w));
+        if (kcal <= 0) return;
+        var detail = ex.type === "cardio"
+          ? (ex.duration || 0) + " min"
+          : (ex.sets ? ex.sets.length : 0) + " sets";
+        parts.push({ label: ex.name + " (" + detail + ")", kcal: kcal });
+      });
+    });
+    if (steps) {
+      var stepsKcal = Math.round(steps * w * STEPS_KCAL_PER_STEP_PER_KG);
+      if (stepsKcal > 0) parts.push({ label: steps + " steps", kcal: stepsKcal });
+    }
+    var total = parts.reduce(function (sum, p) { return sum + p.kcal; }, 0);
+    return { total: total, parts: parts };
   }
 
   function renderDayStatus(entry, date) {
@@ -692,14 +731,60 @@
     }
 
     var workouts = loadWorkouts();
-    workouts.push({ id: makeId(), date: date, name: name, exercises: exercises });
+    var wasEditing = !!editingWorkoutId;
+    if (wasEditing) {
+      var idx = workouts.findIndex(function (w) { return w.id === editingWorkoutId; });
+      if (idx !== -1) workouts[idx] = { id: editingWorkoutId, date: date, name: name, exercises: exercises };
+    } else {
+      workouts.push({ id: makeId(), date: date, name: name, exercises: exercises });
+    }
     saveWorkouts(workouts);
+    editingWorkoutId = null;
 
     currentExercises = [];
     document.getElementById("workoutName").value = "";
+    document.getElementById("workoutDate").value = todayISO();
     renderWorkoutBuilder();
-    toast("Workout saved");
+    updateWorkoutFormMode();
+    toast(wasEditing ? "Workout updated" : "Workout saved");
     switchView("history");
+  }
+
+  function updateWorkoutFormMode() {
+    document.getElementById("saveWorkoutBtn").textContent = editingWorkoutId ? "Update Workout" : "Save Workout";
+    document.getElementById("cancelEditWorkoutBtn").style.display = editingWorkoutId ? "block" : "none";
+  }
+
+  function handleEditWorkout(id) {
+    var workouts = loadWorkouts();
+    var w = workouts.find(function (x) { return x.id === id; });
+    if (!w) return;
+    editingWorkoutId = id;
+    document.getElementById("workoutDate").value = w.date;
+    document.getElementById("workoutName").value = w.name;
+    currentExercises = JSON.parse(JSON.stringify(w.exercises));
+    renderWorkoutBuilder();
+    updateWorkoutFormMode();
+    switchView("workout");
+    toast("Editing workout — save to update it");
+  }
+
+  function handleCancelEditWorkout() {
+    editingWorkoutId = null;
+    currentExercises = [];
+    document.getElementById("workoutName").value = "";
+    document.getElementById("workoutDate").value = todayISO();
+    renderWorkoutBuilder();
+    updateWorkoutFormMode();
+  }
+
+  function handleDeleteWorkout(id) {
+    if (!confirm("Delete this workout? This cannot be undone.")) return;
+    var workouts = loadWorkouts().filter(function (w) { return w.id !== id; });
+    saveWorkouts(workouts);
+    if (editingWorkoutId === id) handleCancelEditWorkout();
+    renderHistory();
+    toast("Workout deleted");
   }
 
   // ---------- food log ----------
@@ -1136,6 +1221,7 @@
         wrap.appendChild(line);
       }
 
+      var dayWeight = entry ? entry.weight : null;
       workouts.filter(function (w) { return w.date === date; }).forEach(function (w) {
         var wDiv = document.createElement("div");
         wDiv.className = "h-workout";
@@ -1143,22 +1229,47 @@
           return sum + (ex.type === "cardio" ? 0 : ex.sets.length);
         }, 0);
         var cardioCount = w.exercises.filter(function (ex) { return ex.type === "cardio"; }).length;
+        var workoutKcal = Math.round(w.exercises.reduce(function (sum, ex) {
+          return sum + estimateExerciseCalories(ex, dayWeight);
+        }, 0));
         var summaryParts = [];
         if (totalSets > 0) summaryParts.push(totalSets + " sets");
         if (cardioCount > 0) summaryParts.push(cardioCount + " cardio");
+        if (workoutKcal > 0) summaryParts.push("~" + workoutKcal + " kcal burned");
 
-        var header = document.createElement("div");
-        header.innerHTML = "🏋️ <span class=\"h-workout-name\">" + w.name + "</span>" +
+        var headerRow = document.createElement("div");
+        headerRow.className = "h-workout-header";
+        var titleWrap = document.createElement("div");
+        titleWrap.innerHTML = "🏋️ <span class=\"h-workout-name\">" + w.name + "</span>" +
           (summaryParts.length ? " — " + summaryParts.join(", ") : "");
-        wDiv.appendChild(header);
+        headerRow.appendChild(titleWrap);
+
+        var actionsWrap = document.createElement("div");
+        actionsWrap.className = "h-workout-actions";
+        var editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "icon-btn";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", function () { handleEditWorkout(w.id); });
+        var deleteBtn = document.createElement("button");
+        deleteBtn.type = "button";
+        deleteBtn.className = "icon-btn danger";
+        deleteBtn.textContent = "Delete";
+        deleteBtn.addEventListener("click", function () { handleDeleteWorkout(w.id); });
+        actionsWrap.appendChild(editBtn);
+        actionsWrap.appendChild(deleteBtn);
+        headerRow.appendChild(actionsWrap);
+
+        wDiv.appendChild(headerRow);
 
         var exList = document.createElement("ul");
         exList.className = "ex-list";
         w.exercises.forEach(function (ex) {
+          var exKcal = Math.round(estimateExerciseCalories(ex, dayWeight));
           var exLi = document.createElement("li");
           var exName = document.createElement("div");
           exName.className = "ex-name";
-          exName.textContent = ex.name;
+          exName.textContent = ex.name + (exKcal > 0 ? " — ~" + exKcal + " kcal" : "");
           exLi.appendChild(exName);
 
           if (ex.type === "cardio") {
@@ -1284,10 +1395,12 @@
     localStorage.removeItem(STORAGE.foodlog);
     localStorage.removeItem(STORAGE.customFoods);
     currentExercises = [];
+    editingWorkoutId = null;
     fillSettingsForm();
     renderToday();
     renderHistory();
     renderWorkoutBuilder();
+    updateWorkoutFormMode();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
     toast("All data erased");
@@ -1457,6 +1570,7 @@
       if (e.key === "Enter") { e.preventDefault(); handleAddExercise(); }
     });
     document.getElementById("saveWorkoutBtn").addEventListener("click", handleSaveWorkout);
+    document.getElementById("cancelEditWorkoutBtn").addEventListener("click", handleCancelEditWorkout);
 
     document.getElementById("exportBtn").addEventListener("click", handleExport);
     document.getElementById("importBtn").addEventListener("click", function () {

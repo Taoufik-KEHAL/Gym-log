@@ -230,6 +230,7 @@ button.icon-btn {
   border-radius: 8px;
   font-size: 0.85rem;
 }
+button.icon-btn.danger { color: var(--danger); }
 button:active { transform: scale(0.98); }
 
 .exercise-block {
@@ -410,6 +411,24 @@ button:active { transform: scale(0.98); }
 
 .history-entry .h-workout .h-workout-name {
   font-weight: 600;
+}
+
+.history-entry .h-workout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.history-entry .h-workout-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.history-entry .h-workout-actions button {
+  padding: 5px 8px;
+  font-size: 0.75rem;
 }
 
 .history-entry .ex-list {
