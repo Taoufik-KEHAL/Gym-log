@@ -10,6 +10,18 @@
   var currentExercises = []; // in-progress workout builder state
   var currentDayType = null; // 'rest' | 'workout' | null, for the Today form
 
+  var CUSTOM_EXERCISE_VALUE = "__custom__";
+
+  var EXERCISE_LIBRARY = {
+    "Chest": ["Bench Press", "Incline Bench Press", "Decline Bench Press", "Dumbbell Bench Press", "Incline Dumbbell Press", "Chest Fly", "Cable Crossover", "Push-Up", "Dips"],
+    "Back": ["Deadlift", "Pull-Up", "Chin-Up", "Lat Pulldown", "Barbell Row", "Dumbbell Row", "T-Bar Row", "Seated Cable Row", "Face Pull", "Shrugs"],
+    "Shoulders": ["Overhead Press", "Dumbbell Shoulder Press", "Arnold Press", "Lateral Raise", "Front Raise", "Rear Delt Fly", "Upright Row"],
+    "Legs": ["Squat", "Front Squat", "Leg Press", "Lunges", "Bulgarian Split Squat", "Romanian Deadlift", "Leg Curl", "Leg Extension", "Calf Raise", "Hip Thrust"],
+    "Arms": ["Barbell Curl", "Dumbbell Curl", "Hammer Curl", "Preacher Curl", "Tricep Pushdown", "Tricep Extension", "Skull Crusher", "Close-Grip Bench Press"],
+    "Core": ["Plank", "Crunch", "Sit-Up", "Hanging Leg Raise", "Russian Twist", "Cable Woodchopper", "Ab Wheel Rollout"],
+    "Cardio": ["Running", "Cycling", "Rowing Machine", "Jump Rope", "Stair Climber", "Elliptical"]
+  };
+
   // ---------- storage helpers ----------
 
   function loadDaily() {
@@ -310,12 +322,43 @@
     });
   }
 
+  function populateExerciseSelect() {
+    var select = document.getElementById("exerciseSelect");
+    select.innerHTML = "";
+    Object.keys(EXERCISE_LIBRARY).forEach(function (group) {
+      var optgroup = document.createElement("optgroup");
+      optgroup.label = group;
+      EXERCISE_LIBRARY[group].forEach(function (name) {
+        var option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        optgroup.appendChild(option);
+      });
+      select.appendChild(optgroup);
+    });
+    var customOption = document.createElement("option");
+    customOption.value = CUSTOM_EXERCISE_VALUE;
+    customOption.textContent = "Other (type your own)…";
+    select.appendChild(customOption);
+  }
+
+  function handleExerciseSelectChange() {
+    var select = document.getElementById("exerciseSelect");
+    var customInput = document.getElementById("exerciseCustomInput");
+    var isCustom = select.value === CUSTOM_EXERCISE_VALUE;
+    customInput.style.display = isCustom ? "block" : "none";
+    if (isCustom) customInput.focus();
+  }
+
   function handleAddExercise() {
-    var input = document.getElementById("exerciseNameInput");
-    var name = input.value.trim();
+    var select = document.getElementById("exerciseSelect");
+    var customInput = document.getElementById("exerciseCustomInput");
+    var name = select.value === CUSTOM_EXERCISE_VALUE ? customInput.value.trim() : select.value;
     if (!name) { toast("Enter an exercise name"); return; }
     currentExercises.push({ name: name, sets: [] });
-    input.value = "";
+    customInput.value = "";
+    customInput.style.display = "none";
+    select.selectedIndex = 0;
     renderWorkoutBuilder();
   }
 
@@ -522,8 +565,10 @@
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
 
+    populateExerciseSelect();
+    document.getElementById("exerciseSelect").addEventListener("change", handleExerciseSelectChange);
     document.getElementById("addExerciseBtn").addEventListener("click", handleAddExercise);
-    document.getElementById("exerciseNameInput").addEventListener("keydown", function (e) {
+    document.getElementById("exerciseCustomInput").addEventListener("keydown", function (e) {
       if (e.key === "Enter") { e.preventDefault(); handleAddExercise(); }
     });
     document.getElementById("saveWorkoutBtn").addEventListener("click", handleSaveWorkout);

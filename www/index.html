@@ -88,11 +88,12 @@
       <div id="exerciseList"></div>
 
       <div class="field">
-        <label for="exerciseNameInput">Add exercise</label>
+        <label for="exerciseSelect">Add exercise</label>
         <div class="row">
-          <input type="text" id="exerciseNameInput" placeholder="e.g. Bench Press" />
+          <select id="exerciseSelect"></select>
           <button type="button" class="secondary" id="addExerciseBtn">Add</button>
         </div>
+        <input type="text" id="exerciseCustomInput" placeholder="Exercise name" style="display:none; margin-top:8px;" />
       </div>
 
       <button type="button" class="primary" id="saveWorkoutBtn">Save Workout</button>
