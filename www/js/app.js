@@ -115,18 +115,9 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
-    document.getElementById("sumSets").textContent = countSetsForDate(today);
+    document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     renderDayStatus(entry);
     drawWeightChart(daily);
-  }
-
-  function countSetsForDate(date) {
-    var workouts = loadWorkouts().filter(function (w) { return w.date === date; });
-    return workouts.reduce(function (sum, w) {
-      return sum + w.exercises.reduce(function (exSum, ex) {
-        return exSum + (ex.type === "cardio" ? 0 : ex.sets.length);
-      }, 0);
-    }, 0);
   }
 
   function renderDayStatus(entry) {
@@ -169,6 +160,7 @@
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("caloriesInput").value = entry.calories != null ? entry.calories : "";
     document.getElementById("proteinInput").value = entry.protein != null ? entry.protein : "";
+    document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
     setDayTypeToggle(entry.dayType || null);
   }
 
@@ -178,12 +170,14 @@
     var weight = document.getElementById("weightInput").value;
     var calories = document.getElementById("caloriesInput").value;
     var protein = document.getElementById("proteinInput").value;
+    var steps = document.getElementById("stepsInput").value;
 
     var daily = loadDaily();
     var entry = {};
     if (weight !== "") entry.weight = parseFloat(weight);
     if (calories !== "") entry.calories = Math.round(parseFloat(calories));
     if (protein !== "") entry.protein = Math.round(parseFloat(protein));
+    if (steps !== "") entry.steps = Math.round(parseFloat(steps));
     if (currentDayType) entry.dayType = currentDayType;
 
     if (Object.keys(entry).length === 0) {
@@ -511,6 +505,7 @@
         if (entry.weight != null) parts.push(entry.weight + " kg");
         if (entry.calories != null) parts.push(entry.calories + " kcal");
         if (entry.protein != null) parts.push(entry.protein + " g protein");
+        if (entry.steps != null) parts.push(entry.steps + " steps");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
       }

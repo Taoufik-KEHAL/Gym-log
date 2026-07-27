@@ -31,7 +31,7 @@
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
         <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div></div>
         <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
-        <div class="stat"><div class="value" id="sumSets">—</div><div class="label">Sets</div></div>
+        <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
@@ -61,6 +61,10 @@
         <div class="field">
           <label for="proteinInput">Protein (g)</label>
           <input type="number" id="proteinInput" step="1" min="0" placeholder="e.g. 160" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="stepsInput">Steps</label>
+          <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
         </div>
         <button type="submit" class="primary">Save Day</button>
       </form>
