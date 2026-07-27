@@ -8,10 +8,12 @@
     foodlog: "gymlog.foodlog"    // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
   };
 
-  var FOOD_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
-  var foodSearchAbortController = null;
+  var OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
+  var USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
+  var USDA_NUTRIENT_IDS = { calories: 1008, protein: 1003, carbs: 1005, fat: 1004 };
+  var foodSearchAbortControllers = [];
   var foodSearchDebounceTimer = null;
-  var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
+  var selectedFoodProduct = null; // { name, source, per100: { calories, protein, carbs, fat } }
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
@@ -570,40 +572,106 @@
     foodSearchDebounceTimer = setTimeout(function () { runFoodSearch(query); }, 450);
   }
 
+  function searchOpenFoodFacts(query, signal) {
+    var url = OFF_SEARCH_URL + "?json=1&action=process&page_size=8" +
+      "&search_terms=" + encodeURIComponent(query) +
+      "&fields=product_name,brands,nutriments";
+
+    return fetch(url, signal ? { signal: signal } : {})
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        return (data.products || [])
+          .filter(function (p) { return p.product_name && p.nutriments && p.nutriments["energy-kcal_100g"] != null; })
+          .map(function (p) {
+            return {
+              name: p.product_name,
+              brand: p.brands || "",
+              source: "Open Food Facts",
+              per100: {
+                calories: p.nutriments["energy-kcal_100g"] || 0,
+                protein: p.nutriments["proteins_100g"] || 0,
+                carbs: p.nutriments["carbohydrates_100g"] || 0,
+                fat: p.nutriments["fat_100g"] || 0
+              }
+            };
+          });
+      });
+  }
+
+  function searchUsdaFdc(query, apiKey, signal) {
+    var url = USDA_SEARCH_URL + "?api_key=" + encodeURIComponent(apiKey) +
+      "&query=" + encodeURIComponent(query) + "&pageSize=8";
+
+    return fetch(url, signal ? { signal: signal } : {})
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        return (data.foods || [])
+          .map(function (f) {
+            var nutrients = f.foodNutrients || [];
+            function nutrientValue(id) {
+              var found = nutrients.filter(function (n) { return n.nutrientId === id; })[0];
+              return found ? found.value : 0;
+            }
+            return {
+              name: f.description,
+              brand: f.brandOwner || f.dataType || "",
+              source: "USDA FoodData Central",
+              per100: {
+                calories: nutrientValue(USDA_NUTRIENT_IDS.calories),
+                protein: nutrientValue(USDA_NUTRIENT_IDS.protein),
+                carbs: nutrientValue(USDA_NUTRIENT_IDS.carbs),
+                fat: nutrientValue(USDA_NUTRIENT_IDS.fat)
+              }
+            };
+          })
+          .filter(function (p) { return p.name && p.per100.calories > 0; });
+      });
+  }
+
   function runFoodSearch(query) {
     var statusEl = document.getElementById("foodSearchStatus");
     var resultsEl = document.getElementById("foodSearchResults");
 
-    if (foodSearchAbortController) foodSearchAbortController.abort();
-    foodSearchAbortController = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    foodSearchAbortControllers.forEach(function (c) { c.abort(); });
+    foodSearchAbortControllers = [];
 
     resultsEl.innerHTML = "";
     statusEl.textContent = "Searching…";
     statusEl.style.display = "block";
 
-    var url = FOOD_SEARCH_URL + "?json=1&action=process&page_size=8" +
-      "&search_terms=" + encodeURIComponent(query) +
-      "&fields=product_name,brands,nutriments";
+    var settings = loadSettings();
+    var searches = [];
 
-    fetch(url, foodSearchAbortController ? { signal: foodSearchAbortController.signal } : {})
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        var products = (data.products || []).filter(function (p) {
-          return p.product_name && p.nutriments && p.nutriments["energy-kcal_100g"] != null;
-        });
-        if (products.length === 0) {
-          statusEl.textContent = "No results. Try another search or log a custom food.";
-          statusEl.style.display = "block";
-          return;
-        }
-        statusEl.style.display = "none";
-        renderFoodSearchResults(products);
-      })
-      .catch(function (err) {
-        if (err && err.name === "AbortError") return;
-        statusEl.textContent = "Couldn't reach the food database. Check your connection or log a custom food.";
-        statusEl.style.display = "block";
+    if (settings.usdaApiKey) {
+      var usdaController = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      if (usdaController) foodSearchAbortControllers.push(usdaController);
+      searches.push(searchUsdaFdc(query, settings.usdaApiKey, usdaController && usdaController.signal));
+    }
+
+    var offController = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    if (offController) foodSearchAbortControllers.push(offController);
+    searches.push(searchOpenFoodFacts(query, offController && offController.signal));
+
+    Promise.allSettled(searches).then(function (results) {
+      var anyFailed = results.some(function (r) { return r.status === "rejected" && !(r.reason && r.reason.name === "AbortError"); });
+      var anyAborted = results.some(function (r) { return r.status === "rejected" && r.reason && r.reason.name === "AbortError"; });
+      if (anyAborted) return; // a newer search superseded this one
+
+      var products = [];
+      results.forEach(function (r) {
+        if (r.status === "fulfilled") products = products.concat(r.value);
       });
+
+      if (products.length === 0) {
+        statusEl.textContent = anyFailed
+          ? "Couldn't reach the food database. Check your connection or log a custom food."
+          : "No results. Try another search or log a custom food.";
+        statusEl.style.display = "block";
+        return;
+      }
+      statusEl.style.display = "none";
+      renderFoodSearchResults(products);
+    });
   }
 
   function renderFoodSearchResults(products) {
@@ -611,15 +679,16 @@
     resultsEl.innerHTML = "";
     products.forEach(function (p) {
       var li = document.createElement("li");
-      var kcal = Math.round(p.nutriments["energy-kcal_100g"]);
+      var kcal = Math.round(p.per100.calories);
+      var sourceTag = p.source === "USDA FoodData Central" ? "USDA" : "OFF";
 
       var name = document.createElement("div");
       name.className = "food-result-name";
-      name.textContent = p.product_name;
+      name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>" + p.name;
 
       var meta = document.createElement("div");
       meta.className = "food-result-meta";
-      meta.textContent = (p.brands ? p.brands + " · " : "") + kcal + " kcal / 100 g";
+      meta.textContent = (p.brand ? p.brand + " · " : "") + kcal + " kcal / 100 g";
 
       li.appendChild(name);
       li.appendChild(meta);
@@ -629,16 +698,8 @@
   }
 
   function selectFoodProduct(p) {
-    selectedFoodProduct = {
-      name: p.product_name,
-      per100: {
-        calories: p.nutriments["energy-kcal_100g"] || 0,
-        protein: p.nutriments["proteins_100g"] || 0,
-        carbs: p.nutriments["carbohydrates_100g"] || 0,
-        fat: p.nutriments["fat_100g"] || 0
-      }
-    };
-    document.getElementById("foodQuantityName").textContent = selectedFoodProduct.name;
+    selectedFoodProduct = p;
+    document.getElementById("foodQuantityName").textContent = p.name;
     document.getElementById("foodGramsInput").value = 100;
     document.getElementById("foodQuantityCard").style.display = "block";
     document.getElementById("foodSearchResults").innerHTML = "";
@@ -972,6 +1033,7 @@
     var settings = loadSettings();
     document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
     document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
+    document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
   }
 
   function handleSettingsChange() {
@@ -983,6 +1045,14 @@
     saveSettings(settings);
     toast("Targets saved");
     renderToday();
+  }
+
+  function handleUsdaKeyChange() {
+    var key = document.getElementById("usdaApiKeyInput").value.trim();
+    var settings = loadSettings();
+    if (key !== "") settings.usdaApiKey = key; else delete settings.usdaApiKey;
+    saveSettings(settings);
+    toast(key !== "" ? "USDA API key saved" : "USDA API key removed");
   }
 
   // ---------- init ----------
@@ -1013,6 +1083,7 @@
     fillSettingsForm();
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
+    document.getElementById("usdaApiKeyInput").addEventListener("change", handleUsdaKeyChange);
 
     populateExerciseSelect(currentExerciseType);
     document.getElementById("exerciseSelect").addEventListener("change", handleExerciseSelectChange);
