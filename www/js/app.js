@@ -162,6 +162,8 @@
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
+    document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
+    document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     renderDayStatus(entry, today);
     drawWeightChart(daily);
   }
@@ -263,6 +265,8 @@
     document.getElementById("carbsInput").value = entry.carbs != null ? entry.carbs : "";
     document.getElementById("fatInput").value = entry.fat != null ? entry.fat : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
+    document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
+    document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
   }
 
@@ -276,6 +280,8 @@
     var carbs = document.getElementById("carbsInput").value;
     var fat = document.getElementById("fatInput").value;
     var steps = document.getElementById("stepsInput").value;
+    var water = document.getElementById("waterInput").value;
+    var cigarettes = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
     var entry = {};
@@ -286,6 +292,8 @@
     if (carbs !== "") entry.carbs = Math.round(parseFloat(carbs));
     if (fat !== "") entry.fat = Math.round(parseFloat(fat));
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
+    if (water !== "") entry.water = parseFloat(water);
+    if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
 
     if (Object.keys(entry).length === 0) {
@@ -573,15 +581,18 @@
 
   // ---------- food log ----------
 
-  function handleFoodSearchInput() {
+  function clearFoodSearchState() {
     clearTimeout(foodSearchDebounceTimer);
-    var query = document.getElementById("foodSearchInput").value.trim();
-    var statusEl = document.getElementById("foodSearchStatus");
+    foodSearchAbortControllers.forEach(function (c) { c.abort(); });
+    foodSearchAbortControllers = [];
     document.getElementById("foodSearchResults").innerHTML = "";
-    if (query.length < 2) {
-      statusEl.style.display = "none";
-      return;
-    }
+    document.getElementById("foodSearchStatus").style.display = "none";
+  }
+
+  function handleFoodSearchInput() {
+    var query = document.getElementById("foodSearchInput").value.trim();
+    clearFoodSearchState();
+    if (query.length < 2) return;
     foodSearchDebounceTimer = setTimeout(function () { runFoodSearch(query); }, 450);
   }
 
@@ -764,8 +775,7 @@
     document.getElementById("foodUnitsInput").value = 1;
     document.getElementById("foodUnitGramsInput").value = p.servingGrams || 50;
     document.getElementById("foodQuantityCard").style.display = "block";
-    document.getElementById("foodSearchResults").innerHTML = "";
-    document.getElementById("foodSearchStatus").style.display = "none";
+    clearFoodSearchState();
     setQtyMode("grams");
   }
 
@@ -808,6 +818,7 @@
     selectedFoodProduct = null;
     document.getElementById("foodQuantityCard").style.display = "none";
     document.getElementById("foodSearchInput").value = "";
+    clearFoodSearchState();
   }
 
   function handleAddCustomFood() {
@@ -981,6 +992,8 @@
         if (entry.carbs != null) parts.push(entry.carbs + " g carbs");
         if (entry.fat != null) parts.push(entry.fat + " g fat");
         if (entry.steps != null) parts.push(entry.steps + " steps");
+        if (entry.water != null) parts.push(entry.water + " L water");
+        if (entry.cigarettes != null) parts.push(entry.cigarettes + " cigarettes");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
       }
