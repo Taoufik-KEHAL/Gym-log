@@ -636,6 +636,17 @@
       });
   }
 
+  function sortFoodResults(products) {
+    return products.slice().sort(function (a, b) {
+      var aUsda = a.source === "USDA FoodData Central" ? 0 : 1;
+      var bUsda = b.source === "USDA FoodData Central" ? 0 : 1;
+      if (aUsda !== bUsda) return aUsda - bUsda;
+      var aBranded = a.brand ? 1 : 0;
+      var bBranded = b.brand ? 1 : 0;
+      return aBranded - bBranded;
+    });
+  }
+
   function runFoodSearch(query) {
     var statusEl = document.getElementById("foodSearchStatus");
     var resultsEl = document.getElementById("foodSearchResults");
@@ -678,7 +689,7 @@
         return;
       }
       statusEl.style.display = "none";
-      renderFoodSearchResults(products);
+      renderFoodSearchResults(sortFoodResults(products));
     });
   }
 
