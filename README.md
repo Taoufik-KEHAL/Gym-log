@@ -2,25 +2,49 @@
 
 A simple, installable web app for tracking daily body weight, workouts, calorie intake, and protein. All data is stored locally on your device (`localStorage`) — nothing is sent to a server, and your logs persist across app restarts.
 
-## Install on your phone (as an app icon, works offline)
+The web app's source lives in `www/`. There are two ways to run it: as a website (Add to Home Screen), or as a real installed Android app.
 
-1. Host the files (see below) or open `index.html` directly over HTTPS/localhost.
+## Option A — Install as a website (PWA)
+
+Data lives in the browser's `localStorage` for that site, so clearing browsing data in Safari/Chrome wipes it.
+
+1. Host `www/` (see below) or open `www/index.html` directly over HTTPS/localhost.
 2. On the phone, open the site in your browser:
    - **iPhone (Safari):** tap Share → **Add to Home Screen**.
    - **Android (Chrome):** tap the ⋮ menu → **Add to Home screen** / **Install app**.
 3. Launch it from the home screen icon — it opens full-screen like a native app and keeps working without an internet connection (a service worker caches the app files).
 
-## Running locally
-
-Any static file server works, e.g.:
+### Running locally
 
 ```
-python3 -m http.server 8080
+python3 -m http.server 8080 --directory www
 ```
 
 Then open `http://localhost:8080/` in your browser.
 
-To deploy for real phone access, host these files on any static hosting (GitHub Pages, Netlify, Vercel, etc.) — it must be served over HTTPS (or localhost) for "Add to Home Screen" and offline support to work.
+To deploy for real phone access, host `www/` on any static hosting (GitHub Pages, Netlify, Vercel, etc.) — it must be served over HTTPS (or localhost) for "Add to Home Screen" and offline support to work. This repo's `.github/workflows/deploy-pages.yml` publishes `www/` to GitHub Pages automatically on every push to `main`.
+
+## Option B — Install as a native Android app (Capacitor)
+
+This gives the app its own private on-device storage, completely separate from the browser — clearing Chrome's browsing data can't touch it. The native project lives in `android/` and is generated from `www/` via [Capacitor](https://capacitorjs.com).
+
+Requires Android Studio (or the Android SDK + a JDK) on your machine — building an APK needs the Android SDK, which can't be fetched from a network-restricted sandbox.
+
+```
+npm install
+npx cap sync android   # re-run any time www/ changes
+npx cap open android    # opens the project in Android Studio
+```
+
+From Android Studio, connect your phone (with USB debugging enabled) or start an emulator, then hit **Run**. Or from the command line, with the Android SDK installed:
+
+```
+cd android
+./gradlew assembleDebug
+# APK output: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install the resulting APK on your phone (`adb install app-debug.apk`, or copy it over and open it — you'll need to allow installing from this source).
 
 ## Features
 
