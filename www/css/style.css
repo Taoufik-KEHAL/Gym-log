@@ -279,11 +279,87 @@ button:active { transform: scale(0.98); }
   gap: 8px;
 }
 
-.cardio-fields .mini-field label {
+.mini-field label {
   font-size: 0.75rem;
   color: var(--text-dim);
   display: block;
   margin-bottom: 4px;
+}
+
+.food-results {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.food-results li {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  background: var(--bg-elev-2);
+}
+
+.food-results li:active { transform: scale(0.99); }
+
+.food-results .food-result-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.food-results .food-result-meta {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.food-quantity-card {
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.food-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin: 10px 0;
+}
+
+.food-preview strong { color: var(--text); }
+
+.food-log-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+
+.food-log-item:last-child { border-bottom: none; }
+
+.food-log-item .food-log-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.food-log-item .food-log-macros {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.food-log-item button.remove {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 1rem;
+  padding: 2px 6px;
 }
 
 .history-entry {
