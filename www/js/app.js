@@ -9,6 +9,7 @@
 
   var currentExercises = []; // in-progress workout builder state
   var currentDayType = null; // 'rest' | 'workout' | null, for the Today form
+  var currentExerciseType = "strength"; // 'strength' | 'cardio', for the exercise about to be added
 
   var CUSTOM_EXERCISE_VALUE = "__custom__";
 
@@ -21,6 +22,9 @@
     "Core": ["Plank", "Crunch", "Sit-Up", "Hanging Leg Raise", "Russian Twist", "Cable Woodchopper", "Ab Wheel Rollout"],
     "Cardio": ["Running", "Cycling", "Rowing Machine", "Jump Rope", "Stair Climber", "Elliptical"]
   };
+
+  var CARDIO_EXERCISE_NAMES = {};
+  EXERCISE_LIBRARY["Cardio"].forEach(function (name) { CARDIO_EXERCISE_NAMES[name] = true; });
 
   // ---------- storage helpers ----------
 
@@ -272,54 +276,99 @@
       titleRow.appendChild(removeExBtn);
       block.appendChild(titleRow);
 
-      ex.sets.forEach(function (set, setIdx) {
-        var row = document.createElement("div");
-        row.className = "set-row";
-        row.innerHTML = '<span class="set-idx">#' + (setIdx + 1) + "</span><strong>" +
-          set.reps + " reps</strong> @ <strong>" + set.weight + " kg</strong>";
-        var removeSetBtn = document.createElement("button");
-        removeSetBtn.type = "button";
-        removeSetBtn.className = "remove";
-        removeSetBtn.textContent = "✕";
-        removeSetBtn.addEventListener("click", function () {
-          ex.sets.splice(setIdx, 1);
+      if (ex.type === "cardio") {
+        block.appendChild(buildCardioFields(ex));
+      } else {
+        ex.sets.forEach(function (set, setIdx) {
+          var row = document.createElement("div");
+          row.className = "set-row";
+          row.innerHTML = '<span class="set-idx">#' + (setIdx + 1) + "</span><strong>" +
+            set.reps + " reps</strong> @ <strong>" + set.weight + " kg</strong>";
+          var removeSetBtn = document.createElement("button");
+          removeSetBtn.type = "button";
+          removeSetBtn.className = "remove";
+          removeSetBtn.textContent = "✕";
+          removeSetBtn.addEventListener("click", function () {
+            ex.sets.splice(setIdx, 1);
+            renderWorkoutBuilder();
+          });
+          row.appendChild(removeSetBtn);
+          block.appendChild(row);
+        });
+
+        var addSetRow = document.createElement("div");
+        addSetRow.className = "add-set-row";
+        var repsInput = document.createElement("input");
+        repsInput.type = "number";
+        repsInput.placeholder = "Reps";
+        repsInput.inputMode = "numeric";
+        repsInput.min = "0";
+        var weightInput = document.createElement("input");
+        weightInput.type = "number";
+        weightInput.placeholder = "Weight (kg)";
+        weightInput.inputMode = "decimal";
+        weightInput.step = "0.5";
+        weightInput.min = "0";
+        var addSetBtn = document.createElement("button");
+        addSetBtn.type = "button";
+        addSetBtn.className = "secondary";
+        addSetBtn.textContent = "Add set";
+        addSetBtn.addEventListener("click", function () {
+          var reps = parseFloat(repsInput.value);
+          var weight = parseFloat(weightInput.value);
+          if (!reps) { toast("Enter reps"); return; }
+          ex.sets.push({ reps: reps, weight: isNaN(weight) ? 0 : weight });
           renderWorkoutBuilder();
         });
-        row.appendChild(removeSetBtn);
-        block.appendChild(row);
-      });
-
-      var addSetRow = document.createElement("div");
-      addSetRow.className = "add-set-row";
-      var repsInput = document.createElement("input");
-      repsInput.type = "number";
-      repsInput.placeholder = "Reps";
-      repsInput.inputMode = "numeric";
-      repsInput.min = "0";
-      var weightInput = document.createElement("input");
-      weightInput.type = "number";
-      weightInput.placeholder = "Weight (kg)";
-      weightInput.inputMode = "decimal";
-      weightInput.step = "0.5";
-      weightInput.min = "0";
-      var addSetBtn = document.createElement("button");
-      addSetBtn.type = "button";
-      addSetBtn.className = "secondary";
-      addSetBtn.textContent = "Add set";
-      addSetBtn.addEventListener("click", function () {
-        var reps = parseFloat(repsInput.value);
-        var weight = parseFloat(weightInput.value);
-        if (!reps) { toast("Enter reps"); return; }
-        ex.sets.push({ reps: reps, weight: isNaN(weight) ? 0 : weight });
-        renderWorkoutBuilder();
-      });
-      addSetRow.appendChild(repsInput);
-      addSetRow.appendChild(weightInput);
-      addSetRow.appendChild(addSetBtn);
-      block.appendChild(addSetRow);
+        addSetRow.appendChild(repsInput);
+        addSetRow.appendChild(weightInput);
+        addSetRow.appendChild(addSetBtn);
+        block.appendChild(addSetRow);
+      }
 
       list.appendChild(block);
     });
+  }
+
+  function buildCardioFields(ex) {
+    var wrap = document.createElement("div");
+    wrap.className = "cardio-fields";
+
+    var durationField = document.createElement("div");
+    durationField.className = "mini-field";
+    durationField.innerHTML = '<label>Duration (min)</label>';
+    var durationInput = document.createElement("input");
+    durationInput.type = "number";
+    durationInput.inputMode = "decimal";
+    durationInput.min = "0";
+    durationInput.step = "1";
+    durationInput.placeholder = "e.g. 30";
+    durationInput.value = ex.duration != null ? ex.duration : "";
+    durationInput.addEventListener("change", function () {
+      var val = parseFloat(durationInput.value);
+      ex.duration = isNaN(val) ? null : val;
+    });
+    durationField.appendChild(durationInput);
+
+    var paceField = document.createElement("div");
+    paceField.className = "mini-field";
+    paceField.innerHTML = '<label>Pace (min/km)</label>';
+    var paceInput = document.createElement("input");
+    paceInput.type = "number";
+    paceInput.inputMode = "decimal";
+    paceInput.min = "0";
+    paceInput.step = "0.1";
+    paceInput.placeholder = "e.g. 5.5";
+    paceInput.value = ex.pace != null ? ex.pace : "";
+    paceInput.addEventListener("change", function () {
+      var val = parseFloat(paceInput.value);
+      ex.pace = isNaN(val) ? null : val;
+    });
+    paceField.appendChild(paceInput);
+
+    wrap.appendChild(durationField);
+    wrap.appendChild(paceField);
+    return wrap;
   }
 
   function populateExerciseSelect() {
@@ -342,12 +391,20 @@
     select.appendChild(customOption);
   }
 
+  function setExerciseTypeToggle(type) {
+    currentExerciseType = type;
+    document.querySelectorAll("#exerciseTypeToggle .segment").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.exType === type);
+    });
+  }
+
   function handleExerciseSelectChange() {
     var select = document.getElementById("exerciseSelect");
     var customInput = document.getElementById("exerciseCustomInput");
     var isCustom = select.value === CUSTOM_EXERCISE_VALUE;
     customInput.style.display = isCustom ? "block" : "none";
     if (isCustom) customInput.focus();
+    setExerciseTypeToggle(CARDIO_EXERCISE_NAMES[select.value] ? "cardio" : "strength");
   }
 
   function handleAddExercise() {
@@ -355,20 +412,27 @@
     var customInput = document.getElementById("exerciseCustomInput");
     var name = select.value === CUSTOM_EXERCISE_VALUE ? customInput.value.trim() : select.value;
     if (!name) { toast("Enter an exercise name"); return; }
-    currentExercises.push({ name: name, sets: [] });
+    if (currentExerciseType === "cardio") {
+      currentExercises.push({ name: name, type: "cardio", duration: null, pace: null });
+    } else {
+      currentExercises.push({ name: name, type: "strength", sets: [] });
+    }
     customInput.value = "";
     customInput.style.display = "none";
     select.selectedIndex = 0;
+    setExerciseTypeToggle("strength");
     renderWorkoutBuilder();
   }
 
   function handleSaveWorkout() {
     var date = document.getElementById("workoutDate").value || todayISO();
     var name = document.getElementById("workoutName").value.trim() || "Workout";
-    var exercises = currentExercises.filter(function (ex) { return ex.sets.length > 0; });
+    var exercises = currentExercises.filter(function (ex) {
+      return ex.type === "cardio" ? (ex.duration != null && ex.duration > 0) : ex.sets.length > 0;
+    });
 
     if (exercises.length === 0) {
-      toast("Add at least one set");
+      toast("Add at least one set or a cardio duration");
       return;
     }
 
@@ -432,10 +496,17 @@
       workouts.filter(function (w) { return w.date === date; }).forEach(function (w) {
         var wDiv = document.createElement("div");
         wDiv.className = "h-workout";
-        var totalSets = w.exercises.reduce(function (sum, ex) { return sum + ex.sets.length; }, 0);
+        var totalSets = w.exercises.reduce(function (sum, ex) {
+          return sum + (ex.type === "cardio" ? 0 : ex.sets.length);
+        }, 0);
+        var cardioCount = w.exercises.filter(function (ex) { return ex.type === "cardio"; }).length;
+        var summaryParts = [];
+        if (totalSets > 0) summaryParts.push(totalSets + " sets");
+        if (cardioCount > 0) summaryParts.push(cardioCount + " cardio");
 
         var header = document.createElement("div");
-        header.innerHTML = "🏋️ <span class=\"h-workout-name\">" + w.name + "</span> — " + totalSets + " sets";
+        header.innerHTML = "🏋️ <span class=\"h-workout-name\">" + w.name + "</span>" +
+          (summaryParts.length ? " — " + summaryParts.join(", ") : "");
         wDiv.appendChild(header);
 
         var exList = document.createElement("ul");
@@ -447,14 +518,24 @@
           exName.textContent = ex.name;
           exLi.appendChild(exName);
 
-          var setList = document.createElement("ul");
-          setList.className = "set-list";
-          ex.sets.forEach(function (set, setIdx) {
-            var setLi = document.createElement("li");
-            setLi.textContent = "#" + (setIdx + 1) + " — " + set.reps + " reps @ " + set.weight + " kg";
-            setList.appendChild(setLi);
-          });
-          exLi.appendChild(setList);
+          if (ex.type === "cardio") {
+            var cardioLi = document.createElement("div");
+            cardioLi.className = "set-list";
+            var cardioParts = [];
+            if (ex.duration != null) cardioParts.push(ex.duration + " min");
+            if (ex.pace != null) cardioParts.push(ex.pace + " min/km");
+            cardioLi.textContent = cardioParts.join(" @ ");
+            exLi.appendChild(cardioLi);
+          } else {
+            var setList = document.createElement("ul");
+            setList.className = "set-list";
+            ex.sets.forEach(function (set, setIdx) {
+              var setLi = document.createElement("li");
+              setLi.textContent = "#" + (setIdx + 1) + " — " + set.reps + " reps @ " + set.weight + " kg";
+              setList.appendChild(setLi);
+            });
+            exLi.appendChild(setList);
+          }
 
           exList.appendChild(exLi);
         });
@@ -567,6 +648,9 @@
 
     populateExerciseSelect();
     document.getElementById("exerciseSelect").addEventListener("change", handleExerciseSelectChange);
+    document.querySelectorAll("#exerciseTypeToggle .segment").forEach(function (btn) {
+      btn.addEventListener("click", function () { setExerciseTypeToggle(btn.dataset.exType); });
+    });
     document.getElementById("addExerciseBtn").addEventListener("click", handleAddExercise);
     document.getElementById("exerciseCustomInput").addEventListener("keydown", function (e) {
       if (e.key === "Enter") { e.preventDefault(); handleAddExercise(); }
