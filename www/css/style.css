@@ -125,6 +125,48 @@ main {
   margin-top: 2px;
 }
 
+.day-status {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.day-status .day-badge {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.day-status .diff-under { color: var(--accent); font-weight: 600; }
+.day-status .diff-over { color: var(--danger); font-weight: 600; }
+
+.segmented {
+  display: flex;
+  gap: 8px;
+}
+
+.segmented .segment {
+  flex: 1;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.segmented .segment.active {
+  background: var(--accent);
+  color: #08110d;
+  border-color: var(--accent);
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -255,8 +297,44 @@ button:active { transform: scale(0.98); }
   margin-top: 6px;
 }
 
-.history-entry .h-workout .ex {
+.history-entry .h-workout .h-workout-name {
+  font-weight: 600;
+}
+
+.history-entry .ex-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.history-entry .ex-list > li {
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.history-entry .ex-list .ex-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.history-entry .set-list {
+  list-style: none;
+  margin: 3px 0 0;
+  padding: 0;
   color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+.history-entry .day-type-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  margin-left: 8px;
 }
 
 .empty-state {

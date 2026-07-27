@@ -2,11 +2,13 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, calories, protein } }
-    workouts: "gymlog.workouts"  // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, calories, protein, dayType } }
+    workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
+    settings: "gymlog.settings"  // { restCalories, workoutCalories }
   };
 
   var currentExercises = []; // in-progress workout builder state
+  var currentDayType = null; // 'rest' | 'workout' | null, for the Today form
 
   // ---------- storage helpers ----------
 
@@ -32,6 +34,18 @@
 
   function saveWorkouts(list) {
     localStorage.setItem(STORAGE.workouts, JSON.stringify(list));
+  }
+
+  function loadSettings() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.settings) || "{}");
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveSettings(settings) {
+    localStorage.setItem(STORAGE.settings, JSON.stringify(settings));
   }
 
   function makeId() {
@@ -88,7 +102,42 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
+    renderDayStatus(entry);
     drawWeightChart(daily);
+  }
+
+  function renderDayStatus(entry) {
+    var el = document.getElementById("dayStatus");
+    var dayType = entry.dayType;
+    if (!dayType) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    var settings = loadSettings();
+    var target = dayType === "rest" ? settings.restCalories : settings.workoutCalories;
+    var label = dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
+    var html = '<span class="day-badge">' + label + "</span>";
+    if (target != null) {
+      html += "<span>Target: " + target + " kcal</span>";
+      if (entry.calories != null) {
+        var diff = entry.calories - target;
+        if (diff <= 0) {
+          html += '<span class="diff-under">' + Math.abs(diff) + " kcal under</span>";
+        } else {
+          html += '<span class="diff-over">' + diff + " kcal over</span>";
+        }
+      }
+    }
+    el.innerHTML = html;
+    el.style.display = "flex";
+  }
+
+  function setDayTypeToggle(dayType) {
+    currentDayType = dayType;
+    document.querySelectorAll("#dayTypeToggle .segment").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.dayType === dayType);
+    });
   }
 
   function fillFormFromDate(iso) {
@@ -97,6 +146,7 @@
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("caloriesInput").value = entry.calories != null ? entry.calories : "";
     document.getElementById("proteinInput").value = entry.protein != null ? entry.protein : "";
+    setDayTypeToggle(entry.dayType || null);
   }
 
   function handleDailySubmit(e) {
@@ -111,6 +161,7 @@
     if (weight !== "") entry.weight = parseFloat(weight);
     if (calories !== "") entry.calories = Math.round(parseFloat(calories));
     if (protein !== "") entry.protein = Math.round(parseFloat(protein));
+    if (currentDayType) entry.dayType = currentDayType;
 
     if (Object.keys(entry).length === 0) {
       delete daily[date];
@@ -315,6 +366,12 @@
       var dateEl = document.createElement("div");
       dateEl.className = "h-date";
       dateEl.textContent = formatDateLong(date);
+      if (daily[date] && daily[date].dayType) {
+        var badge = document.createElement("span");
+        badge.className = "day-type-badge";
+        badge.textContent = daily[date].dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
+        dateEl.appendChild(badge);
+      }
       wrap.appendChild(dateEl);
 
       var entry = daily[date];
@@ -333,8 +390,33 @@
         var wDiv = document.createElement("div");
         wDiv.className = "h-workout";
         var totalSets = w.exercises.reduce(function (sum, ex) { return sum + ex.sets.length; }, 0);
-        var exNames = w.exercises.map(function (ex) { return ex.name + " (" + ex.sets.length + ")"; }).join(", ");
-        wDiv.innerHTML = "<strong>🏋️ " + w.name + "</strong> — " + totalSets + " sets<br><span class=\"ex\">" + exNames + "</span>";
+
+        var header = document.createElement("div");
+        header.innerHTML = "🏋️ <span class=\"h-workout-name\">" + w.name + "</span> — " + totalSets + " sets";
+        wDiv.appendChild(header);
+
+        var exList = document.createElement("ul");
+        exList.className = "ex-list";
+        w.exercises.forEach(function (ex) {
+          var exLi = document.createElement("li");
+          var exName = document.createElement("div");
+          exName.className = "ex-name";
+          exName.textContent = ex.name;
+          exLi.appendChild(exName);
+
+          var setList = document.createElement("ul");
+          setList.className = "set-list";
+          ex.sets.forEach(function (set, setIdx) {
+            var setLi = document.createElement("li");
+            setLi.textContent = "#" + (setIdx + 1) + " — " + set.reps + " reps @ " + set.weight + " kg";
+            setList.appendChild(setLi);
+          });
+          exLi.appendChild(setList);
+
+          exList.appendChild(exLi);
+        });
+        wDiv.appendChild(exList);
+
         wrap.appendChild(wDiv);
       });
 
@@ -348,7 +430,8 @@
     var payload = {
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
-      workouts: loadWorkouts()
+      workouts: loadWorkouts(),
+      settings: loadSettings()
     };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
@@ -372,7 +455,9 @@
     }
     if (payload.daily) saveDaily(payload.daily);
     if (payload.workouts) saveWorkouts(payload.workouts);
+    if (payload.settings) saveSettings(payload.settings);
     toast("Import complete");
+    fillSettingsForm();
     renderToday();
     renderHistory();
   }
@@ -381,11 +466,32 @@
     if (!confirm("Erase all logged data on this device? This cannot be undone.")) return;
     localStorage.removeItem(STORAGE.daily);
     localStorage.removeItem(STORAGE.workouts);
+    localStorage.removeItem(STORAGE.settings);
     currentExercises = [];
+    fillSettingsForm();
     renderToday();
     renderHistory();
     renderWorkoutBuilder();
     toast("All data erased");
+  }
+
+  // ---------- settings ----------
+
+  function fillSettingsForm() {
+    var settings = loadSettings();
+    document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
+    document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
+  }
+
+  function handleSettingsChange() {
+    var rest = document.getElementById("restCaloriesInput").value;
+    var workout = document.getElementById("workoutCaloriesInput").value;
+    var settings = loadSettings();
+    if (rest !== "") settings.restCalories = Math.round(parseFloat(rest)); else delete settings.restCalories;
+    if (workout !== "") settings.workoutCalories = Math.round(parseFloat(workout)); else delete settings.workoutCalories;
+    saveSettings(settings);
+    toast("Targets saved");
+    renderToday();
   }
 
   // ---------- init ----------
@@ -405,6 +511,16 @@
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
     });
+
+    document.querySelectorAll("#dayTypeToggle .segment").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setDayTypeToggle(currentDayType === btn.dataset.dayType ? null : btn.dataset.dayType);
+      });
+    });
+
+    fillSettingsForm();
+    document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
+    document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
 
     document.getElementById("addExerciseBtn").addEventListener("click", handleAddExercise);
     document.getElementById("exerciseNameInput").addEventListener("keydown", function (e) {
