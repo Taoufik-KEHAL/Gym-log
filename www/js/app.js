@@ -262,6 +262,7 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
+    renderCaloriesGoalDelta(entry);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
@@ -270,6 +271,25 @@
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     renderDayStatus(entry, today);
     drawWeightChart(daily);
+  }
+
+  function renderCaloriesGoalDelta(entry) {
+    var el = document.getElementById("sumCaloriesGoal");
+    var settings = loadSettings();
+    var target = entry.dayType === "rest" ? settings.restCalories : entry.dayType === "workout" ? settings.workoutCalories : null;
+    if (target == null || entry.calories == null) {
+      el.textContent = "";
+      el.className = "stat-sub";
+      return;
+    }
+    var diff = entry.calories - target;
+    if (diff <= 0) {
+      el.textContent = diff === 0 ? "On goal" : Math.abs(diff) + " under";
+      el.className = "stat-sub diff-under";
+    } else {
+      el.textContent = diff + " over";
+      el.className = "stat-sub diff-over";
+    }
   }
 
   function getCardioMET(name, pace) {
@@ -314,24 +334,11 @@
 
   function renderDayStatus(entry, date) {
     var el = document.getElementById("dayStatus");
-    var settings = loadSettings();
     var parts = [];
 
     if (entry.dayType) {
-      var target = entry.dayType === "rest" ? settings.restCalories : settings.workoutCalories;
       var label = entry.dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
       parts.push('<span class="day-badge">' + label + "</span>");
-      if (target != null) {
-        parts.push("<span>Target: " + target + " kcal</span>");
-        if (entry.calories != null) {
-          var diff = entry.calories - target;
-          if (diff <= 0) {
-            parts.push('<span class="diff-under">' + Math.abs(diff) + " kcal under</span>");
-          } else {
-            parts.push('<span class="diff-over">' + diff + " kcal over</span>");
-          }
-        }
-      }
     }
 
     var burned = estimateCaloriesBurned(date, entry.weight, entry.steps);
@@ -1174,7 +1181,7 @@
 
   // ---------- data export / import / clear ----------
 
-  function handleExport() {
+  async function handleExport() {
     var payload = {
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
@@ -1183,11 +1190,31 @@
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods()
     };
-    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var json = JSON.stringify(payload, null, 2);
+    var filename = "gymlog-backup-" + todayISO() + ".json";
+
+    if (window.showSaveFilePicker) {
+      try {
+        var handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: "JSON backup", accept: { "application/json": [".json"] } }]
+        });
+        var writable = await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        toast("Backup saved");
+        return;
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        // Fall through to the plain download if the picker isn't usable here.
+      }
+    }
+
+    var blob = new Blob([json], { type: "application/json" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
     a.href = url;
-    a.download = "gymlog-backup-" + todayISO() + ".json";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();

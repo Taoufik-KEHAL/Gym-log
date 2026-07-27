@@ -125,6 +125,16 @@ main {
   margin-top: 2px;
 }
 
+.stat-sub {
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-top: 3px;
+  min-height: 1em;
+}
+
+.stat-sub.diff-under { color: var(--accent); }
+.stat-sub.diff-over { color: var(--danger); }
+
 .day-status {
   margin-top: 10px;
   padding-top: 10px;
