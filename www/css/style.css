@@ -316,6 +316,18 @@ button:active { transform: scale(0.98); }
   margin-top: 2px;
 }
 
+.food-source-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .food-quantity-card {
   margin-top: 12px;
   padding: 12px;
