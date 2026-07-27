@@ -17,6 +17,7 @@
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
+  var STEPS_KCAL_PER_STEP_PER_KG = 0.0005; // rough walking-equivalent burn per step per kg bodyweight
   var CARDIO_MET_TABLE = {
     "cycling": 7.5,
     "rowing machine": 7.0,
@@ -174,7 +175,7 @@
     return CARDIO_MET_TABLE[lname] != null ? CARDIO_MET_TABLE[lname] : 6.0;
   }
 
-  function estimateCaloriesBurned(date, weightKg) {
+  function estimateCaloriesBurned(date, weightKg, steps) {
     var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
     var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
     var total = 0;
@@ -190,6 +191,7 @@
         }
       });
     });
+    if (steps) total += steps * w * STEPS_KCAL_PER_STEP_PER_KG;
     return Math.round(total);
   }
 
@@ -215,7 +217,7 @@
       }
     }
 
-    var burned = estimateCaloriesBurned(date, entry.weight);
+    var burned = estimateCaloriesBurned(date, entry.weight, entry.steps);
     if (burned > 0) {
       var usedDefaultWeight = entry.weight == null;
       parts.push("<span>🔥 " + burned + " kcal burned (est." + (usedDefaultWeight ? ", " + DEFAULT_BODYWEIGHT_KG + " kg assumed" : "") + ")</span>");
