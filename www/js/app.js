@@ -4,7 +4,7 @@
   var STORAGE = {
     daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
-    settings: "gymlog.settings", // { restCalories, workoutCalories }
+    settings: "gymlog.settings", // { restCalories, workoutCalories, workoutDeficitPct, restDeficitPct }
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     customExercises: "gymlog.customExercises" // [ { name, type: 'strength' | 'cardio' } ]
@@ -52,8 +52,8 @@
     very_active: 1.9
   };
   var currentSex = "male"; // 'male' | 'female', for the maintenance-calorie form
-  var WORKOUT_DAY_DEFICIT_PCT = 0.02; // 2% below maintenance, applied by "Use as my calorie targets"
-  var REST_DAY_DEFICIT_PCT = 0.10; // 10% below maintenance, applied by "Use as my calorie targets"
+  var DEFAULT_WORKOUT_DEFICIT_PCT = 2; // % below maintenance, applied by "Use as my calorie targets" unless overridden
+  var DEFAULT_REST_DEFICIT_PCT = 10; // % below maintenance, applied by "Use as my calorie targets" unless overridden
 
   var currentExercises = []; // in-progress workout builder state
   var editingWorkoutId = null; // id of the workout being edited, or null when building a new one
@@ -1436,6 +1436,8 @@
     var settings = loadSettings();
     document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
     document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
+    document.getElementById("workoutDeficitInput").value = settings.workoutDeficitPct != null ? settings.workoutDeficitPct : DEFAULT_WORKOUT_DEFICIT_PCT;
+    document.getElementById("restDeficitInput").value = settings.restDeficitPct != null ? settings.restDeficitPct : DEFAULT_REST_DEFICIT_PCT;
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
@@ -1447,9 +1449,13 @@
   function handleSettingsChange() {
     var rest = document.getElementById("restCaloriesInput").value;
     var workout = document.getElementById("workoutCaloriesInput").value;
+    var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
+    var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
     var settings = loadSettings();
     if (rest !== "") settings.restCalories = Math.round(parseFloat(rest)); else delete settings.restCalories;
     if (workout !== "") settings.workoutCalories = Math.round(parseFloat(workout)); else delete settings.workoutCalories;
+    settings.workoutDeficitPct = isNaN(workoutDeficit) ? DEFAULT_WORKOUT_DEFICIT_PCT : workoutDeficit;
+    settings.restDeficitPct = isNaN(restDeficit) ? DEFAULT_REST_DEFICIT_PCT : restDeficit;
     saveSettings(settings);
     toast("Targets saved");
     renderToday();
@@ -1531,8 +1537,12 @@
       toast("Enter your age and height first");
       return;
     }
-    var workoutTarget = Math.round((result.tdee * (1 - WORKOUT_DAY_DEFICIT_PCT)) / 10) * 10;
-    var restTarget = Math.round((result.tdee * (1 - REST_DAY_DEFICIT_PCT)) / 10) * 10;
+    var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
+    var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
+    if (isNaN(workoutDeficit)) workoutDeficit = DEFAULT_WORKOUT_DEFICIT_PCT;
+    if (isNaN(restDeficit)) restDeficit = DEFAULT_REST_DEFICIT_PCT;
+    var workoutTarget = Math.round((result.tdee * (1 - workoutDeficit / 100)) / 10) * 10;
+    var restTarget = Math.round((result.tdee * (1 - restDeficit / 100)) / 10) * 10;
     document.getElementById("restCaloriesInput").value = restTarget;
     document.getElementById("workoutCaloriesInput").value = workoutTarget;
     handleSettingsChange();
@@ -1568,6 +1578,8 @@
     fillSettingsForm();
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
+    document.getElementById("workoutDeficitInput").addEventListener("change", handleSettingsChange);
+    document.getElementById("restDeficitInput").addEventListener("change", handleSettingsChange);
     document.getElementById("usdaApiKeyInput").addEventListener("change", handleUsdaKeyChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
