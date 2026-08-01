@@ -7,8 +7,7 @@
     settings: "gymlog.settings", // { restCalories, workoutCalories, workoutDeficitPct, restDeficitPct }
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
-    customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    program: "gymlog.program" // { exercises: [{id,name,weight}], sessions: [{id,day,sets,reps}] }
+    customExercises: "gymlog.customExercises" // [ { name, type: 'strength' | 'cardio' } ]
   };
 
   var CUSTOM_FOOD_SEED = [
@@ -26,35 +25,7 @@
     { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
   ];
 
-  var PROGRAM_DAY_LABELS = { sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday" };
-  var PROGRAM_DAY_ORDER = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]; // matches Date#getDay() index
-
-  var DEFAULT_PROGRAM = {
-    exercises: [
-      { name: "Dumbbell Bench Press", weight: 20 },
-      { name: "Incline Dumbbell Press", weight: 20 },
-      { name: "Pullover", weight: 12.5 },
-      { name: "Lat Pulldown", weight: 45.4 },
-      { name: "Leg Extension", weight: 39 },
-      { name: "Leg Press", weight: 41 },
-      { name: "Lateral Raise", weight: 45 },
-      { name: "Chest Fly", weight: 23 },
-      { name: "Dumbbell Curl", weight: 25 }
-    ],
-    sessions: [
-      { day: "tue", sets: 3, reps: 15 },
-      { day: "thu", sets: 3, reps: 12 },
-      { day: "sat", sets: 4, reps: 8 },
-      { day: "sun", sets: 4, reps: 6 }
-    ]
-  };
-
-  var OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
-  var USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
-  var USDA_NUTRIENT_IDS = { calories: 1008, protein: 1003, carbs: 1005, fat: 1004 };
-  var foodSearchAbortControllers = [];
-  var foodSearchDebounceTimer = null;
-  var selectedFoodProduct = null; // { name, source, servingGrams, per100: { calories, protein, carbs, fat } }
+  var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
   var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
@@ -65,7 +36,10 @@
     "rowing machine": 7.0,
     "jump rope": 10.0,
     "stair climber": 8.0,
-    "elliptical": 5.0
+    "elliptical": 5.0,
+    "treadmill": 8.0,
+    "assault bike": 8.0,
+    "ski erg": 7.0
   };
 
   var ACTIVITY_MULTIPLIERS = {
@@ -87,13 +61,47 @@
   var CUSTOM_EXERCISE_VALUE = "__custom__";
 
   var EXERCISE_LIBRARY = {
-    "Chest": ["Bench Press", "Incline Bench Press", "Decline Bench Press", "Dumbbell Bench Press", "Incline Dumbbell Press", "Chest Fly", "Cable Crossover", "Pullover", "Push-Up", "Dips"],
-    "Back": ["Deadlift", "Pull-Up", "Chin-Up", "Lat Pulldown", "Barbell Row", "Dumbbell Row", "T-Bar Row", "Seated Cable Row", "Face Pull", "Shrugs"],
-    "Shoulders": ["Overhead Press", "Dumbbell Shoulder Press", "Arnold Press", "Lateral Raise", "Front Raise", "Rear Delt Fly", "Upright Row"],
-    "Legs": ["Squat", "Front Squat", "Leg Press", "Lunges", "Bulgarian Split Squat", "Romanian Deadlift", "Leg Curl", "Leg Extension", "Calf Raise", "Hip Thrust"],
-    "Arms": ["Barbell Curl", "Dumbbell Curl", "Hammer Curl", "Preacher Curl", "Tricep Pushdown", "Tricep Extension", "Skull Crusher", "Close-Grip Bench Press"],
-    "Core": ["Plank", "Crunch", "Sit-Up", "Hanging Leg Raise", "Russian Twist", "Cable Woodchopper", "Ab Wheel Rollout"],
-    "Cardio": ["Running", "Walking", "Cycling", "Rowing Machine", "Jump Rope", "Stair Climber", "Elliptical"]
+    "Chest": [
+      "Barbell Bench Press", "Incline Barbell Bench Press", "Decline Barbell Bench Press",
+      "Dumbbell Bench Press", "Incline Dumbbell Press", "Decline Dumbbell Press",
+      "Dumbbell Pullover", "Dumbbell Chest Fly", "Cable Fly", "Cable Crossover",
+      "Pec Deck (Machine)", "Chest Press (Machine)", "Incline Chest Press (Machine)",
+      "Smith Machine Bench Press", "Push-Up", "Dips"
+    ],
+    "Back": [
+      "Deadlift", "Pull-Up", "Chin-Up", "Assisted Pull-Up (Machine)",
+      "Lat Pulldown - Wide Grip", "Lat Pulldown - Close Grip", "Straight-Arm Pulldown (Cable)",
+      "Barbell Row", "Pendlay Row", "Dumbbell Row", "T-Bar Row",
+      "Seated Cable Row", "Chest-Supported Row (Machine)", "Row (Machine)",
+      "Face Pull (Cable)", "Barbell Shrug", "Dumbbell Shrug", "Back Extension (Machine)"
+    ],
+    "Shoulders": [
+      "Barbell Overhead Press", "Dumbbell Shoulder Press", "Shoulder Press (Machine)",
+      "Smith Machine Shoulder Press", "Arnold Press",
+      "Dumbbell Lateral Raise", "Cable Lateral Raise", "Lateral Raise (Machine)",
+      "Front Raise", "Dumbbell Rear Delt Fly", "Cable Rear Delt Fly", "Rear Delt (Machine)",
+      "Upright Row"
+    ],
+    "Legs": [
+      "Barbell Squat", "Front Squat", "Hack Squat (Machine)", "Smith Machine Squat",
+      "Leg Press (Machine)", "Leg Extension (Machine)", "Lying Leg Curl (Machine)", "Seated Leg Curl (Machine)",
+      "Lunges", "Bulgarian Split Squat", "Romanian Deadlift", "Stiff-Leg Deadlift",
+      "Standing Calf Raise (Machine)", "Seated Calf Raise (Machine)",
+      "Hip Thrust", "Glute Bridge (Machine)", "Cable Kickback",
+      "Hip Adductor (Machine)", "Hip Abductor (Machine)"
+    ],
+    "Arms": [
+      "Barbell Curl", "Dumbbell Curl", "Hammer Curl", "Preacher Curl", "Cable Curl",
+      "Concentration Curl", "Bicep Curl (Machine)",
+      "Tricep Pushdown (Cable)", "Overhead Tricep Extension", "Skull Crusher",
+      "Close-Grip Bench Press", "Tricep Dip (Machine)", "Tricep Kickback"
+    ],
+    "Core": [
+      "Plank", "Crunch", "Sit-Up", "Cable Crunch", "Ab Crunch (Machine)",
+      "Hanging Leg Raise", "Captain's Chair Leg Raise (Machine)",
+      "Russian Twist", "Cable Woodchopper", "Ab Wheel Rollout"
+    ],
+    "Cardio": ["Running", "Walking", "Cycling", "Rowing Machine", "Jump Rope", "Stair Climber", "Elliptical", "Treadmill", "Assault Bike", "Ski Erg"]
   };
 
   // ---------- storage helpers ----------
@@ -188,33 +196,6 @@
     if (exists) return;
     customExercises.push({ name: name, type: type });
     saveCustomExercises(customExercises);
-  }
-
-  function loadProgram() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.program) || "null") || { exercises: [], sessions: [] };
-    } catch (e) {
-      return { exercises: [], sessions: [] };
-    }
-  }
-
-  function saveProgram(program) {
-    localStorage.setItem(STORAGE.program, JSON.stringify(program));
-  }
-
-  function seedProgramIfNeeded() {
-    if (localStorage.getItem(STORAGE.program) != null) return;
-    var program = {
-      exercises: DEFAULT_PROGRAM.exercises.map(function (ex) { return { id: makeId(), name: ex.name, weight: ex.weight }; }),
-      sessions: DEFAULT_PROGRAM.sessions.map(function (s) { return { id: makeId(), day: s.day, sets: s.sets, reps: s.reps }; })
-    };
-    saveProgram(program);
-  }
-
-  function getProgramSessionForDate(iso) {
-    var program = loadProgram();
-    var dayCode = PROGRAM_DAY_ORDER[new Date(iso + "T00:00:00").getDay()];
-    return program.sessions.find(function (s) { return s.day === dayCode; }) || null;
   }
 
   function seedCustomFoodsIfNeeded() {
@@ -333,7 +314,7 @@
     });
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
-    if (name === "workout") { renderWorkoutBuilder(); renderProgramSessions(); renderProgramExercises(); renderProgramLoadHint(); }
+    if (name === "workout") renderWorkoutBuilder();
     if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
     if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); }
   }
@@ -575,211 +556,6 @@
       ctx.arc(x, y, i === points.length - 1 ? 3.5 : 2, 0, Math.PI * 2);
       ctx.fill();
     });
-  }
-
-  // ---------- workout program ----------
-
-  function renderProgramSessions() {
-    var container = document.getElementById("programSessionList");
-    var program = loadProgram();
-    if (program.sessions.length === 0) {
-      container.innerHTML = '<div class="empty-state">No session days yet — add one below.</div>';
-      return;
-    }
-    container.innerHTML = "";
-    program.sessions.forEach(function (session) {
-      var row = document.createElement("div");
-      row.className = "program-session-row";
-
-      var daySelect = document.createElement("select");
-      PROGRAM_DAY_ORDER.forEach(function (code) {
-        var opt = document.createElement("option");
-        opt.value = code;
-        opt.textContent = PROGRAM_DAY_LABELS[code];
-        if (code === session.day) opt.selected = true;
-        daySelect.appendChild(opt);
-      });
-      daySelect.addEventListener("change", function () {
-        updateProgramSession(session.id, { day: daySelect.value });
-      });
-
-      var setsInput = document.createElement("input");
-      setsInput.type = "number";
-      setsInput.min = "1";
-      setsInput.step = "1";
-      setsInput.inputMode = "numeric";
-      setsInput.value = session.sets;
-      setsInput.addEventListener("change", function () {
-        var val = parseInt(setsInput.value, 10);
-        updateProgramSession(session.id, { sets: !val || val < 1 ? 1 : val });
-      });
-
-      var repsInput = document.createElement("input");
-      repsInput.type = "number";
-      repsInput.min = "1";
-      repsInput.step = "1";
-      repsInput.inputMode = "numeric";
-      repsInput.value = session.reps;
-      repsInput.addEventListener("change", function () {
-        var val = parseInt(repsInput.value, 10);
-        updateProgramSession(session.id, { reps: !val || val < 1 ? 1 : val });
-      });
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "icon-btn danger";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { handleRemoveProgramSession(session.id); });
-
-      row.appendChild(daySelect);
-      row.appendChild(setsInput);
-      row.appendChild(repsInput);
-      row.appendChild(removeBtn);
-      container.appendChild(row);
-    });
-  }
-
-  function updateProgramSession(id, patch) {
-    var program = loadProgram();
-    var session = program.sessions.find(function (s) { return s.id === id; });
-    if (!session) return;
-    if (patch.day !== undefined) session.day = patch.day;
-    if (patch.sets !== undefined) session.sets = patch.sets;
-    if (patch.reps !== undefined) session.reps = patch.reps;
-    saveProgram(program);
-    renderProgramLoadHint();
-  }
-
-  function handleAddProgramSession() {
-    var program = loadProgram();
-    program.sessions.push({ id: makeId(), day: "mon", sets: 3, reps: 10 });
-    saveProgram(program);
-    renderProgramSessions();
-    renderProgramLoadHint();
-  }
-
-  function handleRemoveProgramSession(id) {
-    var program = loadProgram();
-    program.sessions = program.sessions.filter(function (s) { return s.id !== id; });
-    saveProgram(program);
-    renderProgramSessions();
-    renderProgramLoadHint();
-  }
-
-  function renderProgramExercises() {
-    var container = document.getElementById("programExerciseList");
-    var program = loadProgram();
-    if (program.exercises.length === 0) {
-      container.innerHTML = '<div class="empty-state">No exercises yet — add one below.</div>';
-      return;
-    }
-    container.innerHTML = "";
-    program.exercises.forEach(function (ex) {
-      var row = document.createElement("div");
-      row.className = "food-log-item";
-
-      var info = document.createElement("div");
-      var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
-      nameEl.textContent = ex.name;
-      info.appendChild(nameEl);
-
-      var weightRow = document.createElement("div");
-      weightRow.className = "food-log-macros program-weight-row";
-      var weightLabel = document.createElement("span");
-      weightLabel.textContent = "Current weight (kg)";
-      var weightInput = document.createElement("input");
-      weightInput.type = "number";
-      weightInput.step = "0.5";
-      weightInput.min = "0";
-      weightInput.inputMode = "decimal";
-      weightInput.value = ex.weight;
-      weightInput.addEventListener("change", function () {
-        var val = parseFloat(weightInput.value);
-        updateProgramExerciseWeight(ex.id, isNaN(val) ? 0 : val);
-      });
-      weightRow.appendChild(weightLabel);
-      weightRow.appendChild(weightInput);
-      info.appendChild(weightRow);
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "remove";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { handleRemoveProgramExercise(ex.id); });
-
-      row.appendChild(info);
-      row.appendChild(removeBtn);
-      container.appendChild(row);
-    });
-  }
-
-  function updateProgramExerciseWeight(id, weight) {
-    var program = loadProgram();
-    var ex = program.exercises.find(function (e) { return e.id === id; });
-    if (!ex) return;
-    ex.weight = weight;
-    saveProgram(program);
-  }
-
-  function handleAddProgramExercise() {
-    var nameInput = document.getElementById("programExerciseName");
-    var weightInput = document.getElementById("programExerciseWeight");
-    var name = nameInput.value.trim();
-    if (!name) { toast("Enter an exercise name"); return; }
-    var weight = parseFloat(weightInput.value);
-    var program = loadProgram();
-    program.exercises.push({ id: makeId(), name: name, weight: isNaN(weight) ? 0 : weight });
-    saveProgram(program);
-    nameInput.value = "";
-    weightInput.value = "";
-    renderProgramExercises();
-    toast("Exercise added to program");
-  }
-
-  function handleRemoveProgramExercise(id) {
-    var program = loadProgram();
-    program.exercises = program.exercises.filter(function (e) { return e.id !== id; });
-    saveProgram(program);
-    renderProgramExercises();
-  }
-
-  function renderProgramLoadHint() {
-    var el = document.getElementById("programLoadHint");
-    var btn = document.getElementById("loadProgramWorkoutBtn");
-    var date = document.getElementById("workoutDate").value || todayISO();
-    var session = getProgramSessionForDate(date);
-    if (!session) {
-      el.innerHTML = "<span>No program session for " + formatDateLong(date) + " — free training or cardio day.</span>";
-      el.style.display = "flex";
-      btn.disabled = true;
-      return;
-    }
-    el.innerHTML = '<span class="day-badge">' + PROGRAM_DAY_LABELS[session.day] + " session</span><span>" +
-      session.sets + " sets × " + session.reps + " reps</span>";
-    el.style.display = "flex";
-    btn.disabled = false;
-  }
-
-  function handleLoadProgramWorkout() {
-    var date = document.getElementById("workoutDate").value || todayISO();
-    var session = getProgramSessionForDate(date);
-    if (!session) { toast("No program session for this day"); return; }
-    var program = loadProgram();
-    if (program.exercises.length === 0) { toast("Add exercises to your program first"); return; }
-
-    if (currentExercises.length > 0 && !confirm("Replace the current exercise list with your program for this day?")) return;
-
-    currentExercises = program.exercises.map(function (ex) {
-      var sets = [];
-      for (var i = 0; i < session.sets; i++) {
-        sets.push({ reps: session.reps, weight: ex.weight });
-      }
-      return { name: ex.name, type: "strength", sets: sets };
-    });
-
-    renderWorkoutBuilder();
-    toast("Loaded " + PROGRAM_DAY_LABELS[session.day] + " program (" + session.sets + "×" + session.reps + ")");
   }
 
   // ---------- workout builder ----------
@@ -1058,163 +834,27 @@
   // ---------- food log ----------
 
   function clearFoodSearchState() {
-    clearTimeout(foodSearchDebounceTimer);
-    foodSearchAbortControllers.forEach(function (c) { c.abort(); });
-    foodSearchAbortControllers = [];
     document.getElementById("foodSearchResults").innerHTML = "";
     document.getElementById("foodSearchStatus").style.display = "none";
   }
 
   function handleFoodSearchInput() {
     var query = document.getElementById("foodSearchInput").value.trim();
-    clearFoodSearchState();
-    if (query.length < 2) return;
-    foodSearchDebounceTimer = setTimeout(function () { runFoodSearch(query); }, 450);
-  }
+    if (query.length < 2) { clearFoodSearchState(); return; }
 
-  function fetchWithRetry(url, options, retries) {
-    return fetch(url, options).catch(function (err) {
-      if (retries <= 0 || (err && err.name === "AbortError")) throw err;
-      return new Promise(function (resolve) { setTimeout(resolve, 700); })
-        .then(function () { return fetchWithRetry(url, options, retries - 1); });
-    });
-  }
-
-  function parseServingGrams(text) {
-    if (!text) return null;
-    var match = String(text).match(/([\d.]+)\s*g\b/i);
-    return match ? parseFloat(match[1]) : null;
-  }
-
-  function searchOpenFoodFacts(query, signal) {
-    var url = OFF_SEARCH_URL + "?json=1&action=process&page_size=8" +
-      "&search_terms=" + encodeURIComponent(query) +
-      "&fields=product_name,brands,nutriments,serving_size";
-
-    return fetchWithRetry(url, signal ? { signal: signal } : {}, 1)
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        return (data.products || [])
-          .filter(function (p) { return p.product_name && p.nutriments && p.nutriments["energy-kcal_100g"] != null; })
-          .map(function (p) {
-            return {
-              name: p.product_name,
-              brand: p.brands || "",
-              source: "Open Food Facts",
-              servingGrams: parseServingGrams(p.serving_size),
-              per100: {
-                calories: p.nutriments["energy-kcal_100g"] || 0,
-                protein: p.nutriments["proteins_100g"] || 0,
-                carbs: p.nutriments["carbohydrates_100g"] || 0,
-                fat: p.nutriments["fat_100g"] || 0
-              }
-            };
-          });
-      });
-  }
-
-  function searchUsdaFdc(query, apiKey, signal) {
-    var url = USDA_SEARCH_URL + "?api_key=" + encodeURIComponent(apiKey) +
-      "&query=" + encodeURIComponent(query) + "&pageSize=8";
-
-    return fetchWithRetry(url, signal ? { signal: signal } : {}, 1)
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        return (data.foods || [])
-          .map(function (f) {
-            var nutrients = f.foodNutrients || [];
-            function nutrientValue(id) {
-              var found = nutrients.filter(function (n) { return n.nutrientId === id; })[0];
-              return found ? found.value : 0;
-            }
-            var servingGrams = (f.servingSize != null && /^g/i.test(f.servingSizeUnit || "")) ? f.servingSize : null;
-            return {
-              name: f.description,
-              brand: f.brandOwner || f.dataType || "",
-              source: "USDA FoodData Central",
-              servingGrams: servingGrams,
-              per100: {
-                calories: nutrientValue(USDA_NUTRIENT_IDS.calories),
-                protein: nutrientValue(USDA_NUTRIENT_IDS.protein),
-                carbs: nutrientValue(USDA_NUTRIENT_IDS.carbs),
-                fat: nutrientValue(USDA_NUTRIENT_IDS.fat)
-              }
-            };
-          })
-          .filter(function (p) { return p.name && p.per100.calories > 0; });
-      });
-  }
-
-  function searchMyFoods(query) {
-    var q = query.toLowerCase();
     var matches = loadCustomFoods()
-      .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
-      .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100 };
-      });
-    return Promise.resolve(matches);
-  }
+      .filter(function (f) { return f.name.toLowerCase().indexOf(query.toLowerCase()) !== -1; })
+      .map(function (f) { return { name: f.name, per100: f.per100 }; });
 
-  function sourceRank(source) {
-    if (source === "My Foods") return 0;
-    if (source === "USDA FoodData Central") return 1;
-    return 2;
-  }
-
-  function sortFoodResults(products) {
-    return products.slice().sort(function (a, b) {
-      var rankDiff = sourceRank(a.source) - sourceRank(b.source);
-      if (rankDiff !== 0) return rankDiff;
-      var aBranded = a.brand ? 1 : 0;
-      var bBranded = b.brand ? 1 : 0;
-      return aBranded - bBranded;
-    });
-  }
-
-  function runFoodSearch(query) {
     var statusEl = document.getElementById("foodSearchStatus");
-    var resultsEl = document.getElementById("foodSearchResults");
-
-    foodSearchAbortControllers.forEach(function (c) { c.abort(); });
-    foodSearchAbortControllers = [];
-
-    resultsEl.innerHTML = "";
-    statusEl.textContent = "Searching…";
-    statusEl.style.display = "block";
-
-    var settings = loadSettings();
-    var searches = [searchMyFoods(query)];
-
-    if (settings.usdaApiKey) {
-      var usdaController = (typeof AbortController !== "undefined") ? new AbortController() : null;
-      if (usdaController) foodSearchAbortControllers.push(usdaController);
-      searches.push(searchUsdaFdc(query, settings.usdaApiKey, usdaController && usdaController.signal));
+    if (matches.length === 0) {
+      document.getElementById("foodSearchResults").innerHTML = "";
+      statusEl.textContent = "No matching food yet — add it below.";
+      statusEl.style.display = "block";
+      return;
     }
-
-    var offController = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    if (offController) foodSearchAbortControllers.push(offController);
-    searches.push(searchOpenFoodFacts(query, offController && offController.signal));
-
-    Promise.allSettled(searches).then(function (results) {
-      var anyFailed = results.some(function (r) { return r.status === "rejected" && !(r.reason && r.reason.name === "AbortError"); });
-      var anyAborted = results.some(function (r) { return r.status === "rejected" && r.reason && r.reason.name === "AbortError"; });
-      if (anyAborted) return; // a newer search superseded this one
-
-      var products = [];
-      results.forEach(function (r) {
-        if (r.status === "fulfilled") products = products.concat(r.value);
-      });
-
-      if (products.length === 0) {
-        statusEl.textContent = anyFailed
-          ? "Open Food Facts couldn't be reached right now (their server is sometimes flaky) — try again in a moment, add a free USDA FoodData Central key in Data for a more reliable source, or log a custom food."
-          : "No results. Try another search or log a custom food.";
-        statusEl.style.display = "block";
-        return;
-      }
-      statusEl.style.display = "none";
-      renderFoodSearchResults(sortFoodResults(products));
-    });
+    statusEl.style.display = "none";
+    renderFoodSearchResults(matches);
   }
 
   function renderFoodSearchResults(products) {
@@ -1223,15 +863,14 @@
     products.forEach(function (p) {
       var li = document.createElement("li");
       var kcal = Math.round(p.per100.calories);
-      var sourceTag = p.source === "My Foods" ? "MINE" : (p.source === "USDA FoodData Central" ? "USDA" : "OFF");
 
       var name = document.createElement("div");
       name.className = "food-result-name";
-      name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>" + p.name;
+      name.textContent = p.name;
 
       var meta = document.createElement("div");
       meta.className = "food-result-meta";
-      meta.textContent = (p.brand ? p.brand + " · " : "") + kcal + " kcal / 100 g";
+      meta.textContent = kcal + " kcal / 100 g";
 
       li.appendChild(name);
       li.appendChild(meta);
@@ -1264,7 +903,7 @@
     document.getElementById("foodQuantityName").textContent = p.name;
     document.getElementById("foodGramsInput").value = 100;
     document.getElementById("foodUnitsInput").value = 1;
-    document.getElementById("foodUnitGramsInput").value = p.servingGrams || 50;
+    document.getElementById("foodUnitGramsInput").value = 50;
     document.getElementById("foodQuantityCard").style.display = "block";
     clearFoodSearchState();
     setQtyMode("grams");
@@ -1312,24 +951,28 @@
     clearFoodSearchState();
   }
 
-  function handleAddCustomFood() {
-    var date = document.getElementById("foodDate").value || todayISO();
-    var name = document.getElementById("customFoodName").value.trim();
+  function handleSaveNewFood() {
+    var name = document.getElementById("newFoodName").value.trim();
     if (!name) { toast("Enter a food name"); return; }
-    var entry = {
-      id: makeId(),
-      name: name,
-      calories: Math.round(parseFloat(document.getElementById("customFoodCalories").value) || 0),
-      protein: Math.round(parseFloat(document.getElementById("customFoodProtein").value) || 0),
-      carbs: Math.round(parseFloat(document.getElementById("customFoodCarbs").value) || 0),
-      fat: Math.round(parseFloat(document.getElementById("customFoodFat").value) || 0)
+    var per100 = {
+      calories: Math.round(parseFloat(document.getElementById("newFoodCalories").value) || 0),
+      protein: Math.round(parseFloat(document.getElementById("newFoodProtein").value) || 0),
+      carbs: Math.round(parseFloat(document.getElementById("newFoodCarbs").value) || 0),
+      fat: Math.round(parseFloat(document.getElementById("newFoodFat").value) || 0)
     };
-    addFoodEntry(date, entry);
 
-    ["customFoodName", "customFoodCalories", "customFoodProtein", "customFoodCarbs", "customFoodFat"].forEach(function (id) {
+    var customFoods = loadCustomFoods();
+    customFoods.push({ id: makeId(), name: name, per100: per100 });
+    saveCustomFoods(customFoods);
+    renderCustomFoodList();
+
+    ["newFoodName", "newFoodCalories", "newFoodProtein", "newFoodCarbs", "newFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
-    document.getElementById("customFoodCard").style.display = "none";
+    document.getElementById("newFoodCard").style.display = "none";
+
+    toast("Saved to My Foods");
+    selectFoodProduct({ name: name, per100: per100 });
   }
 
   function addFoodEntry(date, entry) {
@@ -1580,8 +1223,7 @@
       settings: loadSettings(),
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
-      customExercises: loadCustomExercises(),
-      program: loadProgram()
+      customExercises: loadCustomExercises()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -1650,16 +1292,12 @@
     if (payload.foodlog) saveFoodLog(payload.foodlog);
     if (payload.customFoods) saveCustomFoods(payload.customFoods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
-    if (payload.program) saveProgram(payload.program);
     toast("Import complete");
     fillSettingsForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     renderToday();
     renderHistory();
     populateExerciseSelect(currentExerciseType);
-    renderProgramSessions();
-    renderProgramExercises();
-    renderProgramLoadHint();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
   }
@@ -1672,7 +1310,6 @@
     localStorage.removeItem(STORAGE.foodlog);
     localStorage.removeItem(STORAGE.customFoods);
     localStorage.removeItem(STORAGE.customExercises);
-    localStorage.removeItem(STORAGE.program);
     currentExercises = [];
     editingWorkoutId = null;
     fillSettingsForm();
@@ -1681,9 +1318,6 @@
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
-    renderProgramSessions();
-    renderProgramExercises();
-    renderProgramLoadHint();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
     toast("All data erased");
@@ -1697,7 +1331,6 @@
     document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
     document.getElementById("workoutDeficitInput").value = settings.workoutDeficitPct != null ? settings.workoutDeficitPct : DEFAULT_WORKOUT_DEFICIT_PCT;
     document.getElementById("restDeficitInput").value = settings.restDeficitPct != null ? settings.restDeficitPct : DEFAULT_REST_DEFICIT_PCT;
-    document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     document.getElementById("activityLevelSelect").value = settings.activityLevel || "moderate";
@@ -1718,14 +1351,6 @@
     saveSettings(settings);
     toast("Targets saved");
     renderToday();
-  }
-
-  function handleUsdaKeyChange() {
-    var key = document.getElementById("usdaApiKeyInput").value.trim();
-    var settings = loadSettings();
-    if (key !== "") settings.usdaApiKey = key; else delete settings.usdaApiKey;
-    saveSettings(settings);
-    toast(key !== "" ? "USDA API key saved" : "USDA API key removed");
   }
 
   // ---------- maintenance calories ----------
@@ -1811,7 +1436,6 @@
 
   function init() {
     seedCustomFoodsIfNeeded();
-    seedProgramIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
     document.getElementById("logDate").value = todayISO();
@@ -1840,7 +1464,6 @@
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutDeficitInput").addEventListener("change", handleSettingsChange);
     document.getElementById("restDeficitInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("usdaApiKeyInput").addEventListener("change", handleUsdaKeyChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -1868,14 +1491,6 @@
     document.getElementById("saveWorkoutBtn").addEventListener("click", handleSaveWorkout);
     document.getElementById("cancelEditWorkoutBtn").addEventListener("click", handleCancelEditWorkout);
 
-    renderProgramSessions();
-    renderProgramExercises();
-    renderProgramLoadHint();
-    document.getElementById("addProgramSessionBtn").addEventListener("click", handleAddProgramSession);
-    document.getElementById("addProgramExerciseBtn").addEventListener("click", handleAddProgramExercise);
-    document.getElementById("loadProgramWorkoutBtn").addEventListener("click", handleLoadProgramWorkout);
-    document.getElementById("workoutDate").addEventListener("change", renderProgramLoadHint);
-
     document.getElementById("exportBtn").addEventListener("click", handleExport);
     document.getElementById("importBtn").addEventListener("click", function () {
       var box = document.getElementById("importBox");
@@ -1897,11 +1512,11 @@
       btn.addEventListener("click", function () { setQtyMode(btn.dataset.qtyMode); });
     });
     document.getElementById("addFoodBtn").addEventListener("click", handleAddFoodFromSearch);
-    document.getElementById("showCustomFoodBtn").addEventListener("click", function () {
-      var card = document.getElementById("customFoodCard");
+    document.getElementById("showNewFoodBtn").addEventListener("click", function () {
+      var card = document.getElementById("newFoodCard");
       card.style.display = card.style.display === "none" ? "block" : "none";
     });
-    document.getElementById("addCustomFoodBtn").addEventListener("click", handleAddCustomFood);
+    document.getElementById("saveNewFoodBtn").addEventListener("click", handleSaveNewFood);
     document.getElementById("foodDate").addEventListener("change", function (e) {
       renderFoodLog(e.target.value);
     });
