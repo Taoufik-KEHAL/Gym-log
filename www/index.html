@@ -165,25 +165,6 @@
   <!-- WORKOUT VIEW -->
   <section class="view" id="view-workout">
     <div class="card">
-      <h2>Workout Program</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        A fixed set of exercises done every session, with sets/reps that change by day of the week. Increase the weights below over time to progress.
-      </p>
-      <div id="programSessionList"></div>
-      <button type="button" class="secondary" id="addProgramSessionBtn" style="margin-top:6px;">Add session day</button>
-
-      <div id="programExerciseList" style="margin-top:14px;"></div>
-      <div class="add-set-row" style="grid-template-columns: 1fr 1fr auto; margin-top:8px;">
-        <input type="text" id="programExerciseName" placeholder="Exercise name" />
-        <input type="number" id="programExerciseWeight" placeholder="Weight (kg)" step="0.5" min="0" inputmode="decimal" />
-        <button type="button" class="secondary" id="addProgramExerciseBtn">Add</button>
-      </div>
-
-      <div class="day-status" id="programLoadHint" style="margin-top:14px;"></div>
-      <button type="button" class="primary" id="loadProgramWorkoutBtn" style="margin-top:10px;">Load Program Workout for This Date</button>
-    </div>
-
-    <div class="card">
       <h2>New Workout</h2>
       <div class="field">
         <label for="workoutDate">Date</label>
