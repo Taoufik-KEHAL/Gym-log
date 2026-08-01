@@ -1401,6 +1401,7 @@
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     toast("Import complete");
     fillSettingsForm();
+    fillFormFromDate(document.getElementById("logDate").value || todayISO());
     renderToday();
     renderHistory();
     populateExerciseSelect(currentExerciseType);
