@@ -6,7 +6,8 @@
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
     settings: "gymlog.settings", // { restCalories, workoutCalories }
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
-    customFoods: "gymlog.customfoods" // [ { id, name, per100: {calories, protein, carbs, fat} } ]
+    customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
+    customExercises: "gymlog.customExercises" // [ { name, type: 'strength' | 'cardio' } ]
   };
 
   var CUSTOM_FOOD_SEED = [
@@ -131,6 +132,38 @@
 
   function saveCustomFoods(list) {
     localStorage.setItem(STORAGE.customFoods, JSON.stringify(list));
+  }
+
+  function loadCustomExercises() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.customExercises) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveCustomExercises(list) {
+    localStorage.setItem(STORAGE.customExercises, JSON.stringify(list));
+  }
+
+  function isKnownExerciseName(name, type) {
+    var lname = name.toLowerCase();
+    if (type === "cardio") {
+      return EXERCISE_LIBRARY["Cardio"].some(function (n) { return n.toLowerCase() === lname; });
+    }
+    return Object.keys(EXERCISE_LIBRARY).some(function (group) {
+      if (group === "Cardio") return false;
+      return EXERCISE_LIBRARY[group].some(function (n) { return n.toLowerCase() === lname; });
+    });
+  }
+
+  function saveCustomExerciseIfNew(name, type) {
+    if (isKnownExerciseName(name, type)) return;
+    var customExercises = loadCustomExercises();
+    var exists = customExercises.some(function (ex) { return ex.type === type && ex.name.toLowerCase() === name.toLowerCase(); });
+    if (exists) return;
+    customExercises.push({ name: name, type: type });
+    saveCustomExercises(customExercises);
   }
 
   function seedCustomFoodsIfNeeded() {
@@ -270,7 +303,7 @@
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
-    renderDayStatus(entry, today);
+    renderDayStatus(entry);
     renderLogTodayHint(entry, today);
     drawWeightChart(daily);
   }
@@ -290,17 +323,21 @@
     var el = document.getElementById("sumCaloriesGoal");
     var settings = loadSettings();
     var target = entry.dayType === "rest" ? settings.restCalories : entry.dayType === "workout" ? settings.workoutCalories : null;
-    if (target == null || entry.calories == null) {
+    if (target == null) {
       el.textContent = "";
       el.className = "stat-sub";
       return;
     }
-    var diff = entry.calories - target;
-    if (diff <= 0) {
-      el.textContent = diff === 0 ? "On goal" : Math.abs(diff) + " under";
+    var consumed = entry.calories != null ? entry.calories : 0;
+    var remaining = target - consumed;
+    if (remaining > 0) {
+      el.textContent = remaining + " kcal remaining";
+      el.className = "stat-sub diff-under";
+    } else if (remaining === 0) {
+      el.textContent = "On goal";
       el.className = "stat-sub diff-under";
     } else {
-      el.textContent = diff + " over";
+      el.textContent = Math.abs(remaining) + " kcal over";
       el.className = "stat-sub diff-over";
     }
   }
@@ -336,19 +373,6 @@
     return sets * STRENGTH_MET * w / 60;
   }
 
-  function estimateCaloriesBurned(date, weightKg, steps) {
-    var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
-    var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
-    var total = 0;
-    workouts.forEach(function (wk) {
-      wk.exercises.forEach(function (ex) {
-        total += estimateExerciseCalories(ex, w);
-      });
-    });
-    if (steps) total += steps * w * STEPS_KCAL_PER_STEP_PER_KG;
-    return Math.round(total);
-  }
-
   function getCaloriesBurnedBreakdown(date, weightKg, steps) {
     var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
     var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
@@ -371,34 +395,13 @@
     return { total: total, parts: parts };
   }
 
-  function renderDayStatus(entry, date) {
+  function renderDayStatus(entry) {
     var el = document.getElementById("dayStatus");
     var parts = [];
 
     if (entry.dayType) {
       var label = entry.dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
       parts.push('<span class="day-badge">' + label + "</span>");
-    }
-
-    var burned = estimateCaloriesBurned(date, entry.weight, entry.steps);
-    if (burned > 0) {
-      var usedDefaultWeight = entry.weight == null;
-      parts.push("<span>🔥 " + burned + " kcal burned (est." + (usedDefaultWeight ? ", " + DEFAULT_BODYWEIGHT_KG + " kg assumed" : "") + ")</span>");
-      if (entry.calories != null) {
-        parts.push('<span class="day-badge">Net: ' + (entry.calories - burned) + " kcal</span>");
-      }
-    }
-
-    var settings = loadSettings();
-    var target = entry.dayType === "rest" ? settings.restCalories : entry.dayType === "workout" ? settings.workoutCalories : null;
-    if (target != null) {
-      var consumed = entry.calories != null ? entry.calories : 0;
-      var remaining = target - consumed + burned;
-      if (remaining >= 0) {
-        parts.push('<span class="diff-under">' + remaining + " kcal remaining</span>");
-      } else {
-        parts.push('<span class="diff-over">' + Math.abs(remaining) + " kcal over budget</span>");
-      }
     }
 
     if (parts.length === 0) {
@@ -676,6 +679,19 @@
       });
     }
 
+    var myExercises = loadCustomExercises().filter(function (ex) { return ex.type === type; });
+    if (myExercises.length > 0) {
+      var myGroup = document.createElement("optgroup");
+      myGroup.label = "My Exercises";
+      myExercises.forEach(function (ex) {
+        var option = document.createElement("option");
+        option.value = ex.name;
+        option.textContent = ex.name;
+        myGroup.appendChild(option);
+      });
+      select.appendChild(myGroup);
+    }
+
     var customOption = document.createElement("option");
     customOption.value = CUSTOM_EXERCISE_VALUE;
     customOption.textContent = "Other (type your own)…";
@@ -704,8 +720,10 @@
   function handleAddExercise() {
     var select = document.getElementById("exerciseSelect");
     var customInput = document.getElementById("exerciseCustomInput");
-    var name = select.value === CUSTOM_EXERCISE_VALUE ? customInput.value.trim() : select.value;
+    var isCustom = select.value === CUSTOM_EXERCISE_VALUE;
+    var name = isCustom ? customInput.value.trim() : select.value;
     if (!name) { toast("Enter an exercise name"); return; }
+    if (isCustom) saveCustomExerciseIfNew(name, currentExerciseType);
     if (currentExerciseType === "cardio") {
       currentExercises.push({ name: name, type: "cardio", duration: null, pace: null });
     } else {
@@ -1311,7 +1329,8 @@
       workouts: loadWorkouts(),
       settings: loadSettings(),
       foodlog: loadFoodLog(),
-      customFoods: loadCustomFoods()
+      customFoods: loadCustomFoods(),
+      customExercises: loadCustomExercises()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -1379,10 +1398,12 @@
     if (payload.settings) saveSettings(payload.settings);
     if (payload.foodlog) saveFoodLog(payload.foodlog);
     if (payload.customFoods) saveCustomFoods(payload.customFoods);
+    if (payload.customExercises) saveCustomExercises(payload.customExercises);
     toast("Import complete");
     fillSettingsForm();
     renderToday();
     renderHistory();
+    populateExerciseSelect(currentExerciseType);
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
   }
@@ -1394,6 +1415,7 @@
     localStorage.removeItem(STORAGE.settings);
     localStorage.removeItem(STORAGE.foodlog);
     localStorage.removeItem(STORAGE.customFoods);
+    localStorage.removeItem(STORAGE.customExercises);
     currentExercises = [];
     editingWorkoutId = null;
     fillSettingsForm();
@@ -1401,6 +1423,7 @@
     renderHistory();
     renderWorkoutBuilder();
     updateWorkoutFormMode();
+    populateExerciseSelect(currentExerciseType);
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
     toast("All data erased");

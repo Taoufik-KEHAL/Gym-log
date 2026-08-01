@@ -152,9 +152,6 @@ main {
   color: var(--text);
 }
 
-.day-status .diff-under { color: var(--accent); font-weight: 600; }
-.day-status .diff-over { color: var(--danger); font-weight: 600; }
-
 .segmented {
   display: flex;
   gap: 8px;
