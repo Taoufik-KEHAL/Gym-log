@@ -12,6 +12,15 @@
   --radius: 14px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Spacing scale, matching the rhythm already in use (field gap 12px, card padding 16px, etc.) */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
 }
 
 @media (prefers-color-scheme: light) {
@@ -21,7 +30,7 @@
     --bg-elev-2: #eceef1;
     --border: #dde1e6;
     --text: #191b1f;
-    --text-dim: #676e7a;
+    --text-dim: #5a616c;
     --accent: #1f8f6c;
     --accent-dim: #cdece1;
     --danger: #c9463c;
@@ -515,16 +524,35 @@ nav.tabbar button.active { color: var(--accent); }
   transform: translateX(-50%) translateY(0);
 }
 
-.actions-row {
+.btn-row {
   display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
-.actions-row button { flex: 1; }
-
-.muted-btn-row {
-  display: flex;
-  justify-content: flex-end;
-}
+.btn-row.fill button { flex: 1; }
+.btn-row.end { justify-content: flex-end; margin-bottom: 0; }
 
 textarea.import-box { min-height: 90px; font-size: 0.8rem; }
+
+/* ---------- Utilities ---------- */
+
+.hidden { display: none !important; }
+
+.hint {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-top: 0;
+}
+.hint.hint--tight {
+  font-size: 0.78rem;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.add-set-row.two-col { grid-template-columns: 1fr 1fr; }
+.add-set-row.two-col + .add-set-row.two-col { margin-top: var(--space-3); }
+
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+.mt-6 { margin-top: var(--space-6); }
