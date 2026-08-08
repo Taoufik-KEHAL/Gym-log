@@ -745,9 +745,15 @@
     el.style.display = "flex";
   }
 
+  function getDefaultWeightTrendStart(end) {
+    var thirtyDaysBack = addDaysISO(end, -29);
+    var earliest = getEarliestLoggedWeightDate();
+    return earliest && earliest > thirtyDaysBack ? earliest : thirtyDaysBack;
+  }
+
   function getWeightTrendRange() {
     var end = document.getElementById("weightTrendEndInput").value || todayISO();
-    var start = document.getElementById("weightTrendStartInput").value || addDaysISO(end, -29);
+    var start = document.getElementById("weightTrendStartInput").value || getDefaultWeightTrendStart(end);
     if (start > end) { var tmp = start; start = end; end = tmp; }
     return { start: start, end: end };
   }
@@ -1583,6 +1589,12 @@
     return { weight: daily[date].weight, date: date };
   }
 
+  function getEarliestLoggedWeightDate() {
+    var daily = loadDaily();
+    var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
+    return dates.length ? dates[0] : null;
+  }
+
   function computeActivityLevelFromHistory() {
     var end = todayISO();
     var start = addDaysISO(end, -6);
@@ -1713,7 +1725,7 @@
     document.getElementById("workoutDate").value = todayISO();
     document.getElementById("foodDate").value = todayISO();
     document.getElementById("weightTrendEndInput").value = todayISO();
-    document.getElementById("weightTrendStartInput").value = addDaysISO(todayISO(), -29);
+    document.getElementById("weightTrendStartInput").value = getDefaultWeightTrendStart(todayISO());
 
     fillFormFromDate(todayISO());
 
