@@ -335,6 +335,13 @@
     return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   }
 
+  function addDaysISO(iso, delta) {
+    var d = new Date(iso + "T00:00:00");
+    d.setDate(d.getDate() + delta);
+    var tz = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+  }
+
   // ---------- toast ----------
 
   var toastTimer = null;
@@ -366,6 +373,48 @@
 
   // ---------- today view ----------
 
+  var KPI_TREND_CONFIG = [
+    { key: "weight", elId: "sumWeightTrend", decimals: 1 },
+    { key: "sleepHours", elId: "sumSleepTrend", decimals: 1 },
+    { key: "calories", elId: "sumCaloriesTrend", decimals: 0 },
+    { key: "protein", elId: "sumProteinTrend", decimals: 0 },
+    { key: "carbs", elId: "sumCarbsTrend", decimals: 0 },
+    { key: "fat", elId: "sumFatTrend", decimals: 0 },
+    { key: "steps", elId: "sumStepsTrend", decimals: 0 },
+    { key: "water", elId: "sumWaterTrend", decimals: 1 },
+    { key: "cigarettes", elId: "sumCigarettesTrend", decimals: 0 }
+  ];
+
+  function renderKpiTrend(cfg, daily, dateISO) {
+    var el = document.getElementById(cfg.elId);
+    var todayVal = daily[dateISO] ? daily[dateISO][cfg.key] : null;
+    var yestVal = daily[addDaysISO(dateISO, -1)] ? daily[addDaysISO(dateISO, -1)][cfg.key] : null;
+
+    var parts = [];
+    if (todayVal != null && yestVal != null) {
+      var diff = roundN(todayVal - yestVal, cfg.decimals);
+      parts.push((diff > 0 ? "+" : "") + diff + " vs yday");
+    }
+
+    var vals = [];
+    for (var i = 0; i < 7; i++) {
+      var entry = daily[addDaysISO(dateISO, -i)];
+      if (entry && entry[cfg.key] != null) vals.push(entry[cfg.key]);
+    }
+    if (vals.length > 0) {
+      var avg = vals.reduce(function (sum, v) { return sum + v; }, 0) / vals.length;
+      parts.push("7d avg " + roundN(avg, cfg.decimals));
+    }
+
+    if (parts.length === 0) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = parts.join(" · ");
+    el.style.display = "block";
+  }
+
   function renderToday() {
     var daily = loadDaily();
     var today = document.getElementById("logDate").value || todayISO();
@@ -380,6 +429,7 @@
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
+    KPI_TREND_CONFIG.forEach(function (cfg) { renderKpiTrend(cfg, daily, today); });
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
   }
@@ -546,6 +596,11 @@
 
   function round1(n) {
     return Math.round(n * 10) / 10;
+  }
+
+  function roundN(n, decimals) {
+    var factor = Math.pow(10, decimals);
+    return Math.round(n * factor) / factor;
   }
 
   function drawLineChart(canvasId, emptyId, points) {
