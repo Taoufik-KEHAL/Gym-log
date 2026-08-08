@@ -312,6 +312,8 @@ button:active { transform: scale(0.98); }
   margin-top: 6px;
 }
 
+.add-set-row > * { min-width: 0; }
+
 .cardio-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
