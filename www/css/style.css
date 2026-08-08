@@ -379,6 +379,18 @@ button:active { transform: scale(0.98); }
   padding: 2px 6px;
 }
 
+.food-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.food-log-actions button.icon-btn {
+  font-size: 0.78rem;
+  padding: 4px 8px;
+}
+
 .history-entry {
   border-bottom: 1px solid var(--border);
   padding: 10px 0;
