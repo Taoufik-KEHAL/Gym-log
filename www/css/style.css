@@ -166,6 +166,16 @@ main {
   color: var(--text);
 }
 
+.day-status .day-badge.trend-down { color: var(--accent); }
+.day-status .day-badge.trend-up { color: var(--danger); }
+
+#weightTrendDirection {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  margin-bottom: 10px;
+}
+
 .segmented {
   display: flex;
   gap: 8px;

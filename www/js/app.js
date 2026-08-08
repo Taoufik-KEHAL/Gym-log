@@ -27,6 +27,25 @@
     { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
   ];
 
+  var CUSTOM_SUPPLEMENT_SEED = [
+    "Creatine Monohydrate",
+    "Multivitamin",
+    "Fish Oil (Omega-3)",
+    "Vitamin D3",
+    "Magnesium",
+    "Zinc",
+    "Vitamin C",
+    "Probiotics",
+    "Ashwagandha",
+    "Caffeine / Pre-workout",
+    "BCAA / EAA",
+    "L-Glutamine",
+    "Electrolytes",
+    "Melatonin",
+    "Collagen"
+  ];
+  // Whey protein is intentionally excluded — logged as food instead.
+
   var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
   var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
 
@@ -220,6 +239,14 @@
     if (exists) return;
     supplements.push({ id: makeId(), name: name });
     saveCustomSupplements(supplements);
+  }
+
+  function seedCustomSupplementsIfNeeded() {
+    if (localStorage.getItem(STORAGE.customSupplements) != null) return;
+    var seeded = CUSTOM_SUPPLEMENT_SEED.map(function (name) {
+      return { id: makeId(), name: name };
+    });
+    saveCustomSupplements(seeded);
   }
 
   function loadSupplementLog() {
@@ -522,7 +549,6 @@
       renderFoodLog(foodDate);
       renderSupplementLog(foodDate);
     }
-    if (name === "trends") renderTrends();
     if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); }
   }
 
@@ -781,12 +807,31 @@
     el.style.display = "grid";
   }
 
+  function renderWeightDirection(points) {
+    var el = document.getElementById("weightTrendDirection");
+    if (points.length < 2) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    var delta = round1(points[points.length - 1].value - points[0].value);
+    var icon, label, cls;
+    if (delta < 0) { icon = "📉"; label = "Diminishing"; cls = "trend-down"; }
+    else if (delta > 0) { icon = "📈"; label = "Increasing"; cls = "trend-up"; }
+    else { icon = "➖"; label = "Stable"; cls = ""; }
+    el.innerHTML =
+      '<span class="day-badge' + (cls ? " " + cls : "") + '">' + icon + " " + label + "</span>" +
+      "<span>" + (delta > 0 ? "+" : "") + delta + " kg over this period</span>";
+    el.style.display = "flex";
+  }
+
   function renderWeightTrend(daily) {
     var points = Object.keys(daily)
       .filter(function (d) { return daily[d].weight != null; })
       .sort()
       .slice(-30)
       .map(function (d) { return { date: d, value: daily[d].weight }; });
+    renderWeightDirection(points);
     drawLineChart("weightChart", "chartEmpty", points);
     renderRangeStats("weightTrendStats", points, "kg");
   }
@@ -1446,83 +1491,6 @@
     });
   }
 
-  // ---------- trends view ----------
-
-  var currentTrendsPeriod = "30"; // '7' | '30' | '90' | 'all'
-
-  function getTrendsCutoffDate() {
-    if (currentTrendsPeriod === "all") return null;
-    var days = parseInt(currentTrendsPeriod, 10);
-    var d = new Date();
-    d.setDate(d.getDate() - (days - 1));
-    var tz = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
-  }
-
-  function average(values) {
-    if (values.length === 0) return null;
-    return values.reduce(function (sum, v) { return sum + v; }, 0) / values.length;
-  }
-
-  function renderAvgLabel(id, value, decimals) {
-    var el = document.getElementById(id);
-    if (value == null) { el.textContent = "—"; return; }
-    var factor = Math.pow(10, decimals || 0);
-    el.textContent = Math.round(value * factor) / factor;
-  }
-
-  function setTrendsPeriod(period) {
-    currentTrendsPeriod = period;
-    document.querySelectorAll("#trendsPeriodToggle .segment").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.period === period);
-    });
-    renderTrends();
-  }
-
-  function renderTrends() {
-    var cutoff = getTrendsCutoffDate();
-    var daily = loadDaily();
-    var dates = Object.keys(daily).filter(function (d) { return !cutoff || d >= cutoff; }).sort();
-
-    var weightPoints = dates.filter(function (d) { return daily[d].weight != null; })
-      .map(function (d) { return { date: d, value: daily[d].weight }; });
-    drawLineChart("trendsWeightChart", "trendsWeightEmpty", weightPoints);
-    renderRangeStats("trendsWeightStats", weightPoints, "kg");
-
-    var caloriePoints = dates.filter(function (d) { return daily[d].calories != null; })
-      .map(function (d) { return { date: d, value: daily[d].calories }; });
-    drawLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", caloriePoints);
-    renderRangeStats("trendsCaloriesStats", caloriePoints, "kcal");
-
-    var proteinVals = dates.filter(function (d) { return daily[d].protein != null; }).map(function (d) { return daily[d].protein; });
-    var carbsVals = dates.filter(function (d) { return daily[d].carbs != null; }).map(function (d) { return daily[d].carbs; });
-    var fatVals = dates.filter(function (d) { return daily[d].fat != null; }).map(function (d) { return daily[d].fat; });
-    renderAvgLabel("trendsAvgProtein", average(proteinVals), 0);
-    renderAvgLabel("trendsAvgCarbs", average(carbsVals), 0);
-    renderAvgLabel("trendsAvgFat", average(fatVals), 0);
-
-    var sleepVals = dates.filter(function (d) { return daily[d].sleepHours != null; }).map(function (d) { return daily[d].sleepHours; });
-    renderAvgLabel("trendsAvgSleep", average(sleepVals), 1);
-    renderAvgLabel("trendsMinSleep", sleepVals.length ? Math.min.apply(null, sleepVals) : null, 1);
-    renderAvgLabel("trendsMaxSleep", sleepVals.length ? Math.max.apply(null, sleepVals) : null, 1);
-
-    var stepsVals = dates.filter(function (d) { return daily[d].steps != null; }).map(function (d) { return daily[d].steps; });
-    var waterVals = dates.filter(function (d) { return daily[d].water != null; }).map(function (d) { return daily[d].water; });
-    var cigVals = dates.filter(function (d) { return daily[d].cigarettes != null; }).map(function (d) { return daily[d].cigarettes; });
-    renderAvgLabel("trendsAvgSteps", average(stepsVals), 0);
-    renderAvgLabel("trendsAvgWater", average(waterVals), 1);
-    var cigTotal = cigVals.reduce(function (sum, v) { return sum + v; }, 0);
-    document.getElementById("trendsTotalCigarettes").textContent = cigVals.length ? cigTotal : "—";
-
-    var workouts = loadWorkouts().filter(function (w) { return !cutoff || w.date >= cutoff; });
-    document.getElementById("trendsWorkoutCount").textContent = workouts.length || "—";
-    var totalSets = workouts.reduce(function (sum, w) {
-      return sum + w.exercises.reduce(function (s, ex) { return s + (ex.type === "cardio" ? 0 : ex.sets.length); }, 0);
-    }, 0);
-    document.getElementById("trendsTotalSets").textContent = workouts.length ? totalSets : "—";
-    document.getElementById("trendsAvgSetsPerWorkout").textContent = workouts.length ? round1(totalSets / workouts.length) : "—";
-  }
-
   // ---------- data export / import / clear ----------
 
   async function handleExport() {
@@ -1757,6 +1725,7 @@
 
   function init() {
     seedCustomFoodsIfNeeded();
+    seedCustomSupplementsIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
     document.getElementById("logDate").value = todayISO();
@@ -1851,10 +1820,6 @@
     document.getElementById("saveNewSupplementBtn").addEventListener("click", handleSaveNewSupplement);
     document.getElementById("newSupplementName").addEventListener("keydown", function (e) {
       if (e.key === "Enter") { e.preventDefault(); handleSaveNewSupplement(); }
-    });
-
-    document.querySelectorAll("#trendsPeriodToggle .segment").forEach(function (btn) {
-      btn.addEventListener("click", function () { setTrendsPeriod(btn.dataset.period); });
     });
 
     document.getElementById("foodSearchInput").addEventListener("input", handleFoodSearchInput);
