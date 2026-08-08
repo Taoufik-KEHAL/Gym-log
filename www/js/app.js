@@ -342,6 +342,11 @@
     return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   }
 
+  function formatDateShort(iso) {
+    var d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  }
+
   function addDaysISO(iso, delta) {
     var d = new Date(iso + "T00:00:00");
     d.setDate(d.getDate() + delta);
@@ -616,6 +621,22 @@
     return Math.round(n * factor) / factor;
   }
 
+  function pickDateLabelIndices(count, width) {
+    if (count <= 1) return [0];
+    var maxLabels = Math.max(2, Math.min(6, Math.floor(width / 55)));
+    var n = Math.min(maxLabels, count);
+    var indices = [];
+    for (var k = 0; k < n; k++) {
+      indices.push(Math.round((k * (count - 1)) / (n - 1)));
+    }
+    var seen = {};
+    return indices.filter(function (idx) {
+      if (seen[idx]) return false;
+      seen[idx] = true;
+      return true;
+    });
+  }
+
   function drawLineChart(canvasId, emptyId, points) {
     var canvas = document.getElementById(canvasId);
     var emptyEl = document.getElementById(emptyId);
@@ -630,7 +651,8 @@
 
     var dpr = window.devicePixelRatio || 1;
     var cssWidth = canvas.clientWidth || canvas.parentElement.clientWidth;
-    var cssHeight = 140;
+    var labelSpace = 16;
+    var cssHeight = 140 + labelSpace;
     canvas.width = cssWidth * dpr;
     canvas.height = cssHeight * dpr;
     var ctx = canvas.getContext("2d");
@@ -646,7 +668,7 @@
 
     var padX = 8, padY = 10;
     var w = cssWidth - padX * 2;
-    var h = cssHeight - padY * 2;
+    var h = cssHeight - padY * 2 - labelSpace;
 
     var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
     ctx.strokeStyle = isDark ? "#5ec2a0" : "#1f8f6c";
@@ -666,6 +688,15 @@
       ctx.beginPath();
       ctx.arc(x, y, i === points.length - 1 ? 3.5 : 2, 0, Math.PI * 2);
       ctx.fill();
+    });
+
+    var textDim = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
+    ctx.fillStyle = textDim;
+    ctx.font = "9px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+    pickDateLabelIndices(points.length, w).forEach(function (idx) {
+      var x = padX + (idx / (points.length - 1)) * w;
+      ctx.textAlign = idx === 0 ? "left" : idx === points.length - 1 ? "right" : "center";
+      ctx.fillText(formatDateShort(points[idx].date), x, cssHeight - 3);
     });
   }
 
@@ -687,7 +718,7 @@
     el.style.display = "grid";
   }
 
-  function renderWeightDirection(points) {
+  function renderWeightDirection(points, daySpan) {
     var el = document.getElementById("weightTrendDirection");
     if (points.length < 2) {
       el.style.display = "none";
@@ -699,19 +730,28 @@
     if (delta < 0) { icon = "📉"; label = "Diminishing"; cls = "trend-down"; }
     else if (delta > 0) { icon = "📈"; label = "Increasing"; cls = "trend-up"; }
     else { icon = "➖"; label = "Stable"; cls = ""; }
+    var dayLabel = "past " + daySpan + " day" + (daySpan === 1 ? "" : "s");
     el.innerHTML =
       '<span class="day-badge' + (cls ? " " + cls : "") + '">' + icon + " " + label + "</span>" +
-      "<span>" + (delta > 0 ? "+" : "") + delta + " kg over this period</span>";
+      "<span>" + (delta > 0 ? "+" : "") + delta + " kg over " + dayLabel + "</span>";
     el.style.display = "flex";
   }
 
+  function getWeightTrendRange() {
+    var end = document.getElementById("weightTrendEndInput").value || todayISO();
+    var start = document.getElementById("weightTrendStartInput").value || addDaysISO(end, -29);
+    if (start > end) { var tmp = start; start = end; end = tmp; }
+    return { start: start, end: end };
+  }
+
   function renderWeightTrend(daily) {
+    var range = getWeightTrendRange();
     var points = Object.keys(daily)
-      .filter(function (d) { return daily[d].weight != null; })
+      .filter(function (d) { return d >= range.start && d <= range.end && daily[d].weight != null; })
       .sort()
-      .slice(-30)
       .map(function (d) { return { date: d, value: daily[d].weight }; });
-    renderWeightDirection(points);
+    var daySpan = Math.round((new Date(range.end + "T00:00:00") - new Date(range.start + "T00:00:00")) / 86400000) + 1;
+    renderWeightDirection(points, daySpan);
     drawLineChart("weightChart", "chartEmpty", points);
     renderRangeStats("weightTrendStats", points, "kg");
   }
@@ -1610,6 +1650,8 @@
     document.getElementById("logDate").value = todayISO();
     document.getElementById("workoutDate").value = todayISO();
     document.getElementById("foodDate").value = todayISO();
+    document.getElementById("weightTrendEndInput").value = todayISO();
+    document.getElementById("weightTrendStartInput").value = addDaysISO(todayISO(), -29);
 
     fillFormFromDate(todayISO());
 
@@ -1627,6 +1669,9 @@
         setDayTypeToggle(currentDayType === btn.dataset.dayType ? null : btn.dataset.dayType);
       });
     });
+
+    document.getElementById("weightTrendStartInput").addEventListener("change", renderToday);
+    document.getElementById("weightTrendEndInput").addEventListener("change", renderToday);
 
     fillSettingsForm();
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
