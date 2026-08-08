@@ -747,8 +747,8 @@
 
   function getDefaultWeightTrendStart(end) {
     var thirtyDaysBack = addDaysISO(end, -29);
-    var earliest = getEarliestLoggedWeightDate();
-    return earliest && earliest > thirtyDaysBack ? earliest : thirtyDaysBack;
+    var streakStart = getRecentWeightStreakStart();
+    return streakStart && streakStart > thirtyDaysBack ? streakStart : thirtyDaysBack;
   }
 
   function getWeightTrendRange() {
@@ -1589,10 +1589,21 @@
     return { weight: daily[date].weight, date: date };
   }
 
-  function getEarliestLoggedWeightDate() {
+  function getRecentWeightStreakStart() {
     var daily = loadDaily();
     var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
-    return dates.length ? dates[0] : null;
+    if (dates.length === 0) return null;
+    // Walk backward from the most recent logged weight, allowing gaps of a few days,
+    // so an old isolated entry (e.g. a one-off test log) doesn't drag the default
+    // range back to it — only the current run of logging counts.
+    var maxGapDays = 3;
+    var streakStart = dates[dates.length - 1];
+    for (var i = dates.length - 2; i >= 0; i--) {
+      var gapDays = (new Date(streakStart + "T00:00:00") - new Date(dates[i] + "T00:00:00")) / 86400000;
+      if (gapDays > maxGapDays) break;
+      streakStart = dates[i];
+    }
+    return streakStart;
   }
 
   function computeActivityLevelFromHistory() {
