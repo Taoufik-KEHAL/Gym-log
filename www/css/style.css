@@ -87,6 +87,13 @@ main {
 .view { display: none; animation: fadein 0.15s ease; }
 .view.active { display: block; }
 
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
 @keyframes fadein {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
