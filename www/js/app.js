@@ -750,6 +750,12 @@
     return earliest || addDaysISO(end, -29);
   }
 
+  function resetWeightTrendDateInputs() {
+    var end = todayISO();
+    document.getElementById("weightTrendEndInput").value = end;
+    document.getElementById("weightTrendStartInput").value = getDefaultWeightTrendStart(end);
+  }
+
   function getWeightTrendRange() {
     var end = document.getElementById("weightTrendEndInput").value || todayISO();
     var start = document.getElementById("weightTrendStartInput").value || getDefaultWeightTrendStart(end);
@@ -1522,6 +1528,7 @@
     toast("Import complete");
     fillSettingsForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
+    resetWeightTrendDateInputs();
     renderToday();
     renderHistory();
     populateExerciseSelect(currentExerciseType);
@@ -1541,6 +1548,7 @@
     editingWorkoutId = null;
     handleCancelEditMyFood();
     fillSettingsForm();
+    resetWeightTrendDateInputs();
     renderToday();
     renderHistory();
     renderWorkoutBuilder();
@@ -1739,8 +1747,7 @@
     document.getElementById("logDate").value = todayISO();
     document.getElementById("workoutDate").value = todayISO();
     document.getElementById("foodDate").value = todayISO();
-    document.getElementById("weightTrendEndInput").value = todayISO();
-    document.getElementById("weightTrendStartInput").value = getDefaultWeightTrendStart(todayISO());
+    resetWeightTrendDateInputs();
 
     fillFormFromDate(todayISO());
 
