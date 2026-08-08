@@ -7,9 +7,7 @@
     settings: "gymlog.settings", // { restCalories, workoutCalories, workoutDeficitPct, restDeficitPct }
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
-    customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    customSupplements: "gymlog.customSupplements", // [ { id, name } ]
-    supplementLog: "gymlog.supplementLog" // { "2026-07-27": [ {id, name, dose} ] }
+    customExercises: "gymlog.customExercises" // [ { name, type: 'strength' | 'cardio' } ]
   };
 
   var CUSTOM_FOOD_SEED = [
@@ -53,7 +51,14 @@
   };
   var currentSex = "male"; // 'male' | 'female', for the maintenance-calorie form
   var DEFAULT_WORKOUT_DEFICIT_PCT = 2; // % below maintenance, applied by "Use as my calorie targets" unless overridden
+  var DEFAULT_CARDIO_DEFICIT_PCT = 5; // % below maintenance, applied by "Use as my calorie targets" unless overridden
   var DEFAULT_REST_DEFICIT_PCT = 10; // % below maintenance, applied by "Use as my calorie targets" unless overridden
+
+  var DAY_TYPE_LABELS = {
+    rest: "😴 Rest day",
+    workout: "🏋️ Workout day",
+    cardio: "🏃 Cardio day"
+  };
 
   var currentExercises = []; // in-progress workout builder state
   var editingWorkoutId = null; // id of the workout being edited, or null when building a new one
@@ -200,161 +205,6 @@
     saveCustomExercises(customExercises);
   }
 
-  var selectedSupplement = null; // { id, name }
-
-  function loadCustomSupplements() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.customSupplements) || "[]");
-    } catch (e) {
-      return [];
-    }
-  }
-
-  function saveCustomSupplements(list) {
-    localStorage.setItem(STORAGE.customSupplements, JSON.stringify(list));
-  }
-
-  function saveCustomSupplementIfNew(name) {
-    var supplements = loadCustomSupplements();
-    var exists = supplements.some(function (s) { return s.name.toLowerCase() === name.toLowerCase(); });
-    if (exists) return;
-    supplements.push({ id: makeId(), name: name });
-    saveCustomSupplements(supplements);
-  }
-
-  function loadSupplementLog() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.supplementLog) || "{}");
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function saveSupplementLog(log) {
-    localStorage.setItem(STORAGE.supplementLog, JSON.stringify(log));
-  }
-
-  function clearSupplementSearchState() {
-    document.getElementById("supplementSearchResults").innerHTML = "";
-    document.getElementById("supplementSearchStatus").style.display = "none";
-  }
-
-  function handleSupplementSearchInput() {
-    var query = document.getElementById("supplementSearchInput").value.trim();
-    if (query.length < 2) { clearSupplementSearchState(); return; }
-
-    var matches = loadCustomSupplements()
-      .filter(function (s) { return s.name.toLowerCase().indexOf(query.toLowerCase()) !== -1; });
-
-    var statusEl = document.getElementById("supplementSearchStatus");
-    if (matches.length === 0) {
-      document.getElementById("supplementSearchResults").innerHTML = "";
-      statusEl.textContent = "No matching supplement yet — add it below.";
-      statusEl.style.display = "block";
-      return;
-    }
-    statusEl.style.display = "none";
-    renderSupplementSearchResults(matches);
-  }
-
-  function renderSupplementSearchResults(supplements) {
-    var resultsEl = document.getElementById("supplementSearchResults");
-    resultsEl.innerHTML = "";
-    supplements.forEach(function (s) {
-      var li = document.createElement("li");
-      var name = document.createElement("div");
-      name.className = "food-result-name";
-      name.textContent = s.name;
-      li.appendChild(name);
-      li.addEventListener("click", function () { selectSupplement(s); });
-      resultsEl.appendChild(li);
-    });
-  }
-
-  function selectSupplement(s) {
-    selectedSupplement = s;
-    document.getElementById("supplementDoseName").textContent = s.name;
-    document.getElementById("supplementDoseInput").value = "";
-    document.getElementById("supplementDoseCard").style.display = "block";
-    document.getElementById("supplementSearchInput").value = "";
-    clearSupplementSearchState();
-  }
-
-  function handleLogSupplement() {
-    if (!selectedSupplement) return;
-    var dose = document.getElementById("supplementDoseInput").value.trim();
-    var date = document.getElementById("foodDate").value || todayISO();
-    var log = loadSupplementLog();
-    var entries = log[date] || [];
-    entries.push({ id: makeId(), name: selectedSupplement.name, dose: dose });
-    log[date] = entries;
-    saveSupplementLog(log);
-
-    toast("Logged " + selectedSupplement.name);
-    selectedSupplement = null;
-    document.getElementById("supplementDoseCard").style.display = "none";
-    renderSupplementLog(date);
-  }
-
-  function resetSupplementSearch() {
-    selectedSupplement = null;
-    document.getElementById("supplementDoseCard").style.display = "none";
-    document.getElementById("supplementSearchInput").value = "";
-    document.getElementById("newSupplementCard").style.display = "none";
-    clearSupplementSearchState();
-  }
-
-  function handleSaveNewSupplement() {
-    var name = document.getElementById("newSupplementName").value.trim();
-    if (!name) { toast("Enter a supplement name"); return; }
-
-    saveCustomSupplementIfNew(name);
-    var supplement = loadCustomSupplements().filter(function (s) { return s.name.toLowerCase() === name.toLowerCase(); })[0];
-
-    document.getElementById("newSupplementName").value = "";
-    document.getElementById("newSupplementCard").style.display = "none";
-
-    toast("Saved to My Supplements");
-    selectSupplement(supplement);
-  }
-
-  function removeSupplementEntry(date, id) {
-    var log = loadSupplementLog();
-    log[date] = (log[date] || []).filter(function (entry) { return entry.id !== id; });
-    saveSupplementLog(log);
-    renderSupplementLog(date);
-  }
-
-  function renderSupplementLog(date) {
-    var list = document.getElementById("supplementLogList");
-    var entries = loadSupplementLog()[date] || [];
-    if (entries.length === 0) {
-      list.innerHTML = '<div class="empty-state">No supplements logged for this day.</div>';
-      return;
-    }
-    list.innerHTML = "";
-    entries.forEach(function (entry) {
-      var item = document.createElement("div");
-      item.className = "food-log-item";
-
-      var info = document.createElement("div");
-      var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
-      nameEl.textContent = entry.name + (entry.dose ? " (" + entry.dose + ")" : "");
-      info.appendChild(nameEl);
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "remove";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { removeSupplementEntry(date, entry.id); });
-
-      item.appendChild(info);
-      item.appendChild(removeBtn);
-      list.appendChild(item);
-    });
-  }
-
   function seedCustomFoodsIfNeeded() {
     if (localStorage.getItem(STORAGE.customFoods) != null) return;
     var seeded = CUSTOM_FOOD_SEED.map(function (f) {
@@ -492,6 +342,13 @@
     return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   }
 
+  function addDaysISO(iso, delta) {
+    var d = new Date(iso + "T00:00:00");
+    d.setDate(d.getDate() + delta);
+    var tz = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+  }
+
   // ---------- toast ----------
 
   var toastTimer = null;
@@ -517,16 +374,53 @@
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
     if (name === "workout") renderWorkoutBuilder();
-    if (name === "food") {
-      var foodDate = document.getElementById("foodDate").value || todayISO();
-      renderFoodLog(foodDate);
-      renderSupplementLog(foodDate);
-    }
-    if (name === "trends") renderTrends();
+    if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
     if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); }
   }
 
   // ---------- today view ----------
+
+  var KPI_TREND_CONFIG = [
+    { key: "weight", elId: "sumWeightTrend", decimals: 1 },
+    { key: "sleepHours", elId: "sumSleepTrend", decimals: 1 },
+    { key: "calories", elId: "sumCaloriesTrend", decimals: 0 },
+    { key: "protein", elId: "sumProteinTrend", decimals: 0 },
+    { key: "carbs", elId: "sumCarbsTrend", decimals: 0 },
+    { key: "fat", elId: "sumFatTrend", decimals: 0 },
+    { key: "steps", elId: "sumStepsTrend", decimals: 0 },
+    { key: "water", elId: "sumWaterTrend", decimals: 1 },
+    { key: "cigarettes", elId: "sumCigarettesTrend", decimals: 0 }
+  ];
+
+  function renderKpiTrend(cfg, daily, dateISO) {
+    var el = document.getElementById(cfg.elId);
+    var todayVal = daily[dateISO] ? daily[dateISO][cfg.key] : null;
+    var yestVal = daily[addDaysISO(dateISO, -1)] ? daily[addDaysISO(dateISO, -1)][cfg.key] : null;
+
+    var parts = [];
+    if (todayVal != null && yestVal != null) {
+      var diff = roundN(todayVal - yestVal, cfg.decimals);
+      parts.push((diff > 0 ? "+" : "") + diff + " vs yday");
+    }
+
+    var vals = [];
+    for (var i = 0; i < 7; i++) {
+      var entry = daily[addDaysISO(dateISO, -i)];
+      if (entry && entry[cfg.key] != null) vals.push(entry[cfg.key]);
+    }
+    if (vals.length > 0) {
+      var avg = vals.reduce(function (sum, v) { return sum + v; }, 0) / vals.length;
+      parts.push("7d avg " + roundN(avg, cfg.decimals));
+    }
+
+    if (parts.length === 0) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = parts.join(" · ");
+    el.style.display = "block";
+  }
 
   function renderToday() {
     var daily = loadDaily();
@@ -542,14 +436,22 @@
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
+    KPI_TREND_CONFIG.forEach(function (cfg) { renderKpiTrend(cfg, daily, today); });
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
   }
 
+  var DAY_TYPE_CALORIE_SETTINGS_KEY = {
+    rest: "restCalories",
+    workout: "workoutCalories",
+    cardio: "cardioCalories"
+  };
+
   function renderCaloriesGoalDelta(entry) {
     var el = document.getElementById("sumCaloriesGoal");
     var settings = loadSettings();
-    var target = entry.dayType === "rest" ? settings.restCalories : entry.dayType === "workout" ? settings.workoutCalories : null;
+    var settingsKey = DAY_TYPE_CALORIE_SETTINGS_KEY[entry.dayType];
+    var target = settingsKey ? settings[settingsKey] : null;
     if (target == null) {
       el.textContent = "";
       el.className = "stat-sub";
@@ -626,9 +528,8 @@
     var el = document.getElementById("dayStatus");
     var parts = [];
 
-    if (entry.dayType) {
-      var label = entry.dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
-      parts.push('<span class="day-badge">' + label + "</span>");
+    if (entry.dayType && DAY_TYPE_LABELS[entry.dayType]) {
+      parts.push('<span class="day-badge">' + DAY_TYPE_LABELS[entry.dayType] + "</span>");
     }
 
     var breakdown = getCaloriesBurnedBreakdown(date, entry.weight, entry.steps);
@@ -710,6 +611,11 @@
     return Math.round(n * 10) / 10;
   }
 
+  function roundN(n, decimals) {
+    var factor = Math.pow(10, decimals);
+    return Math.round(n * factor) / factor;
+  }
+
   function drawLineChart(canvasId, emptyId, points) {
     var canvas = document.getElementById(canvasId);
     var emptyEl = document.getElementById(emptyId);
@@ -781,12 +687,31 @@
     el.style.display = "grid";
   }
 
+  function renderWeightDirection(points) {
+    var el = document.getElementById("weightTrendDirection");
+    if (points.length < 2) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    var delta = round1(points[points.length - 1].value - points[0].value);
+    var icon, label, cls;
+    if (delta < 0) { icon = "📉"; label = "Diminishing"; cls = "trend-down"; }
+    else if (delta > 0) { icon = "📈"; label = "Increasing"; cls = "trend-up"; }
+    else { icon = "➖"; label = "Stable"; cls = ""; }
+    el.innerHTML =
+      '<span class="day-badge' + (cls ? " " + cls : "") + '">' + icon + " " + label + "</span>" +
+      "<span>" + (delta > 0 ? "+" : "") + delta + " kg over this period</span>";
+    el.style.display = "flex";
+  }
+
   function renderWeightTrend(daily) {
     var points = Object.keys(daily)
       .filter(function (d) { return daily[d].weight != null; })
       .sort()
       .slice(-30)
       .map(function (d) { return { date: d, value: daily[d].weight }; });
+    renderWeightDirection(points);
     drawLineChart("weightChart", "chartEmpty", points);
     renderRangeStats("weightTrendStats", points, "kg");
   }
@@ -1339,10 +1264,10 @@
       var dateEl = document.createElement("div");
       dateEl.className = "h-date";
       dateEl.textContent = formatDateLong(date);
-      if (daily[date] && daily[date].dayType) {
+      if (daily[date] && DAY_TYPE_LABELS[daily[date].dayType]) {
         var badge = document.createElement("span");
         badge.className = "day-type-badge";
-        badge.textContent = daily[date].dayType === "rest" ? "😴 Rest day" : "🏋️ Workout day";
+        badge.textContent = DAY_TYPE_LABELS[daily[date].dayType];
         dateEl.appendChild(badge);
       }
       wrap.appendChild(dateEl);
@@ -1446,83 +1371,6 @@
     });
   }
 
-  // ---------- trends view ----------
-
-  var currentTrendsPeriod = "30"; // '7' | '30' | '90' | 'all'
-
-  function getTrendsCutoffDate() {
-    if (currentTrendsPeriod === "all") return null;
-    var days = parseInt(currentTrendsPeriod, 10);
-    var d = new Date();
-    d.setDate(d.getDate() - (days - 1));
-    var tz = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
-  }
-
-  function average(values) {
-    if (values.length === 0) return null;
-    return values.reduce(function (sum, v) { return sum + v; }, 0) / values.length;
-  }
-
-  function renderAvgLabel(id, value, decimals) {
-    var el = document.getElementById(id);
-    if (value == null) { el.textContent = "—"; return; }
-    var factor = Math.pow(10, decimals || 0);
-    el.textContent = Math.round(value * factor) / factor;
-  }
-
-  function setTrendsPeriod(period) {
-    currentTrendsPeriod = period;
-    document.querySelectorAll("#trendsPeriodToggle .segment").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.period === period);
-    });
-    renderTrends();
-  }
-
-  function renderTrends() {
-    var cutoff = getTrendsCutoffDate();
-    var daily = loadDaily();
-    var dates = Object.keys(daily).filter(function (d) { return !cutoff || d >= cutoff; }).sort();
-
-    var weightPoints = dates.filter(function (d) { return daily[d].weight != null; })
-      .map(function (d) { return { date: d, value: daily[d].weight }; });
-    drawLineChart("trendsWeightChart", "trendsWeightEmpty", weightPoints);
-    renderRangeStats("trendsWeightStats", weightPoints, "kg");
-
-    var caloriePoints = dates.filter(function (d) { return daily[d].calories != null; })
-      .map(function (d) { return { date: d, value: daily[d].calories }; });
-    drawLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", caloriePoints);
-    renderRangeStats("trendsCaloriesStats", caloriePoints, "kcal");
-
-    var proteinVals = dates.filter(function (d) { return daily[d].protein != null; }).map(function (d) { return daily[d].protein; });
-    var carbsVals = dates.filter(function (d) { return daily[d].carbs != null; }).map(function (d) { return daily[d].carbs; });
-    var fatVals = dates.filter(function (d) { return daily[d].fat != null; }).map(function (d) { return daily[d].fat; });
-    renderAvgLabel("trendsAvgProtein", average(proteinVals), 0);
-    renderAvgLabel("trendsAvgCarbs", average(carbsVals), 0);
-    renderAvgLabel("trendsAvgFat", average(fatVals), 0);
-
-    var sleepVals = dates.filter(function (d) { return daily[d].sleepHours != null; }).map(function (d) { return daily[d].sleepHours; });
-    renderAvgLabel("trendsAvgSleep", average(sleepVals), 1);
-    renderAvgLabel("trendsMinSleep", sleepVals.length ? Math.min.apply(null, sleepVals) : null, 1);
-    renderAvgLabel("trendsMaxSleep", sleepVals.length ? Math.max.apply(null, sleepVals) : null, 1);
-
-    var stepsVals = dates.filter(function (d) { return daily[d].steps != null; }).map(function (d) { return daily[d].steps; });
-    var waterVals = dates.filter(function (d) { return daily[d].water != null; }).map(function (d) { return daily[d].water; });
-    var cigVals = dates.filter(function (d) { return daily[d].cigarettes != null; }).map(function (d) { return daily[d].cigarettes; });
-    renderAvgLabel("trendsAvgSteps", average(stepsVals), 0);
-    renderAvgLabel("trendsAvgWater", average(waterVals), 1);
-    var cigTotal = cigVals.reduce(function (sum, v) { return sum + v; }, 0);
-    document.getElementById("trendsTotalCigarettes").textContent = cigVals.length ? cigTotal : "—";
-
-    var workouts = loadWorkouts().filter(function (w) { return !cutoff || w.date >= cutoff; });
-    document.getElementById("trendsWorkoutCount").textContent = workouts.length || "—";
-    var totalSets = workouts.reduce(function (sum, w) {
-      return sum + w.exercises.reduce(function (s, ex) { return s + (ex.type === "cardio" ? 0 : ex.sets.length); }, 0);
-    }, 0);
-    document.getElementById("trendsTotalSets").textContent = workouts.length ? totalSets : "—";
-    document.getElementById("trendsAvgSetsPerWorkout").textContent = workouts.length ? round1(totalSets / workouts.length) : "—";
-  }
-
   // ---------- data export / import / clear ----------
 
   async function handleExport() {
@@ -1533,9 +1381,7 @@
       settings: loadSettings(),
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
-      customExercises: loadCustomExercises(),
-      customSupplements: loadCustomSupplements(),
-      supplementLog: loadSupplementLog()
+      customExercises: loadCustomExercises()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -1604,17 +1450,13 @@
     if (payload.foodlog) saveFoodLog(payload.foodlog);
     if (payload.customFoods) saveCustomFoods(payload.customFoods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
-    if (payload.customSupplements) saveCustomSupplements(payload.customSupplements);
-    if (payload.supplementLog) saveSupplementLog(payload.supplementLog);
     toast("Import complete");
     fillSettingsForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     renderToday();
     renderHistory();
     populateExerciseSelect(currentExerciseType);
-    resetSupplementSearch();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
-    renderSupplementLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
   }
 
@@ -1626,8 +1468,6 @@
     localStorage.removeItem(STORAGE.foodlog);
     localStorage.removeItem(STORAGE.customFoods);
     localStorage.removeItem(STORAGE.customExercises);
-    localStorage.removeItem(STORAGE.customSupplements);
-    localStorage.removeItem(STORAGE.supplementLog);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
@@ -1637,9 +1477,7 @@
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
-    resetSupplementSearch();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
-    renderSupplementLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
     toast("All data erased");
   }
@@ -1650,7 +1488,9 @@
     var settings = loadSettings();
     document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
     document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
+    document.getElementById("cardioCaloriesInput").value = settings.cardioCalories != null ? settings.cardioCalories : "";
     document.getElementById("workoutDeficitInput").value = settings.workoutDeficitPct != null ? settings.workoutDeficitPct : DEFAULT_WORKOUT_DEFICIT_PCT;
+    document.getElementById("cardioDeficitInput").value = settings.cardioDeficitPct != null ? settings.cardioDeficitPct : DEFAULT_CARDIO_DEFICIT_PCT;
     document.getElementById("restDeficitInput").value = settings.restDeficitPct != null ? settings.restDeficitPct : DEFAULT_REST_DEFICIT_PCT;
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
@@ -1662,12 +1502,16 @@
   function handleSettingsChange() {
     var rest = document.getElementById("restCaloriesInput").value;
     var workout = document.getElementById("workoutCaloriesInput").value;
+    var cardio = document.getElementById("cardioCaloriesInput").value;
     var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
+    var cardioDeficit = parseFloat(document.getElementById("cardioDeficitInput").value);
     var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
     var settings = loadSettings();
     if (rest !== "") settings.restCalories = Math.round(parseFloat(rest)); else delete settings.restCalories;
     if (workout !== "") settings.workoutCalories = Math.round(parseFloat(workout)); else delete settings.workoutCalories;
+    if (cardio !== "") settings.cardioCalories = Math.round(parseFloat(cardio)); else delete settings.cardioCalories;
     settings.workoutDeficitPct = isNaN(workoutDeficit) ? DEFAULT_WORKOUT_DEFICIT_PCT : workoutDeficit;
+    settings.cardioDeficitPct = isNaN(cardioDeficit) ? DEFAULT_CARDIO_DEFICIT_PCT : cardioDeficit;
     settings.restDeficitPct = isNaN(restDeficit) ? DEFAULT_REST_DEFICIT_PCT : restDeficit;
     saveSettings(settings);
     toast("Targets saved");
@@ -1743,13 +1587,17 @@
       return;
     }
     var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
+    var cardioDeficit = parseFloat(document.getElementById("cardioDeficitInput").value);
     var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
     if (isNaN(workoutDeficit)) workoutDeficit = DEFAULT_WORKOUT_DEFICIT_PCT;
+    if (isNaN(cardioDeficit)) cardioDeficit = DEFAULT_CARDIO_DEFICIT_PCT;
     if (isNaN(restDeficit)) restDeficit = DEFAULT_REST_DEFICIT_PCT;
     var workoutTarget = Math.round((result.tdee * (1 - workoutDeficit / 100)) / 10) * 10;
+    var cardioTarget = Math.round((result.tdee * (1 - cardioDeficit / 100)) / 10) * 10;
     var restTarget = Math.round((result.tdee * (1 - restDeficit / 100)) / 10) * 10;
     document.getElementById("restCaloriesInput").value = restTarget;
     document.getElementById("workoutCaloriesInput").value = workoutTarget;
+    document.getElementById("cardioCaloriesInput").value = cardioTarget;
     handleSettingsChange();
   }
 
@@ -1783,7 +1631,9 @@
     fillSettingsForm();
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
+    document.getElementById("cardioCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutDeficitInput").addEventListener("change", handleSettingsChange);
+    document.getElementById("cardioDeficitInput").addEventListener("change", handleSettingsChange);
     document.getElementById("restDeficitInput").addEventListener("change", handleSettingsChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
@@ -1839,24 +1689,6 @@
 
     document.getElementById("cancelEditMyFoodBtn").addEventListener("click", handleCancelEditMyFood);
 
-    document.getElementById("supplementSearchInput").addEventListener("input", handleSupplementSearchInput);
-    document.getElementById("logSupplementBtn").addEventListener("click", handleLogSupplement);
-    document.getElementById("supplementDoseInput").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); handleLogSupplement(); }
-    });
-    document.getElementById("showNewSupplementBtn").addEventListener("click", function () {
-      var card = document.getElementById("newSupplementCard");
-      card.style.display = card.style.display === "none" ? "block" : "none";
-    });
-    document.getElementById("saveNewSupplementBtn").addEventListener("click", handleSaveNewSupplement);
-    document.getElementById("newSupplementName").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); handleSaveNewSupplement(); }
-    });
-
-    document.querySelectorAll("#trendsPeriodToggle .segment").forEach(function (btn) {
-      btn.addEventListener("click", function () { setTrendsPeriod(btn.dataset.period); });
-    });
-
     document.getElementById("foodSearchInput").addEventListener("input", handleFoodSearchInput);
     document.getElementById("foodGramsInput").addEventListener("input", updateFoodPreview);
     document.getElementById("foodUnitsInput").addEventListener("input", updateFoodPreview);
@@ -1872,7 +1704,6 @@
     document.getElementById("saveNewFoodBtn").addEventListener("click", handleSaveNewFood);
     document.getElementById("foodDate").addEventListener("change", function (e) {
       renderFoodLog(e.target.value);
-      renderSupplementLog(e.target.value);
     });
 
     window.addEventListener("resize", function () { renderToday(); });
@@ -1886,7 +1717,6 @@
     renderToday();
     renderHistory();
     renderFoodLog(todayISO());
-    renderSupplementLog(todayISO());
   }
 
   document.addEventListener("DOMContentLoaded", init);

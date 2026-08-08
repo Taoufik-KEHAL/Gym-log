@@ -143,6 +143,13 @@ main {
 .stat-sub.diff-under { color: var(--accent); }
 .stat-sub.diff-over { color: var(--danger); }
 
+.stat-trend {
+  font-size: 0.58rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
 .range-stats {
   margin-top: 12px;
   padding-top: 12px;
@@ -164,6 +171,16 @@ main {
 .day-status .day-badge {
   font-weight: 600;
   color: var(--text);
+}
+
+.day-status .day-badge.trend-down { color: var(--accent); }
+.day-status .day-badge.trend-up { color: var(--danger); }
+
+#weightTrendDirection {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  margin-bottom: 10px;
 }
 
 .segmented {
