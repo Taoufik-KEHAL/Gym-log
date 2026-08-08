@@ -49,6 +49,14 @@
     active: 1.725,
     very_active: 1.9
   };
+  var ACTIVITY_LEVEL_LABELS = {
+    sedentary: "Sedentary",
+    light: "Light",
+    moderate: "Moderate",
+    active: "Active",
+    very_active: "Very active"
+  };
+  var ACTIVE_DAY_STEPS_THRESHOLD = 8000; // steps on a day with no logged workout still count as "active"
   var currentSex = "male"; // 'male' | 'female', for the maintenance-calorie form
   var DEFAULT_WORKOUT_DEFICIT_PCT = 2; // % below maintenance, applied by "Use as my calorie targets" unless overridden
   var DEFAULT_CARDIO_DEFICIT_PCT = 5; // % below maintenance, applied by "Use as my calorie targets" unless overridden
@@ -1575,6 +1583,59 @@
     return { weight: daily[date].weight, date: date };
   }
 
+  function computeActivityLevelFromHistory() {
+    var end = todayISO();
+    var start = addDaysISO(end, -6);
+    var daily = loadDaily();
+    var loggedDays = Object.keys(daily).filter(function (d) { return d >= start && d <= end; });
+    if (loggedDays.length < 4) return null;
+
+    var activeDates = {};
+    loggedDays.forEach(function (d) {
+      var entry = daily[d];
+      if (entry.dayType === "workout" || entry.dayType === "cardio") activeDates[d] = true;
+      if (entry.steps != null && entry.steps >= ACTIVE_DAY_STEPS_THRESHOLD) activeDates[d] = true;
+    });
+    loadWorkouts().forEach(function (w) {
+      if (w.date >= start && w.date <= end) activeDates[w.date] = true;
+    });
+
+    var activeCount = Object.keys(activeDates).length;
+    var level;
+    if (activeCount <= 1) level = "sedentary";
+    else if (activeCount <= 3) level = "light";
+    else if (activeCount <= 5) level = "moderate";
+    else if (activeCount === 6) level = "active";
+    else level = "very_active";
+
+    return { level: level, activeDays: activeCount, loggedDays: loggedDays.length };
+  }
+
+  function renderActivityAutoSuggestion() {
+    var hint = document.getElementById("activityAutoSuggestion");
+    var btn = document.getElementById("useAutoActivityBtn");
+    var suggestion = computeActivityLevelFromHistory();
+    if (!suggestion) {
+      hint.style.display = "none";
+      btn.style.display = "none";
+      return;
+    }
+    var settings = loadSettings();
+    var current = settings.activityLevel || "moderate";
+    hint.innerHTML = "📊 Based on your last " + suggestion.loggedDays + " logged days (" + suggestion.activeDays +
+      " active), your activity level looks like <strong>" + ACTIVITY_LEVEL_LABELS[suggestion.level] + "</strong>.";
+    hint.style.display = "block";
+    btn.dataset.level = suggestion.level;
+    btn.style.display = suggestion.level === current ? "none" : "inline-block";
+  }
+
+  function handleUseAutoActivity() {
+    var level = document.getElementById("useAutoActivityBtn").dataset.level;
+    if (!level) return;
+    document.getElementById("activityLevelSelect").value = level;
+    handleMaintenanceInputChange();
+  }
+
   function computeMaintenanceCalories() {
     var settings = loadSettings();
     var age = settings.age;
@@ -1592,6 +1653,7 @@
   }
 
   function renderMaintenanceEstimate() {
+    renderActivityAutoSuggestion();
     var el = document.getElementById("maintenanceResult");
     var result = computeMaintenanceCalories();
     if (!result) {
@@ -1691,6 +1753,7 @@
     document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("applyMaintenanceBtn").addEventListener("click", handleApplyMaintenance);
+    document.getElementById("useAutoActivityBtn").addEventListener("click", handleUseAutoActivity);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
