@@ -200,7 +200,7 @@
     saveCustomExercises(customExercises);
   }
 
-  var CUSTOM_SUPPLEMENT_VALUE = "__custom_supplement__";
+  var selectedSupplement = null; // { id, name }
 
   function loadCustomSupplements() {
     try {
@@ -234,56 +234,88 @@
     localStorage.setItem(STORAGE.supplementLog, JSON.stringify(log));
   }
 
-  function populateSupplementSelect() {
-    var select = document.getElementById("supplementSelect");
-    var current = select.value;
-    select.innerHTML = "";
-    var placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Select a supplement…";
-    select.appendChild(placeholder);
-    loadCustomSupplements().forEach(function (s) {
-      var opt = document.createElement("option");
-      opt.value = s.name;
-      opt.textContent = s.name;
-      select.appendChild(opt);
-    });
-    var customOption = document.createElement("option");
-    customOption.value = CUSTOM_SUPPLEMENT_VALUE;
-    customOption.textContent = "Other (type your own)…";
-    select.appendChild(customOption);
-    if (current) select.value = current;
+  function clearSupplementSearchState() {
+    document.getElementById("supplementSearchResults").innerHTML = "";
+    document.getElementById("supplementSearchStatus").style.display = "none";
   }
 
-  function handleSupplementSelectChange() {
-    var select = document.getElementById("supplementSelect");
-    var isCustom = select.value === CUSTOM_SUPPLEMENT_VALUE;
-    document.getElementById("supplementCustomInput").style.display = isCustom ? "block" : "none";
+  function handleSupplementSearchInput() {
+    var query = document.getElementById("supplementSearchInput").value.trim();
+    if (query.length < 2) { clearSupplementSearchState(); return; }
+
+    var matches = loadCustomSupplements()
+      .filter(function (s) { return s.name.toLowerCase().indexOf(query.toLowerCase()) !== -1; });
+
+    var statusEl = document.getElementById("supplementSearchStatus");
+    if (matches.length === 0) {
+      document.getElementById("supplementSearchResults").innerHTML = "";
+      statusEl.textContent = "No matching supplement yet — add it below.";
+      statusEl.style.display = "block";
+      return;
+    }
+    statusEl.style.display = "none";
+    renderSupplementSearchResults(matches);
+  }
+
+  function renderSupplementSearchResults(supplements) {
+    var resultsEl = document.getElementById("supplementSearchResults");
+    resultsEl.innerHTML = "";
+    supplements.forEach(function (s) {
+      var li = document.createElement("li");
+      var name = document.createElement("div");
+      name.className = "food-result-name";
+      name.textContent = s.name;
+      li.appendChild(name);
+      li.addEventListener("click", function () { selectSupplement(s); });
+      resultsEl.appendChild(li);
+    });
+  }
+
+  function selectSupplement(s) {
+    selectedSupplement = s;
+    document.getElementById("supplementDoseName").textContent = s.name;
+    document.getElementById("supplementDoseInput").value = "";
+    document.getElementById("supplementDoseCard").style.display = "block";
+    document.getElementById("supplementSearchInput").value = "";
+    clearSupplementSearchState();
   }
 
   function handleLogSupplement() {
-    var select = document.getElementById("supplementSelect");
-    var isCustom = select.value === CUSTOM_SUPPLEMENT_VALUE;
-    var name = isCustom ? document.getElementById("supplementCustomInput").value.trim() : select.value;
-    if (!name) { toast("Select or enter a supplement"); return; }
+    if (!selectedSupplement) return;
     var dose = document.getElementById("supplementDoseInput").value.trim();
-
-    if (isCustom) saveCustomSupplementIfNew(name);
-
     var date = document.getElementById("foodDate").value || todayISO();
     var log = loadSupplementLog();
     var entries = log[date] || [];
-    entries.push({ id: makeId(), name: name, dose: dose });
+    entries.push({ id: makeId(), name: selectedSupplement.name, dose: dose });
     log[date] = entries;
     saveSupplementLog(log);
 
-    document.getElementById("supplementCustomInput").value = "";
-    document.getElementById("supplementDoseInput").value = "";
-    populateSupplementSelect();
-    select.value = "";
-    handleSupplementSelectChange();
+    toast("Logged " + selectedSupplement.name);
+    selectedSupplement = null;
+    document.getElementById("supplementDoseCard").style.display = "none";
     renderSupplementLog(date);
-    toast("Logged " + name);
+  }
+
+  function resetSupplementSearch() {
+    selectedSupplement = null;
+    document.getElementById("supplementDoseCard").style.display = "none";
+    document.getElementById("supplementSearchInput").value = "";
+    document.getElementById("newSupplementCard").style.display = "none";
+    clearSupplementSearchState();
+  }
+
+  function handleSaveNewSupplement() {
+    var name = document.getElementById("newSupplementName").value.trim();
+    if (!name) { toast("Enter a supplement name"); return; }
+
+    saveCustomSupplementIfNew(name);
+    var supplement = loadCustomSupplements().filter(function (s) { return s.name.toLowerCase() === name.toLowerCase(); })[0];
+
+    document.getElementById("newSupplementName").value = "";
+    document.getElementById("newSupplementCard").style.display = "none";
+
+    toast("Saved to My Supplements");
+    selectSupplement(supplement);
   }
 
   function removeSupplementEntry(date, id) {
@@ -741,11 +773,12 @@
     var values = points.map(function (p) { return p.value; });
     var max = Math.max.apply(null, values);
     var min = Math.min.apply(null, values);
+    el.className = "summary-grid range-stats";
     el.innerHTML =
-      '<span>⬆️ High ' + round1(max) + " " + unit + "</span>" +
-      '<span>⬇️ Low ' + round1(min) + " " + unit + "</span>" +
-      '<span>↔️ Diff ' + round1(max - min) + " " + unit + "</span>";
-    el.style.display = "flex";
+      '<div class="stat"><div class="value">' + round1(max) + '</div><div class="label">High (' + unit + ")</div></div>" +
+      '<div class="stat"><div class="value">' + round1(min) + '</div><div class="label">Low (' + unit + ")</div></div>" +
+      '<div class="stat"><div class="value">' + round1(max - min) + '</div><div class="label">Diff (' + unit + ")</div></div>";
+    el.style.display = "grid";
   }
 
   function renderWeightTrend(daily) {
@@ -1579,7 +1612,7 @@
     renderToday();
     renderHistory();
     populateExerciseSelect(currentExerciseType);
-    populateSupplementSelect();
+    resetSupplementSearch();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderSupplementLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
@@ -1604,7 +1637,7 @@
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
-    populateSupplementSelect();
+    resetSupplementSearch();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderSupplementLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
@@ -1806,11 +1839,18 @@
 
     document.getElementById("cancelEditMyFoodBtn").addEventListener("click", handleCancelEditMyFood);
 
-    populateSupplementSelect();
-    document.getElementById("supplementSelect").addEventListener("change", handleSupplementSelectChange);
+    document.getElementById("supplementSearchInput").addEventListener("input", handleSupplementSearchInput);
     document.getElementById("logSupplementBtn").addEventListener("click", handleLogSupplement);
-    document.getElementById("supplementCustomInput").addEventListener("keydown", function (e) {
+    document.getElementById("supplementDoseInput").addEventListener("keydown", function (e) {
       if (e.key === "Enter") { e.preventDefault(); handleLogSupplement(); }
+    });
+    document.getElementById("showNewSupplementBtn").addEventListener("click", function () {
+      var card = document.getElementById("newSupplementCard");
+      card.style.display = card.style.display === "none" ? "block" : "none";
+    });
+    document.getElementById("saveNewSupplementBtn").addEventListener("click", handleSaveNewSupplement);
+    document.getElementById("newSupplementName").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); handleSaveNewSupplement(); }
     });
 
     document.querySelectorAll("#trendsPeriodToggle .segment").forEach(function (btn) {

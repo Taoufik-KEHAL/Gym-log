@@ -165,17 +165,31 @@
     <div class="card">
       <h2>Supplements</h2>
       <div class="field">
-        <label for="supplementSelect">Supplement</label>
-        <div class="row">
-          <select id="supplementSelect"></select>
-          <button type="button" class="secondary" id="logSupplementBtn">Log</button>
+        <label for="supplementSearchInput">Search your supplements</label>
+        <input type="text" id="supplementSearchInput" placeholder="e.g. creatine" autocomplete="off" />
+        <div id="supplementSearchStatus" class="empty-state" style="display:none; padding:10px 0;"></div>
+        <ul id="supplementSearchResults" class="food-results"></ul>
+      </div>
+
+      <div class="card food-quantity-card" id="supplementDoseCard" style="display:none;">
+        <div class="food-log-name" id="supplementDoseName"></div>
+        <div class="field" style="margin-top:10px;">
+          <label for="supplementDoseInput">Dose (optional)</label>
+          <input type="text" id="supplementDoseInput" placeholder="e.g. 5g, 2 capsules" />
         </div>
-        <input type="text" id="supplementCustomInput" placeholder="Supplement name" style="display:none; margin-top:8px;" />
+        <button type="button" class="primary" id="logSupplementBtn">Add to log</button>
       </div>
-      <div class="field">
-        <label for="supplementDoseInput">Dose (optional)</label>
-        <input type="text" id="supplementDoseInput" placeholder="e.g. 5g, 2 capsules" />
+
+      <button type="button" class="secondary" id="showNewSupplementBtn" style="margin-top:6px;">Add a new supplement</button>
+
+      <div class="card food-quantity-card" id="newSupplementCard" style="display:none;">
+        <div class="field">
+          <label for="newSupplementName">Supplement name</label>
+          <input type="text" id="newSupplementName" placeholder="e.g. Creatine monohydrate" />
+        </div>
+        <button type="button" class="primary" id="saveNewSupplementBtn" style="margin-top:10px;">Save &amp; Log</button>
       </div>
+
       <div id="supplementLogList"></div>
     </div>
   </section>
