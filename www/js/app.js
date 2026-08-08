@@ -7,9 +7,7 @@
     settings: "gymlog.settings", // { restCalories, workoutCalories, workoutDeficitPct, restDeficitPct }
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
-    customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    customSupplements: "gymlog.customSupplements", // [ { id, name } ]
-    supplementLog: "gymlog.supplementLog" // { "2026-07-27": [ {id, name, dose} ] }
+    customExercises: "gymlog.customExercises" // [ { name, type: 'strength' | 'cardio' } ]
   };
 
   var CUSTOM_FOOD_SEED = [
@@ -26,25 +24,6 @@
     { name: "Mille-feuille (pastry)", per100: { calories: 340, protein: 4.5, carbs: 32.0, fat: 22.0 } },
     { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
   ];
-
-  var CUSTOM_SUPPLEMENT_SEED = [
-    "Creatine Monohydrate",
-    "Multivitamin",
-    "Fish Oil (Omega-3)",
-    "Vitamin D3",
-    "Magnesium",
-    "Zinc",
-    "Vitamin C",
-    "Probiotics",
-    "Ashwagandha",
-    "Caffeine / Pre-workout",
-    "BCAA / EAA",
-    "L-Glutamine",
-    "Electrolytes",
-    "Melatonin",
-    "Collagen"
-  ];
-  // Whey protein is intentionally excluded — logged as food instead.
 
   var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
   var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
@@ -219,169 +198,6 @@
     saveCustomExercises(customExercises);
   }
 
-  var selectedSupplement = null; // { id, name }
-
-  function loadCustomSupplements() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.customSupplements) || "[]");
-    } catch (e) {
-      return [];
-    }
-  }
-
-  function saveCustomSupplements(list) {
-    localStorage.setItem(STORAGE.customSupplements, JSON.stringify(list));
-  }
-
-  function saveCustomSupplementIfNew(name) {
-    var supplements = loadCustomSupplements();
-    var exists = supplements.some(function (s) { return s.name.toLowerCase() === name.toLowerCase(); });
-    if (exists) return;
-    supplements.push({ id: makeId(), name: name });
-    saveCustomSupplements(supplements);
-  }
-
-  function seedCustomSupplementsIfNeeded() {
-    if (localStorage.getItem(STORAGE.customSupplements) != null) return;
-    var seeded = CUSTOM_SUPPLEMENT_SEED.map(function (name) {
-      return { id: makeId(), name: name };
-    });
-    saveCustomSupplements(seeded);
-  }
-
-  function loadSupplementLog() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.supplementLog) || "{}");
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function saveSupplementLog(log) {
-    localStorage.setItem(STORAGE.supplementLog, JSON.stringify(log));
-  }
-
-  function clearSupplementSearchState() {
-    document.getElementById("supplementSearchResults").innerHTML = "";
-    document.getElementById("supplementSearchStatus").style.display = "none";
-  }
-
-  function handleSupplementSearchInput() {
-    var query = document.getElementById("supplementSearchInput").value.trim();
-    if (query.length < 2) { clearSupplementSearchState(); return; }
-
-    var matches = loadCustomSupplements()
-      .filter(function (s) { return s.name.toLowerCase().indexOf(query.toLowerCase()) !== -1; });
-
-    var statusEl = document.getElementById("supplementSearchStatus");
-    if (matches.length === 0) {
-      document.getElementById("supplementSearchResults").innerHTML = "";
-      statusEl.textContent = "No matching supplement yet — add it below.";
-      statusEl.style.display = "block";
-      return;
-    }
-    statusEl.style.display = "none";
-    renderSupplementSearchResults(matches);
-  }
-
-  function renderSupplementSearchResults(supplements) {
-    var resultsEl = document.getElementById("supplementSearchResults");
-    resultsEl.innerHTML = "";
-    supplements.forEach(function (s) {
-      var li = document.createElement("li");
-      var name = document.createElement("div");
-      name.className = "food-result-name";
-      name.textContent = s.name;
-      li.appendChild(name);
-      li.addEventListener("click", function () { selectSupplement(s); });
-      resultsEl.appendChild(li);
-    });
-  }
-
-  function selectSupplement(s) {
-    selectedSupplement = s;
-    document.getElementById("supplementDoseName").textContent = s.name;
-    document.getElementById("supplementDoseInput").value = "";
-    document.getElementById("supplementDoseCard").style.display = "block";
-    document.getElementById("supplementSearchInput").value = "";
-    clearSupplementSearchState();
-  }
-
-  function handleLogSupplement() {
-    if (!selectedSupplement) return;
-    var dose = document.getElementById("supplementDoseInput").value.trim();
-    var date = document.getElementById("foodDate").value || todayISO();
-    var log = loadSupplementLog();
-    var entries = log[date] || [];
-    entries.push({ id: makeId(), name: selectedSupplement.name, dose: dose });
-    log[date] = entries;
-    saveSupplementLog(log);
-
-    toast("Logged " + selectedSupplement.name);
-    selectedSupplement = null;
-    document.getElementById("supplementDoseCard").style.display = "none";
-    renderSupplementLog(date);
-  }
-
-  function resetSupplementSearch() {
-    selectedSupplement = null;
-    document.getElementById("supplementDoseCard").style.display = "none";
-    document.getElementById("supplementSearchInput").value = "";
-    document.getElementById("newSupplementCard").style.display = "none";
-    clearSupplementSearchState();
-  }
-
-  function handleSaveNewSupplement() {
-    var name = document.getElementById("newSupplementName").value.trim();
-    if (!name) { toast("Enter a supplement name"); return; }
-
-    saveCustomSupplementIfNew(name);
-    var supplement = loadCustomSupplements().filter(function (s) { return s.name.toLowerCase() === name.toLowerCase(); })[0];
-
-    document.getElementById("newSupplementName").value = "";
-    document.getElementById("newSupplementCard").style.display = "none";
-
-    toast("Saved to My Supplements");
-    selectSupplement(supplement);
-  }
-
-  function removeSupplementEntry(date, id) {
-    var log = loadSupplementLog();
-    log[date] = (log[date] || []).filter(function (entry) { return entry.id !== id; });
-    saveSupplementLog(log);
-    renderSupplementLog(date);
-  }
-
-  function renderSupplementLog(date) {
-    var list = document.getElementById("supplementLogList");
-    var entries = loadSupplementLog()[date] || [];
-    if (entries.length === 0) {
-      list.innerHTML = '<div class="empty-state">No supplements logged for this day.</div>';
-      return;
-    }
-    list.innerHTML = "";
-    entries.forEach(function (entry) {
-      var item = document.createElement("div");
-      item.className = "food-log-item";
-
-      var info = document.createElement("div");
-      var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
-      nameEl.textContent = entry.name + (entry.dose ? " (" + entry.dose + ")" : "");
-      info.appendChild(nameEl);
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "remove";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { removeSupplementEntry(date, entry.id); });
-
-      item.appendChild(info);
-      item.appendChild(removeBtn);
-      list.appendChild(item);
-    });
-  }
-
   function seedCustomFoodsIfNeeded() {
     if (localStorage.getItem(STORAGE.customFoods) != null) return;
     var seeded = CUSTOM_FOOD_SEED.map(function (f) {
@@ -544,11 +360,7 @@
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
     if (name === "workout") renderWorkoutBuilder();
-    if (name === "food") {
-      var foodDate = document.getElementById("foodDate").value || todayISO();
-      renderFoodLog(foodDate);
-      renderSupplementLog(foodDate);
-    }
+    if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
     if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); }
   }
 
@@ -1501,9 +1313,7 @@
       settings: loadSettings(),
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
-      customExercises: loadCustomExercises(),
-      customSupplements: loadCustomSupplements(),
-      supplementLog: loadSupplementLog()
+      customExercises: loadCustomExercises()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -1572,17 +1382,13 @@
     if (payload.foodlog) saveFoodLog(payload.foodlog);
     if (payload.customFoods) saveCustomFoods(payload.customFoods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
-    if (payload.customSupplements) saveCustomSupplements(payload.customSupplements);
-    if (payload.supplementLog) saveSupplementLog(payload.supplementLog);
     toast("Import complete");
     fillSettingsForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     renderToday();
     renderHistory();
     populateExerciseSelect(currentExerciseType);
-    resetSupplementSearch();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
-    renderSupplementLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
   }
 
@@ -1594,8 +1400,6 @@
     localStorage.removeItem(STORAGE.foodlog);
     localStorage.removeItem(STORAGE.customFoods);
     localStorage.removeItem(STORAGE.customExercises);
-    localStorage.removeItem(STORAGE.customSupplements);
-    localStorage.removeItem(STORAGE.supplementLog);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
@@ -1605,9 +1409,7 @@
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
-    resetSupplementSearch();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
-    renderSupplementLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
     toast("All data erased");
   }
@@ -1725,7 +1527,6 @@
 
   function init() {
     seedCustomFoodsIfNeeded();
-    seedCustomSupplementsIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
     document.getElementById("logDate").value = todayISO();
@@ -1808,20 +1609,6 @@
 
     document.getElementById("cancelEditMyFoodBtn").addEventListener("click", handleCancelEditMyFood);
 
-    document.getElementById("supplementSearchInput").addEventListener("input", handleSupplementSearchInput);
-    document.getElementById("logSupplementBtn").addEventListener("click", handleLogSupplement);
-    document.getElementById("supplementDoseInput").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); handleLogSupplement(); }
-    });
-    document.getElementById("showNewSupplementBtn").addEventListener("click", function () {
-      var card = document.getElementById("newSupplementCard");
-      card.style.display = card.style.display === "none" ? "block" : "none";
-    });
-    document.getElementById("saveNewSupplementBtn").addEventListener("click", handleSaveNewSupplement);
-    document.getElementById("newSupplementName").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") { e.preventDefault(); handleSaveNewSupplement(); }
-    });
-
     document.getElementById("foodSearchInput").addEventListener("input", handleFoodSearchInput);
     document.getElementById("foodGramsInput").addEventListener("input", updateFoodPreview);
     document.getElementById("foodUnitsInput").addEventListener("input", updateFoodPreview);
@@ -1837,7 +1624,6 @@
     document.getElementById("saveNewFoodBtn").addEventListener("click", handleSaveNewFood);
     document.getElementById("foodDate").addEventListener("change", function (e) {
       renderFoodLog(e.target.value);
-      renderSupplementLog(e.target.value);
     });
 
     window.addEventListener("resize", function () { renderToday(); });
@@ -1851,7 +1637,6 @@
     renderToday();
     renderHistory();
     renderFoodLog(todayISO());
-    renderSupplementLog(todayISO());
   }
 
   document.addEventListener("DOMContentLoaded", init);
