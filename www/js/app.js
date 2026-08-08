@@ -697,6 +697,7 @@
       if (s.points.length === 0) return;
       ctx.strokeStyle = s.color;
       ctx.lineWidth = 2;
+      ctx.setLineDash(s.dashed ? [5, 4] : []);
       ctx.beginPath();
       s.points.forEach(function (p, i) {
         var x = padX + (dateIndex[p.date] / (allDates.length - 1)) * w;
@@ -704,7 +705,9 @@
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       });
       ctx.stroke();
+      ctx.setLineDash([]);
 
+      if (s.dashed) return;
       ctx.fillStyle = s.color;
       s.points.forEach(function (p, i) {
         var x = padX + (dateIndex[p.date] / (allDates.length - 1)) * w;
@@ -855,6 +858,16 @@
     renderRangeStats(cfg.statsId, points, cfg.unit);
   }
 
+  function buildFlatDateSeries(start, end, value) {
+    var points = [];
+    var d = start;
+    while (d <= end) {
+      points.push({ date: d, value: value });
+      d = addDaysISO(d, 1);
+    }
+    return points;
+  }
+
   function renderCaloriesTrend(daily, range) {
     var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
     var intakePoints = [];
@@ -869,10 +882,23 @@
     var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
     var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
     var accent2Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-2").trim() || "#f0a03c";
-    drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", [
+    var textDimColor = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
+
+    var series = [
       { points: intakePoints, color: accentColor },
       { points: burnedPoints, color: accent2Color }
-    ]);
+    ];
+    var maintenance = (intakePoints.length > 0 || burnedPoints.length > 0) ? computeMaintenanceCalories() : null;
+    var maintenanceLegend = document.getElementById("trendsCaloriesMaintenanceLegend");
+    if (maintenance) {
+      series.push({ points: buildFlatDateSeries(range.start, range.end, maintenance.tdee), color: textDimColor, dashed: true });
+      maintenanceLegend.style.display = "flex";
+      document.getElementById("trendsCaloriesMaintenanceLabel").textContent = "Maintenance (" + maintenance.tdee + " kcal)";
+    } else {
+      maintenanceLegend.style.display = "none";
+    }
+
+    drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
     renderRangeStats("trendsCaloriesIntakeStats", intakePoints, "kcal intake");
     renderRangeStats("trendsCaloriesBurnedStats", burnedPoints, "kcal burned");
   }
