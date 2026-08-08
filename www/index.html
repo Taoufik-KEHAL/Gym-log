@@ -98,6 +98,10 @@
 
     <div class="card">
       <h2>Weight Trend</h2>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-bottom:10px;">
+        <div class="mini-field"><label for="weightTrendStartInput">From</label><input type="date" id="weightTrendStartInput" /></div>
+        <div class="mini-field"><label for="weightTrendEndInput">To</label><input type="date" id="weightTrendEndInput" /></div>
+      </div>
       <div class="day-status" id="weightTrendDirection" style="display:none;"></div>
       <canvas id="weightChart"></canvas>
       <div class="empty-state" id="chartEmpty" style="display:none;">Log your weight on a few days to see a trend.</div>
