@@ -99,6 +99,7 @@
       <h2>Weight Trend</h2>
       <canvas id="weightChart"></canvas>
       <div class="empty-state" id="chartEmpty" style="display:none;">Log your weight on a few days to see a trend.</div>
+      <div class="day-status" id="weightTrendStats" style="display:none;"></div>
     </div>
   </section>
 
@@ -160,6 +161,23 @@
       <div id="foodLogList"></div>
       <div class="day-status" id="foodLogTotals" style="display:none;"></div>
     </div>
+
+    <div class="card">
+      <h2>Supplements</h2>
+      <div class="field">
+        <label for="supplementSelect">Supplement</label>
+        <div class="row">
+          <select id="supplementSelect"></select>
+          <button type="button" class="secondary" id="logSupplementBtn">Log</button>
+        </div>
+        <input type="text" id="supplementCustomInput" placeholder="Supplement name" style="display:none; margin-top:8px;" />
+      </div>
+      <div class="field">
+        <label for="supplementDoseInput">Dose (optional)</label>
+        <input type="text" id="supplementDoseInput" placeholder="e.g. 5g, 2 capsules" />
+      </div>
+      <div id="supplementLogList"></div>
+    </div>
   </section>
 
   <!-- WORKOUT VIEW -->
@@ -200,6 +218,69 @@
     <div class="card">
       <h2>History</h2>
       <div id="historyList"></div>
+    </div>
+  </section>
+
+  <!-- TRENDS VIEW -->
+  <section class="view" id="view-trends">
+    <div class="card">
+      <h2>Period</h2>
+      <div class="segmented" id="trendsPeriodToggle">
+        <button type="button" class="segment" data-period="7">7 days</button>
+        <button type="button" class="segment active" data-period="30">30 days</button>
+        <button type="button" class="segment" data-period="90">90 days</button>
+        <button type="button" class="segment" data-period="all">All time</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Weight</h2>
+      <canvas id="trendsWeightChart"></canvas>
+      <div class="empty-state" id="trendsWeightEmpty" style="display:none;">Log your weight on a few days to see a trend.</div>
+      <div class="day-status" id="trendsWeightStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Calories</h2>
+      <canvas id="trendsCaloriesChart"></canvas>
+      <div class="empty-state" id="trendsCaloriesEmpty" style="display:none;">Log calories on a few days to see a trend.</div>
+      <div class="day-status" id="trendsCaloriesStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Macros (daily average)</h2>
+      <div class="summary-grid">
+        <div class="stat"><div class="value" id="trendsAvgProtein">—</div><div class="label">Protein (g)</div></div>
+        <div class="stat"><div class="value" id="trendsAvgCarbs">—</div><div class="label">Carbs (g)</div></div>
+        <div class="stat"><div class="value" id="trendsAvgFat">—</div><div class="label">Fat (g)</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Sleep &amp; Recovery</h2>
+      <div class="summary-grid">
+        <div class="stat"><div class="value" id="trendsAvgSleep">—</div><div class="label">Avg Sleep (h)</div></div>
+        <div class="stat"><div class="value" id="trendsMinSleep">—</div><div class="label">Lowest (h)</div></div>
+        <div class="stat"><div class="value" id="trendsMaxSleep">—</div><div class="label">Highest (h)</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Activity</h2>
+      <div class="summary-grid">
+        <div class="stat"><div class="value" id="trendsAvgSteps">—</div><div class="label">Avg Steps</div></div>
+        <div class="stat"><div class="value" id="trendsAvgWater">—</div><div class="label">Avg Water (L)</div></div>
+        <div class="stat"><div class="value" id="trendsTotalCigarettes">—</div><div class="label">Cigarettes (total)</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Workouts</h2>
+      <div class="summary-grid">
+        <div class="stat"><div class="value" id="trendsWorkoutCount">—</div><div class="label">Workouts Logged</div></div>
+        <div class="stat"><div class="value" id="trendsTotalSets">—</div><div class="label">Total Sets</div></div>
+        <div class="stat"><div class="value" id="trendsAvgSetsPerWorkout">—</div><div class="label">Avg Sets/Workout</div></div>
+      </div>
     </div>
   </section>
 
@@ -280,19 +361,21 @@
         <div class="mini-field"><label>Fat / 100g</label><input type="number" id="myFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
       </div>
       <button type="button" class="secondary" id="addMyFoodBtn" style="margin-top:10px;">Add to My Foods</button>
+      <button type="button" class="secondary" id="cancelEditMyFoodBtn" style="display:none; margin-top:8px;">Cancel edit</button>
     </div>
 
     <div class="card">
       <h2>Backup &amp; Restore</h2>
       <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        All data is stored only on this device. Export a backup regularly, especially before clearing browser data.
+        All data is stored only on this device. Export a backup regularly, especially before clearing browser data — on the Export prompt, choose Drive (or any cloud app you have installed) to save it there.
       </p>
-      <div class="actions-row">
+      <div class="btn-row fill">
         <button type="button" class="secondary" id="exportBtn">Export JSON</button>
-        <button type="button" class="secondary" id="importBtn">Import JSON</button>
+        <button type="button" class="secondary" id="importFileBtn">Import File</button>
+        <button type="button" class="secondary" id="importBtn">Paste JSON</button>
       </div>
       <textarea id="importBox" class="import-box" placeholder="Paste exported JSON here, then tap Import" style="display:none;"></textarea>
-      <div class="muted-btn-row" style="margin-top:14px;">
+      <div class="btn-row end mt-6">
         <button type="button" class="danger" id="clearBtn">Erase all data</button>
       </div>
     </div>
@@ -305,6 +388,7 @@
   <button class="tab-btn" data-view="food"><span class="tab-icon">🍎</span>Food</button>
   <button class="tab-btn" data-view="workout"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" data-view="history"><span class="tab-icon">📈</span>History</button>
+  <button class="tab-btn" data-view="trends"><span class="tab-icon">📊</span>Trends</button>
   <button class="tab-btn" data-view="data"><span class="tab-icon">💾</span>Data</button>
 </nav>
 
