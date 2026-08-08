@@ -388,6 +388,7 @@
     if (name === "history") renderHistory();
     if (name === "workout") renderWorkoutBuilder();
     if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
+    if (name === "trends") renderTrends();
     if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); }
   }
 
@@ -646,10 +647,20 @@
   }
 
   function drawLineChart(canvasId, emptyId, points) {
+    var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var color = isDark ? "#5ec2a0" : "#1f8f6c";
+    drawMultiLineChart(canvasId, emptyId, [{ points: points, color: color }]);
+  }
+
+  function drawMultiLineChart(canvasId, emptyId, seriesList) {
     var canvas = document.getElementById(canvasId);
     var emptyEl = document.getElementById(emptyId);
 
-    if (points.length < 2) {
+    var allDatesSet = {};
+    seriesList.forEach(function (s) { s.points.forEach(function (p) { allDatesSet[p.date] = true; }); });
+    var allDates = Object.keys(allDatesSet).sort();
+
+    if (allDates.length < 2) {
       canvas.style.display = "none";
       emptyEl.style.display = "block";
       return;
@@ -667,9 +678,10 @@
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-    var values = points.map(function (p) { return p.value; });
-    var min = Math.min.apply(null, values);
-    var max = Math.max.apply(null, values);
+    var allValues = [];
+    seriesList.forEach(function (s) { s.points.forEach(function (p) { allValues.push(p.value); }); });
+    var min = Math.min.apply(null, allValues);
+    var max = Math.max.apply(null, allValues);
     if (min === max) { min -= 1; max += 1; }
     var pad = (max - min) * 0.15;
     min -= pad; max += pad;
@@ -678,33 +690,38 @@
     var w = cssWidth - padX * 2;
     var h = cssHeight - padY * 2 - labelSpace;
 
-    var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    ctx.strokeStyle = isDark ? "#5ec2a0" : "#1f8f6c";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    points.forEach(function (p, i) {
-      var x = padX + (i / (points.length - 1)) * w;
-      var y = padY + h - ((p.value - min) / (max - min)) * h;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+    var dateIndex = {};
+    allDates.forEach(function (d, i) { dateIndex[d] = i; });
 
-    ctx.fillStyle = ctx.strokeStyle;
-    points.forEach(function (p, i) {
-      var x = padX + (i / (points.length - 1)) * w;
-      var y = padY + h - ((p.value - min) / (max - min)) * h;
+    seriesList.forEach(function (s) {
+      if (s.points.length === 0) return;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(x, y, i === points.length - 1 ? 3.5 : 2, 0, Math.PI * 2);
-      ctx.fill();
+      s.points.forEach(function (p, i) {
+        var x = padX + (dateIndex[p.date] / (allDates.length - 1)) * w;
+        var y = padY + h - ((p.value - min) / (max - min)) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = s.color;
+      s.points.forEach(function (p, i) {
+        var x = padX + (dateIndex[p.date] / (allDates.length - 1)) * w;
+        var y = padY + h - ((p.value - min) / (max - min)) * h;
+        ctx.beginPath();
+        ctx.arc(x, y, i === s.points.length - 1 ? 3.5 : 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
     });
 
     var textDim = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
     ctx.fillStyle = textDim;
     ctx.font = "9px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-    pickDateLabelIndices(points.length, w).forEach(function (idx) {
-      var x = padX + (idx / (points.length - 1)) * w;
-      ctx.textAlign = idx === 0 ? "left" : idx === points.length - 1 ? "right" : "center";
-      ctx.fillText(formatDateShort(points[idx].date), x, cssHeight - 3);
+    pickDateLabelIndices(allDates.length, w).forEach(function (idx) {
+      var x = padX + (idx / (allDates.length - 1)) * w;
+      ctx.textAlign = idx === 0 ? "left" : idx === allDates.length - 1 ? "right" : "center";
+      ctx.fillText(formatDateShort(allDates[idx]), x, cssHeight - 3);
     });
   }
 
@@ -718,11 +735,12 @@
     var values = points.map(function (p) { return p.value; });
     var max = Math.max.apply(null, values);
     var min = Math.min.apply(null, values);
+    var suffix = unit ? " (" + unit + ")" : "";
     el.className = "summary-grid range-stats";
     el.innerHTML =
-      '<div class="stat"><div class="value">' + round1(max) + '</div><div class="label">High (' + unit + ")</div></div>" +
-      '<div class="stat"><div class="value">' + round1(min) + '</div><div class="label">Low (' + unit + ")</div></div>" +
-      '<div class="stat"><div class="value">' + round1(max - min) + '</div><div class="label">Diff (' + unit + ")</div></div>";
+      '<div class="stat"><div class="value">' + round1(max) + '</div><div class="label">High' + suffix + "</div></div>" +
+      '<div class="stat"><div class="value">' + round1(min) + '</div><div class="label">Low' + suffix + "</div></div>" +
+      '<div class="stat"><div class="value">' + round1(max - min) + '</div><div class="label">Diff' + suffix + "</div></div>";
     el.style.display = "grid";
   }
 
@@ -773,6 +791,97 @@
     renderWeightDirection(points, daySpan);
     drawLineChart("weightChart", "chartEmpty", points);
     renderRangeStats("weightTrendStats", points, "kg");
+  }
+
+  // ---------- trends view ----------
+
+  function renderTrendDirection(elId, points, unit, decimals) {
+    var el = document.getElementById(elId);
+    if (points.length < 2) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    var delta = roundN(points[points.length - 1].value - points[0].value, decimals);
+    var icon = delta < 0 ? "📉" : delta > 0 ? "📈" : "➖";
+    var label = delta < 0 ? "Diminishing" : delta > 0 ? "Increasing" : "Stable";
+    el.innerHTML =
+      '<span class="day-badge">' + icon + " " + label + "</span>" +
+      "<span>" + (delta > 0 ? "+" : "") + delta + (unit ? " " + unit : "") + "</span>";
+    el.style.display = "flex";
+  }
+
+  function getEarliestLoggedDate() {
+    var daily = loadDaily();
+    var dates = Object.keys(daily).sort();
+    return dates.length ? dates[0] : null;
+  }
+
+  function getDefaultTrendsStart(end) {
+    var earliest = getEarliestLoggedDate();
+    return earliest || addDaysISO(end, -29);
+  }
+
+  function resetTrendsDateInputs() {
+    var end = todayISO();
+    document.getElementById("trendsEndInput").value = end;
+    document.getElementById("trendsStartInput").value = getDefaultTrendsStart(end);
+  }
+
+  function getTrendsRange() {
+    var end = document.getElementById("trendsEndInput").value || todayISO();
+    var start = document.getElementById("trendsStartInput").value || getDefaultTrendsStart(end);
+    if (start > end) { var tmp = start; start = end; end = tmp; }
+    return { start: start, end: end };
+  }
+
+  var TREND_METRICS = [
+    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty", statsId: "trendsSleepStats", directionId: "trendsSleepDirection", unit: "h", decimals: 1 },
+    { key: "water", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty", statsId: "trendsWaterStats", directionId: "trendsWaterDirection", unit: "L", decimals: 1 },
+    { key: "cigarettes", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty", statsId: "trendsCigarettesStats", directionId: "trendsCigarettesDirection", unit: "", decimals: 0 },
+    { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty", statsId: "trendsProteinStats", directionId: "trendsProteinDirection", unit: "g", decimals: 0 },
+    { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty", statsId: "trendsCarbsStats", directionId: "trendsCarbsDirection", unit: "g", decimals: 0 },
+    { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty", statsId: "trendsFatStats", directionId: "trendsFatDirection", unit: "g", decimals: 0 },
+    { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty", statsId: "trendsStepsStats", directionId: "trendsStepsDirection", unit: "steps", decimals: 0 }
+  ];
+
+  function renderMetricTrend(cfg, daily, range) {
+    var points = Object.keys(daily)
+      .filter(function (d) { return d >= range.start && d <= range.end && daily[d][cfg.key] != null; })
+      .sort()
+      .map(function (d) { return { date: d, value: daily[d][cfg.key] }; });
+    renderTrendDirection(cfg.directionId, points, cfg.unit, cfg.decimals);
+    drawLineChart(cfg.canvasId, cfg.emptyId, points);
+    renderRangeStats(cfg.statsId, points, cfg.unit);
+  }
+
+  function renderCaloriesTrend(daily, range) {
+    var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
+    var intakePoints = [];
+    var burnedPoints = [];
+    dates.forEach(function (d) {
+      var entry = daily[d];
+      if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
+      var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
+      if (burned > 0) burnedPoints.push({ date: d, value: burned });
+    });
+
+    var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
+    var accent2Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-2").trim() || "#f0a03c";
+    drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", [
+      { points: intakePoints, color: accentColor },
+      { points: burnedPoints, color: accent2Color }
+    ]);
+    renderRangeStats("trendsCaloriesIntakeStats", intakePoints, "kcal intake");
+    renderRangeStats("trendsCaloriesBurnedStats", burnedPoints, "kcal burned");
+  }
+
+  function renderTrends() {
+    var daily = loadDaily();
+    var range = getTrendsRange();
+    renderCaloriesTrend(daily, range);
+    TREND_METRICS.forEach(function (cfg) { renderMetricTrend(cfg, daily, range); });
   }
 
   // ---------- workout builder ----------
@@ -1529,8 +1638,10 @@
     fillSettingsForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     resetWeightTrendDateInputs();
+    resetTrendsDateInputs();
     renderToday();
     renderHistory();
+    renderTrends();
     populateExerciseSelect(currentExerciseType);
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
@@ -1549,8 +1660,10 @@
     handleCancelEditMyFood();
     fillSettingsForm();
     resetWeightTrendDateInputs();
+    resetTrendsDateInputs();
     renderToday();
     renderHistory();
+    renderTrends();
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
@@ -1748,6 +1861,7 @@
     document.getElementById("workoutDate").value = todayISO();
     document.getElementById("foodDate").value = todayISO();
     resetWeightTrendDateInputs();
+    resetTrendsDateInputs();
 
     fillFormFromDate(todayISO());
 
@@ -1768,6 +1882,9 @@
 
     document.getElementById("weightTrendStartInput").addEventListener("change", renderToday);
     document.getElementById("weightTrendEndInput").addEventListener("change", renderToday);
+
+    document.getElementById("trendsStartInput").addEventListener("change", renderTrends);
+    document.getElementById("trendsEndInput").addEventListener("change", renderTrends);
 
     fillSettingsForm();
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
@@ -1848,7 +1965,7 @@
       renderFoodLog(e.target.value);
     });
 
-    window.addEventListener("resize", function () { renderToday(); });
+    window.addEventListener("resize", function () { renderToday(); renderTrends(); });
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
@@ -1859,6 +1976,7 @@
     renderToday();
     renderHistory();
     renderFoodLog(todayISO());
+    renderTrends();
   }
 
   document.addEventListener("DOMContentLoaded", init);
