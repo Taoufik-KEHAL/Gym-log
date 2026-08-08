@@ -211,6 +211,85 @@
     </div>
   </section>
 
+  <!-- TRENDS VIEW -->
+  <section class="view" id="view-trends">
+    <div class="card">
+      <h2>Period</h2>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr;">
+        <div class="mini-field"><label for="trendsStartInput">From</label><input type="date" id="trendsStartInput" /></div>
+        <div class="mini-field"><label for="trendsEndInput">To</label><input type="date" id="trendsEndInput" /></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Calories — Intake vs Burned</h2>
+      <div class="trend-legend">
+        <span class="legend-item"><span class="legend-dot legend-dot--a"></span>Intake</span>
+        <span class="legend-item"><span class="legend-dot legend-dot--b"></span>Burned</span>
+      </div>
+      <canvas id="trendsCaloriesChart"></canvas>
+      <div class="empty-state" id="trendsCaloriesEmpty" style="display:none;">Log calories, workouts, or steps on a few days to see a trend.</div>
+      <div class="day-status" id="trendsCaloriesIntakeStats" style="display:none;"></div>
+      <div class="day-status" id="trendsCaloriesBurnedStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Steps</h2>
+      <div class="day-status" id="trendsStepsDirection" style="display:none;"></div>
+      <canvas id="trendsStepsChart"></canvas>
+      <div class="empty-state" id="trendsStepsEmpty" style="display:none;">Log steps on a few days to see a trend.</div>
+      <div class="day-status" id="trendsStepsStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Sleep</h2>
+      <div class="day-status" id="trendsSleepDirection" style="display:none;"></div>
+      <canvas id="trendsSleepChart"></canvas>
+      <div class="empty-state" id="trendsSleepEmpty" style="display:none;">Log sleep on a few days to see a trend.</div>
+      <div class="day-status" id="trendsSleepStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Water</h2>
+      <div class="day-status" id="trendsWaterDirection" style="display:none;"></div>
+      <canvas id="trendsWaterChart"></canvas>
+      <div class="empty-state" id="trendsWaterEmpty" style="display:none;">Log water on a few days to see a trend.</div>
+      <div class="day-status" id="trendsWaterStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Cigarettes</h2>
+      <div class="day-status" id="trendsCigarettesDirection" style="display:none;"></div>
+      <canvas id="trendsCigarettesChart"></canvas>
+      <div class="empty-state" id="trendsCigarettesEmpty" style="display:none;">Log cigarettes on a few days to see a trend.</div>
+      <div class="day-status" id="trendsCigarettesStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Protein</h2>
+      <div class="day-status" id="trendsProteinDirection" style="display:none;"></div>
+      <canvas id="trendsProteinChart"></canvas>
+      <div class="empty-state" id="trendsProteinEmpty" style="display:none;">Log protein on a few days to see a trend.</div>
+      <div class="day-status" id="trendsProteinStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Carbs</h2>
+      <div class="day-status" id="trendsCarbsDirection" style="display:none;"></div>
+      <canvas id="trendsCarbsChart"></canvas>
+      <div class="empty-state" id="trendsCarbsEmpty" style="display:none;">Log carbs on a few days to see a trend.</div>
+      <div class="day-status" id="trendsCarbsStats" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Fat</h2>
+      <div class="day-status" id="trendsFatDirection" style="display:none;"></div>
+      <canvas id="trendsFatChart"></canvas>
+      <div class="empty-state" id="trendsFatEmpty" style="display:none;">Log fat on a few days to see a trend.</div>
+      <div class="day-status" id="trendsFatStats" style="display:none;"></div>
+    </div>
+  </section>
+
   <!-- DATA VIEW -->
   <section class="view" id="view-data">
     <div class="card">
@@ -322,6 +401,7 @@
   <button class="tab-btn" data-view="food"><span class="tab-icon">🍎</span>Food</button>
   <button class="tab-btn" data-view="workout"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" data-view="history"><span class="tab-icon">📈</span>History</button>
+  <button class="tab-btn" data-view="trends"><span class="tab-icon">📊</span>Trends</button>
   <button class="tab-btn" data-view="data"><span class="tab-icon">💾</span>Data</button>
 </nav>
 
