@@ -1310,6 +1310,12 @@
       return;
     }
 
+    var weightDatesAsc = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
+    var prevWeightByDate = {};
+    for (var wi = 1; wi < weightDatesAsc.length; wi++) {
+      prevWeightByDate[weightDatesAsc[wi]] = daily[weightDatesAsc[wi - 1]].weight;
+    }
+
     list.innerHTML = "";
     sorted.forEach(function (date) {
       var wrap = document.createElement("div");
@@ -1331,7 +1337,17 @@
         var line = document.createElement("div");
         line.className = "h-line";
         var parts = [];
-        if (entry.weight != null) parts.push(entry.weight + " kg");
+        if (entry.weight != null) {
+          var weightPart = entry.weight + " kg";
+          var prevWeight = prevWeightByDate[date];
+          if (prevWeight != null) {
+            var weightDiff = round1(entry.weight - prevWeight);
+            var diffCls = weightDiff < 0 ? "diff-down" : weightDiff > 0 ? "diff-up" : "";
+            weightPart += ' <span class="weight-diff' + (diffCls ? " " + diffCls : "") + '">(' +
+              (weightDiff > 0 ? "+" : "") + weightDiff + ")</span>";
+          }
+          parts.push(weightPart);
+        }
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
         if (entry.calories != null) parts.push(entry.calories + " kcal");
         if (entry.protein != null) parts.push(entry.protein + " g protein");

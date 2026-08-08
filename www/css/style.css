@@ -434,6 +434,10 @@ button:active { transform: scale(0.98); }
   justify-content: space-between;
 }
 
+.history-entry .h-line .weight-diff { font-weight: 600; }
+.history-entry .h-line .weight-diff.diff-down { color: var(--accent); }
+.history-entry .h-line .weight-diff.diff-up { color: var(--danger); }
+
 .history-entry .h-workout {
   font-size: 0.85rem;
   margin-top: 6px;
