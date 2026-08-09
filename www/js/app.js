@@ -869,25 +869,40 @@
   }
 
   function renderCaloriesTrend(daily, range) {
+    var settings = loadSettings();
     var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
     var intakePoints = [];
     var burnedPoints = [];
+    var goalPoints = [];
     dates.forEach(function (d) {
       var entry = daily[d];
       if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
       var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
       if (burned > 0) burnedPoints.push({ date: d, value: burned });
+      var goalSettingsKey = DAY_TYPE_CALORIE_SETTINGS_KEY[entry.dayType];
+      var goal = goalSettingsKey ? settings[goalSettingsKey] : null;
+      if (goal != null) goalPoints.push({ date: d, value: goal });
     });
 
     var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
     var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
     var accent2Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-2").trim() || "#f0a03c";
+    var accent3Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-3").trim() || "#5b9bd5";
     var textDimColor = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
 
     var series = [
       { points: intakePoints, color: accentColor },
       { points: burnedPoints, color: accent2Color }
     ];
+
+    var goalLegend = document.getElementById("trendsCaloriesGoalLegend");
+    if (goalPoints.length > 0) {
+      series.push({ points: goalPoints, color: accent3Color });
+      goalLegend.style.display = "flex";
+    } else {
+      goalLegend.style.display = "none";
+    }
+
     var maintenance = (intakePoints.length > 0 || burnedPoints.length > 0) ? computeMaintenanceCalories() : null;
     var maintenanceLegend = document.getElementById("trendsCaloriesMaintenanceLegend");
     if (maintenance) {
@@ -901,6 +916,7 @@
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
     renderRangeStats("trendsCaloriesIntakeStats", intakePoints, "kcal intake");
     renderRangeStats("trendsCaloriesBurnedStats", burnedPoints, "kcal burned");
+    renderRangeStats("trendsCaloriesGoalStats", goalPoints, "kcal goal");
   }
 
   function renderTrends() {
