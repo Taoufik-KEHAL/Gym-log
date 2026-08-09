@@ -7,8 +7,29 @@
     settings: "gymlog.settings", // { restCalories, workoutCalories, workoutDeficitPct, restDeficitPct }
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
-    customExercises: "gymlog.customExercises" // [ { name, type: 'strength' | 'cardio' } ]
+    customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
+    customWorkoutTemplates: "gymlog.customWorkoutTemplates" // [ { id, name, exercises: [{name, type}] } ]
   };
+
+  var WORKOUT_TEMPLATE_SEED = [
+    {
+      name: "Full Body (Wave 15→12→8→6)",
+      exercises: [
+        { name: "Dumbbell Bench Press", type: "strength" },
+        { name: "Incline Dumbbell Press", type: "strength" },
+        { name: "Pullover", type: "strength" },
+        { name: "Lat Pulldown - Wide Grip", type: "strength" },
+        { name: "Lat Pulldown - Close Grip", type: "strength" },
+        { name: "Leg Press (Machine)", type: "strength" },
+        { name: "Leg Extension (Machine)", type: "strength" },
+        { name: "Seated Leg Curl (Machine)", type: "strength" },
+        { name: "Lateral Raise (Machine)", type: "strength" },
+        { name: "Pectoral fly", type: "strength" },
+        { name: "Preacher Curl", type: "strength" },
+        { name: "Cycling", type: "cardio" }
+      ]
+    }
+  ];
 
   var CUSTOM_FOOD_SEED = [
     { name: "Perly nature (Jaouda fromage frais)", per100: { calories: 101, protein: 7.6, carbs: 0, fat: 0 } },
@@ -221,6 +242,26 @@
     saveCustomFoods(seeded);
   }
 
+  function loadWorkoutTemplates() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.customWorkoutTemplates) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveWorkoutTemplates(list) {
+    localStorage.setItem(STORAGE.customWorkoutTemplates, JSON.stringify(list));
+  }
+
+  function seedWorkoutTemplatesIfNeeded() {
+    if (localStorage.getItem(STORAGE.customWorkoutTemplates) != null) return;
+    var seeded = WORKOUT_TEMPLATE_SEED.map(function (t) {
+      return { id: makeId(), name: t.name, exercises: t.exercises.map(function (ex) { return { name: ex.name, type: ex.type }; }) };
+    });
+    saveWorkoutTemplates(seeded);
+  }
+
   var editingMyFoodId = null;
 
   function renderCustomFoodList() {
@@ -386,10 +427,10 @@
     });
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
-    if (name === "workout") renderWorkoutBuilder();
+    if (name === "workout") { renderWorkoutBuilder(); populateWorkoutTemplateSelect(); }
     if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
     if (name === "trends") renderTrends();
-    if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); }
+    if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); renderWorkoutTemplateList(); }
   }
 
   // ---------- today view ----------
@@ -1190,6 +1231,106 @@
     updateWorkoutFormMode();
   }
 
+  // ---------- workout templates ----------
+
+  function populateWorkoutTemplateSelect() {
+    var select = document.getElementById("workoutTemplateSelect");
+    var current = select.value;
+    select.innerHTML = "";
+    var placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select a template…";
+    select.appendChild(placeholder);
+    loadWorkoutTemplates().forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name + " (" + t.exercises.length + ")";
+      select.appendChild(opt);
+    });
+    if (current) select.value = current;
+  }
+
+  function handleLoadWorkoutTemplate() {
+    var select = document.getElementById("workoutTemplateSelect");
+    var id = select.value;
+    if (!id) return;
+    var template = loadWorkoutTemplates().find(function (t) { return t.id === id; });
+    if (!template) return;
+    if (currentExercises.length > 0 && !confirm('Replace the current exercise list with "' + template.name + '"?')) {
+      select.value = "";
+      return;
+    }
+    currentExercises = template.exercises.map(function (ex) {
+      return ex.type === "cardio"
+        ? { name: ex.name, type: "cardio", duration: null, pace: null }
+        : { name: ex.name, type: "strength", sets: [] };
+    });
+    select.value = "";
+    renderWorkoutBuilder();
+    toast('Loaded "' + template.name + '" — fill in today\'s sets');
+  }
+
+  function handleSaveAsTemplate() {
+    if (currentExercises.length === 0) { toast("Add exercises first"); return; }
+    var nameInput = document.getElementById("templateNameInput");
+    var name = nameInput.value.trim() || document.getElementById("workoutName").value.trim() || "My Routine";
+    var templates = loadWorkoutTemplates();
+    var exercises = currentExercises.map(function (ex) { return { name: ex.name, type: ex.type }; });
+    var existingIdx = templates.findIndex(function (t) { return t.name.toLowerCase() === name.toLowerCase(); });
+    if (existingIdx !== -1) {
+      templates[existingIdx].exercises = exercises;
+    } else {
+      templates.push({ id: makeId(), name: name, exercises: exercises });
+    }
+    saveWorkoutTemplates(templates);
+    nameInput.value = "";
+    populateWorkoutTemplateSelect();
+    renderWorkoutTemplateList();
+    toast('Saved template "' + name + '"');
+  }
+
+  function renderWorkoutTemplateList() {
+    var list = document.getElementById("workoutTemplateList");
+    var templates = loadWorkoutTemplates();
+    if (templates.length === 0) {
+      list.innerHTML = '<div class="empty-state">No saved templates yet.</div>';
+      return;
+    }
+    list.innerHTML = "";
+    templates.forEach(function (t) {
+      var item = document.createElement("div");
+      item.className = "food-log-item";
+
+      var info = document.createElement("div");
+      var nameEl = document.createElement("div");
+      nameEl.className = "food-log-name";
+      nameEl.textContent = t.name;
+      var detailEl = document.createElement("div");
+      detailEl.className = "food-log-macros";
+      detailEl.textContent = t.exercises.map(function (ex) { return ex.name; }).join(", ");
+      info.appendChild(nameEl);
+      info.appendChild(detailEl);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "remove";
+      removeBtn.textContent = "✕";
+      removeBtn.addEventListener("click", function () { handleRemoveWorkoutTemplate(t.id); });
+
+      item.appendChild(info);
+      item.appendChild(removeBtn);
+      list.appendChild(item);
+    });
+  }
+
+  function handleRemoveWorkoutTemplate(id) {
+    var templates = loadWorkoutTemplates().filter(function (t) { return t.id !== id; });
+    saveWorkoutTemplates(templates);
+    populateWorkoutTemplateSelect();
+    renderWorkoutTemplateList();
+    toast("Template removed");
+  }
+
   function handleDeleteWorkout(id) {
     if (!confirm("Delete this workout? This cannot be undone.")) return;
     var workouts = loadWorkouts().filter(function (w) { return w.id !== id; });
@@ -1607,7 +1748,8 @@
       settings: loadSettings(),
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
-      customExercises: loadCustomExercises()
+      customExercises: loadCustomExercises(),
+      customWorkoutTemplates: loadWorkoutTemplates()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -1676,6 +1818,7 @@
     if (payload.foodlog) saveFoodLog(payload.foodlog);
     if (payload.customFoods) saveCustomFoods(payload.customFoods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
+    if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
     toast("Import complete");
     fillSettingsForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
@@ -1685,8 +1828,10 @@
     renderHistory();
     renderTrends();
     populateExerciseSelect(currentExerciseType);
+    populateWorkoutTemplateSelect();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
+    renderWorkoutTemplateList();
   }
 
   function handleClear() {
@@ -1697,6 +1842,7 @@
     localStorage.removeItem(STORAGE.foodlog);
     localStorage.removeItem(STORAGE.customFoods);
     localStorage.removeItem(STORAGE.customExercises);
+    localStorage.removeItem(STORAGE.customWorkoutTemplates);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
@@ -1709,8 +1855,10 @@
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
+    populateWorkoutTemplateSelect();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
+    renderWorkoutTemplateList();
     toast("All data erased");
   }
 
@@ -1897,6 +2045,7 @@
 
   function init() {
     seedCustomFoodsIfNeeded();
+    seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
     document.getElementById("logDate").value = todayISO();
@@ -1962,6 +2111,11 @@
     });
     document.getElementById("saveWorkoutBtn").addEventListener("click", handleSaveWorkout);
     document.getElementById("cancelEditWorkoutBtn").addEventListener("click", handleCancelEditWorkout);
+
+    populateWorkoutTemplateSelect();
+    renderWorkoutTemplateList();
+    document.getElementById("loadTemplateBtn").addEventListener("click", handleLoadWorkoutTemplate);
+    document.getElementById("saveAsTemplateBtn").addEventListener("click", handleSaveAsTemplate);
 
     document.getElementById("exportBtn").addEventListener("click", handleExport);
     document.getElementById("importBtn").addEventListener("click", function () {
