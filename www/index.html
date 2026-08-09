@@ -182,6 +182,13 @@
         <label for="workoutName">Session name</label>
         <input type="text" id="workoutName" placeholder="e.g. Push Day" />
       </div>
+      <div class="field">
+        <label for="workoutTemplateSelect">Load a template</label>
+        <div class="row">
+          <select id="workoutTemplateSelect"></select>
+          <button type="button" class="secondary" id="loadTemplateBtn">Load</button>
+        </div>
+      </div>
 
       <div id="exerciseList"></div>
 
@@ -200,6 +207,14 @@
 
       <button type="button" class="primary" id="saveWorkoutBtn">Save Workout</button>
       <button type="button" class="secondary" id="cancelEditWorkoutBtn" style="display:none; margin-top:8px;">Cancel edit</button>
+
+      <div class="field" style="margin-top:14px;">
+        <label for="templateNameInput">Save current exercise list as a template</label>
+        <div class="row">
+          <input type="text" id="templateNameInput" placeholder="Template name (optional)" />
+          <button type="button" class="secondary" id="saveAsTemplateBtn">Save</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -378,6 +393,14 @@
       </div>
       <button type="button" class="secondary" id="addMyFoodBtn" style="margin-top:10px;">Add to My Foods</button>
       <button type="button" class="secondary" id="cancelEditMyFoodBtn" style="display:none; margin-top:8px;">Cancel edit</button>
+    </div>
+
+    <div class="card">
+      <h2>Workout Templates</h2>
+      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
+        Saved exercise lists — load one on the Workout tab to skip re-adding the same exercises, then just fill in today's sets. To modify one, load it, change the exercise list, and save again with the same name.
+      </p>
+      <div id="workoutTemplateList"></div>
     </div>
 
     <div class="card">
