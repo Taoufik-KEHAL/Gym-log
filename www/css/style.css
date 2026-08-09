@@ -9,6 +9,7 @@
   --accent: #5ec2a0;
   --accent-dim: #3a7a63;
   --accent-2: #f0a03c;
+  --accent-3: #5b9bd5;
   --danger: #e0645a;
   --radius: 14px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -35,6 +36,7 @@
     --accent: #1f8f6c;
     --accent-dim: #cdece1;
     --accent-2: #b5720a;
+    --accent-3: #2f6fb0;
     --danger: #c9463c;
   }
 }
@@ -202,6 +204,7 @@ canvas {
   border-top: 2px dashed var(--text-dim);
   background: none;
 }
+.legend-dot--d { background: var(--accent-3); }
 
 .day-status {
   margin-top: 10px;
