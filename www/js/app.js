@@ -91,6 +91,7 @@
 
   var currentExercises = []; // in-progress workout builder state
   var editingWorkoutId = null; // id of the workout being edited, or null when building a new one
+  var lastAutoWorkoutName = ""; // tracks the auto-generated session name so user edits aren't clobbered on date change
   var currentDayType = null; // 'rest' | 'workout' | null, for the Today form
   var currentExerciseType = "strength"; // 'strength' | 'cardio', for the exercise about to be added
 
@@ -394,6 +395,13 @@
   function formatDateShort(iso) {
     var d = new Date(iso + "T00:00:00");
     return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  }
+
+  function getDefaultWorkoutSessionName(iso) {
+    var d = new Date(iso + "T00:00:00");
+    var dayName = d.toLocaleDateString(undefined, { weekday: "long" });
+    var monthName = d.toLocaleDateString(undefined, { month: "long" });
+    return dayName + "-" + monthName.slice(0, 2);
   }
 
   function addDaysISO(iso, delta) {
@@ -1171,6 +1179,19 @@
     renderWorkoutBuilder();
   }
 
+  function setDefaultWorkoutName(dateStr) {
+    var def = getDefaultWorkoutSessionName(dateStr);
+    document.getElementById("workoutName").value = def;
+    lastAutoWorkoutName = def;
+  }
+
+  function handleWorkoutDateChange() {
+    var nameInput = document.getElementById("workoutName");
+    if (nameInput.value === lastAutoWorkoutName) {
+      setDefaultWorkoutName(document.getElementById("workoutDate").value || todayISO());
+    }
+  }
+
   function handleSaveWorkout() {
     var date = document.getElementById("workoutDate").value || todayISO();
     var name = document.getElementById("workoutName").value.trim() || "Workout";
@@ -1195,8 +1216,8 @@
     editingWorkoutId = null;
 
     currentExercises = [];
-    document.getElementById("workoutName").value = "";
     document.getElementById("workoutDate").value = todayISO();
+    setDefaultWorkoutName(todayISO());
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     toast(wasEditing ? "Workout updated" : "Workout saved");
@@ -1215,6 +1236,7 @@
     editingWorkoutId = id;
     document.getElementById("workoutDate").value = w.date;
     document.getElementById("workoutName").value = w.name;
+    lastAutoWorkoutName = ""; // loaded name is real data, not an auto-generated placeholder
     currentExercises = JSON.parse(JSON.stringify(w.exercises));
     renderWorkoutBuilder();
     updateWorkoutFormMode();
@@ -1225,8 +1247,8 @@
   function handleCancelEditWorkout() {
     editingWorkoutId = null;
     currentExercises = [];
-    document.getElementById("workoutName").value = "";
     document.getElementById("workoutDate").value = todayISO();
+    setDefaultWorkoutName(todayISO());
     renderWorkoutBuilder();
     updateWorkoutFormMode();
   }
@@ -2050,6 +2072,7 @@
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
     document.getElementById("logDate").value = todayISO();
     document.getElementById("workoutDate").value = todayISO();
+    setDefaultWorkoutName(todayISO());
     document.getElementById("foodDate").value = todayISO();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
@@ -2111,6 +2134,7 @@
     });
     document.getElementById("saveWorkoutBtn").addEventListener("click", handleSaveWorkout);
     document.getElementById("cancelEditWorkoutBtn").addEventListener("click", handleCancelEditWorkout);
+    document.getElementById("workoutDate").addEventListener("change", handleWorkoutDateChange);
 
     populateWorkoutTemplateSelect();
     renderWorkoutTemplateList();
