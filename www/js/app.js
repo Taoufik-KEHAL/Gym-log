@@ -957,7 +957,8 @@
     if (maintenance) {
       series.push({ points: buildFlatDateSeries(range.start, range.end, maintenance.tdee), color: textDimColor, dashed: true });
       maintenanceLegend.style.display = "flex";
-      document.getElementById("trendsCaloriesMaintenanceLabel").textContent = "Maintenance (" + maintenance.tdee + " kcal)";
+      var maintenanceKind = maintenance.method === "measured" ? "measured" : "estimated";
+      document.getElementById("trendsCaloriesMaintenanceLabel").textContent = "Maintenance, " + maintenanceKind + " (" + maintenance.tdee + " kcal)";
     } else {
       maintenanceLegend.style.display = "none";
     }
@@ -1996,7 +1997,77 @@
     handleMaintenanceInputChange();
   }
 
+  var MEASURED_MAINTENANCE_WINDOW_DAYS = 28;
+  var MEASURED_MAINTENANCE_MIN_DAYS = 14;
+
+  function daysBetweenISO(a, b) {
+    var da = new Date(a + "T00:00:00");
+    var db = new Date(b + "T00:00:00");
+    return Math.round((db - da) / 86400000);
+  }
+
+  // avg_kcal_intake = average(daily logged calories) over the period
+  // weight_start / weight_end = 7-day average weight at the start/end of the period
+  // weight_change_kg = weight_start - weight_end (positive = loss)
+  // total_deficit_kcal = weight_change_kg * 7700; daily_deficit_kcal = total_deficit_kcal / days
+  // TDEE = avg_kcal_intake + daily_deficit_kcal
+  function computeMeasuredMaintenance() {
+    var daily = loadDaily();
+    var weightDates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
+    if (weightDates.length === 0) return null;
+
+    var earliest = weightDates[0];
+    var end = weightDates[weightDates.length - 1];
+    var start = addDaysISO(end, -(MEASURED_MAINTENANCE_WINDOW_DAYS - 1));
+    if (start < earliest) start = earliest;
+    var periodDays = daysBetweenISO(start, end) + 1;
+    if (periodDays < MEASURED_MAINTENANCE_MIN_DAYS) return null;
+
+    function avgWeightInWindow(winStart, winEnd) {
+      var vals = [];
+      var d = winStart;
+      while (d <= winEnd) {
+        if (daily[d] && daily[d].weight != null) vals.push(daily[d].weight);
+        d = addDaysISO(d, 1);
+      }
+      return vals.length >= 3 ? vals.reduce(function (a, b) { return a + b; }, 0) / vals.length : null;
+    }
+
+    var weightStart = avgWeightInWindow(start, addDaysISO(start, 6));
+    var weightEnd = avgWeightInWindow(addDaysISO(end, -6), end);
+    if (weightStart == null || weightEnd == null) return null;
+
+    var calorieVals = [];
+    var d = start;
+    while (d <= end) {
+      if (daily[d] && daily[d].calories != null) calorieVals.push(daily[d].calories);
+      d = addDaysISO(d, 1);
+    }
+    if (calorieVals.length < 7) return null;
+    var avgIntake = calorieVals.reduce(function (a, b) { return a + b; }, 0) / calorieVals.length;
+
+    var weightChangeKg = weightStart - weightEnd;
+    var totalDeficitKcal = weightChangeKg * 7700;
+    var dailyDeficitKcal = totalDeficitKcal / periodDays;
+    var tdee = Math.round((avgIntake + dailyDeficitKcal) / 10) * 10;
+
+    return {
+      tdee: tdee,
+      avgIntake: Math.round(avgIntake),
+      weightStart: weightStart,
+      weightEnd: weightEnd,
+      weightChangeKg: weightChangeKg,
+      periodDays: periodDays,
+      loggedCalorieDays: calorieVals.length,
+      start: start,
+      end: end
+    };
+  }
+
   function computeMaintenanceCalories() {
+    var measured = computeMeasuredMaintenance();
+    if (measured) return { tdee: measured.tdee, method: "measured", measured: measured };
+
     var settings = loadSettings();
     var age = settings.age;
     var heightCm = settings.heightCm;
@@ -2009,7 +2080,7 @@
     var multiplier = ACTIVITY_MULTIPLIERS[settings.activityLevel] || ACTIVITY_MULTIPLIERS.moderate;
     var tdee = Math.round((bmr * multiplier) / 10) * 10;
 
-    return { tdee: tdee, weight: weight, usedDefaultWeight: !latest, weightDate: latest ? latest.date : null };
+    return { tdee: tdee, method: "formula", weight: weight, usedDefaultWeight: !latest, weightDate: latest ? latest.date : null };
   }
 
   function renderMaintenanceEstimate() {
@@ -2021,11 +2092,22 @@
       el.style.display = "flex";
       return;
     }
-    var weightNote = result.usedDefaultWeight
-      ? DEFAULT_BODYWEIGHT_KG + " kg assumed — log a weight on Today for a real estimate"
-      : "using " + result.weight + " kg from " + formatDateLong(result.weightDate);
-    el.innerHTML = '<span class="day-badge">Estimated maintenance: ' + result.tdee + " kcal</span>" +
-      "<span>" + weightNote + "</span>";
+    var label, note;
+    if (result.method === "measured") {
+      var m = result.measured;
+      var changeAbs = Math.abs(m.weightChangeKg).toFixed(1);
+      var trendWord = m.weightChangeKg > 0 ? "lost" : (m.weightChangeKg < 0 ? "gained" : "held steady on");
+      label = "Measured maintenance: ";
+      note = "from " + m.periodDays + " days of your data (" + formatDateShort(m.start) + "–" + formatDateShort(m.end) +
+        "): avg intake " + m.avgIntake + " kcal, " + trendWord + " " + changeAbs + " kg";
+    } else {
+      label = "Estimated maintenance: ";
+      note = result.usedDefaultWeight
+        ? DEFAULT_BODYWEIGHT_KG + " kg assumed — log a weight on Today for a real estimate"
+        : "using " + result.weight + " kg from " + formatDateLong(result.weightDate) + " (log weight + calories daily to switch to a measured estimate)";
+    }
+    el.innerHTML = '<span class="day-badge">' + label + result.tdee + " kcal</span>" +
+      "<span>" + note + "</span>";
     el.style.display = "flex";
   }
 
