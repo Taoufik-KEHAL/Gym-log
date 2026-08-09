@@ -400,8 +400,8 @@
   function getDefaultWorkoutSessionName(iso) {
     var d = new Date(iso + "T00:00:00");
     var dayName = d.toLocaleDateString(undefined, { weekday: "long" });
-    var monthName = d.toLocaleDateString(undefined, { month: "long" });
-    return dayName + "-" + monthName.slice(0, 2);
+    var month = iso.slice(5, 7);
+    return dayName + "-" + month;
   }
 
   function addDaysISO(iso, delta) {
