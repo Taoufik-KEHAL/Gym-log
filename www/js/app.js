@@ -815,14 +815,24 @@
     return { start: start, end: end };
   }
 
+  var TREND_DIRECTION_WINDOW_DAYS = 7;
+
+  function buildTrailingWindowPoints(daily, key, end, days) {
+    var start = addDaysISO(end, -(days - 1));
+    return Object.keys(daily)
+      .filter(function (d) { return d >= start && d <= end && daily[d][key] != null; })
+      .sort()
+      .map(function (d) { return { date: d, value: daily[d][key] }; });
+  }
+
   function renderWeightTrend(daily) {
     var range = getWeightTrendRange();
     var points = Object.keys(daily)
       .filter(function (d) { return d >= range.start && d <= range.end && daily[d].weight != null; })
       .sort()
       .map(function (d) { return { date: d, value: daily[d].weight }; });
-    var daySpan = Math.round((new Date(range.end + "T00:00:00") - new Date(range.start + "T00:00:00")) / 86400000) + 1;
-    renderWeightDirection(points, daySpan);
+    var directionPoints = buildTrailingWindowPoints(daily, "weight", range.end, TREND_DIRECTION_WINDOW_DAYS);
+    renderWeightDirection(directionPoints, TREND_DIRECTION_WINDOW_DAYS);
     drawLineChart("weightChart", "chartEmpty", points);
   }
 
@@ -883,7 +893,8 @@
       .filter(function (d) { return d >= range.start && d <= range.end && daily[d][cfg.key] != null; })
       .sort()
       .map(function (d) { return { date: d, value: daily[d][cfg.key] }; });
-    renderTrendDirection(cfg.directionId, points, cfg.unit, cfg.decimals);
+    var directionPoints = buildTrailingWindowPoints(daily, cfg.key, range.end, TREND_DIRECTION_WINDOW_DAYS);
+    renderTrendDirection(cfg.directionId, directionPoints, cfg.unit, cfg.decimals);
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
   }
 
@@ -2093,17 +2104,12 @@
     if (showToast) toast("Calorie targets updated");
   }
 
-  // Keeps the calorie targets following the maintenance estimate: the first time it's
-  // ever computed it just records a baseline (so it doesn't clobber an existing manual
-  // target), and after that, any time the estimate moves, targets are recomputed from it.
+  // Keeps the calorie targets following the maintenance estimate: any time the estimate
+  // moves (or hasn't been applied yet), the targets are recomputed from it.
   function syncMaintenanceTargets(result) {
     if (!result) return;
     var settings = loadSettings();
-    if (settings.maintenanceTdeeForTargets == null || settings.maintenanceTdeeForTargets === result.tdee) {
-      settings.maintenanceTdeeForTargets = result.tdee;
-      saveSettings(settings);
-      return;
-    }
+    if (settings.maintenanceTdeeForTargets === result.tdee) return;
     applyMaintenanceTargets(result, false);
   }
 
@@ -2149,15 +2155,6 @@
     renderMaintenanceEstimate();
   }
 
-  function handleApplyMaintenance() {
-    var result = computeMaintenanceCalories();
-    if (!result) {
-      toast("Enter your age and height first");
-      return;
-    }
-    applyMaintenanceTargets(result, true);
-  }
-
   // ---------- init ----------
 
   function init() {
@@ -2199,9 +2196,9 @@
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("cardioCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("workoutDeficitInput").addEventListener("change", handleDeficitInputChange);
-    document.getElementById("cardioDeficitInput").addEventListener("change", handleDeficitInputChange);
-    document.getElementById("restDeficitInput").addEventListener("change", handleDeficitInputChange);
+    document.getElementById("workoutDeficitInput").addEventListener("input", handleDeficitInputChange);
+    document.getElementById("cardioDeficitInput").addEventListener("input", handleDeficitInputChange);
+    document.getElementById("restDeficitInput").addEventListener("input", handleDeficitInputChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -2212,7 +2209,6 @@
     document.getElementById("ageInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
-    document.getElementById("applyMaintenanceBtn").addEventListener("click", handleApplyMaintenance);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
