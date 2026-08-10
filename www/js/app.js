@@ -931,15 +931,15 @@
     var todayGoal = todayGoalKey ? settings[todayGoalKey] : null;
 
     document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
-      todayIntake != null ? "Intake (" + todayIntake + " kcal)" : "Intake";
-    document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + " kcal)";
+      todayIntake != null ? "Intake (" + todayIntake + ")" : "Intake";
+    document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + ")";
 
     var goalLegend = document.getElementById("trendsCaloriesGoalLegend");
     if (goalPoints.length > 0) {
       series.push({ points: goalPoints, color: accent3Color });
       goalLegend.style.display = "flex";
       document.getElementById("trendsCaloriesGoalLegendLabel").textContent =
-        todayGoal != null ? "Goal (" + todayGoal + " kcal)" : "Goal";
+        todayGoal != null ? "Goal (" + todayGoal + ")" : "Goal";
     } else {
       goalLegend.style.display = "none";
     }
