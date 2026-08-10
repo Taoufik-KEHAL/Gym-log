@@ -815,14 +815,24 @@
     return { start: start, end: end };
   }
 
+  var TREND_DIRECTION_WINDOW_DAYS = 7;
+
+  function buildTrailingWindowPoints(daily, key, end, days) {
+    var start = addDaysISO(end, -(days - 1));
+    return Object.keys(daily)
+      .filter(function (d) { return d >= start && d <= end && daily[d][key] != null; })
+      .sort()
+      .map(function (d) { return { date: d, value: daily[d][key] }; });
+  }
+
   function renderWeightTrend(daily) {
     var range = getWeightTrendRange();
     var points = Object.keys(daily)
       .filter(function (d) { return d >= range.start && d <= range.end && daily[d].weight != null; })
       .sort()
       .map(function (d) { return { date: d, value: daily[d].weight }; });
-    var daySpan = Math.round((new Date(range.end + "T00:00:00") - new Date(range.start + "T00:00:00")) / 86400000) + 1;
-    renderWeightDirection(points, daySpan);
+    var directionPoints = buildTrailingWindowPoints(daily, "weight", range.end, TREND_DIRECTION_WINDOW_DAYS);
+    renderWeightDirection(directionPoints, TREND_DIRECTION_WINDOW_DAYS);
     drawLineChart("weightChart", "chartEmpty", points);
   }
 
@@ -883,7 +893,8 @@
       .filter(function (d) { return d >= range.start && d <= range.end && daily[d][cfg.key] != null; })
       .sort()
       .map(function (d) { return { date: d, value: daily[d][cfg.key] }; });
-    renderTrendDirection(cfg.directionId, points, cfg.unit, cfg.decimals);
+    var directionPoints = buildTrailingWindowPoints(daily, cfg.key, range.end, TREND_DIRECTION_WINDOW_DAYS);
+    renderTrendDirection(cfg.directionId, directionPoints, cfg.unit, cfg.decimals);
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
   }
 
