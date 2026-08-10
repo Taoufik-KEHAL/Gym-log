@@ -623,10 +623,6 @@
     var entry = daily[iso] || {};
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
-    document.getElementById("caloriesInput").value = entry.calories != null ? entry.calories : "";
-    document.getElementById("proteinInput").value = entry.protein != null ? entry.protein : "";
-    document.getElementById("carbsInput").value = entry.carbs != null ? entry.carbs : "";
-    document.getElementById("fatInput").value = entry.fat != null ? entry.fat : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
     document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
@@ -638,22 +634,20 @@
     var date = document.getElementById("logDate").value || todayISO();
     var weight = document.getElementById("weightInput").value;
     var sleepHours = document.getElementById("sleepInput").value;
-    var calories = document.getElementById("caloriesInput").value;
-    var protein = document.getElementById("proteinInput").value;
-    var carbs = document.getElementById("carbsInput").value;
-    var fat = document.getElementById("fatInput").value;
     var steps = document.getElementById("stepsInput").value;
     var water = document.getElementById("waterInput").value;
     var cigarettes = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
+    var existing = daily[date] || {};
     var entry = {};
     if (weight !== "") entry.weight = parseFloat(weight);
     if (sleepHours !== "") entry.sleepHours = parseFloat(sleepHours);
-    if (calories !== "") entry.calories = Math.round(parseFloat(calories));
-    if (protein !== "") entry.protein = Math.round(parseFloat(protein));
-    if (carbs !== "") entry.carbs = Math.round(parseFloat(carbs));
-    if (fat !== "") entry.fat = Math.round(parseFloat(fat));
+    // Calories/protein/carbs/fat are maintained by the Food tab, not this form; carry them over untouched.
+    if (existing.calories != null) entry.calories = existing.calories;
+    if (existing.protein != null) entry.protein = existing.protein;
+    if (existing.carbs != null) entry.carbs = existing.carbs;
+    if (existing.fat != null) entry.fat = existing.fat;
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
     if (water !== "") entry.water = parseFloat(water);
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
