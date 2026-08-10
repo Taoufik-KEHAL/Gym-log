@@ -43,6 +43,7 @@
 
     <div class="card">
       <h2>Log Today</h2>
+      <p class="hint hint--tight">Calories, protein, carbs, and fat come from what you log on the Food tab.</p>
       <form id="dailyForm">
         <div class="field">
           <label for="logDate">Date</label>
@@ -63,22 +64,6 @@
         <div class="field">
           <label for="sleepInput">Sleep (hours)</label>
           <input type="number" id="sleepInput" step="0.25" min="0" max="24" placeholder="e.g. 7.5" inputmode="decimal" />
-        </div>
-        <div class="field">
-          <label for="caloriesInput">Calories eaten (kcal)</label>
-          <input type="number" id="caloriesInput" step="1" min="0" placeholder="e.g. 2200" inputmode="numeric" />
-        </div>
-        <div class="field">
-          <label for="proteinInput">Protein (g)</label>
-          <input type="number" id="proteinInput" step="1" min="0" placeholder="e.g. 160" inputmode="numeric" />
-        </div>
-        <div class="field">
-          <label for="carbsInput">Carbs (g)</label>
-          <input type="number" id="carbsInput" step="1" min="0" placeholder="e.g. 220" inputmode="numeric" />
-        </div>
-        <div class="field">
-          <label for="fatInput">Fat (g)</label>
-          <input type="number" id="fatInput" step="1" min="0" placeholder="e.g. 70" inputmode="numeric" />
         </div>
         <div class="field">
           <label for="stepsInput">Steps</label>
@@ -102,7 +87,6 @@
         <div class="mini-field"><label for="weightTrendStartInput">From</label><input type="date" id="weightTrendStartInput" /></div>
         <div class="mini-field"><label for="weightTrendEndInput">To</label><input type="date" id="weightTrendEndInput" /></div>
       </div>
-      <div class="day-status" id="weightTrendDirection" style="display:none;"></div>
       <canvas id="weightChart"></canvas>
       <div class="empty-state" id="chartEmpty" style="display:none;">Log your weight on a few days to see a trend.</div>
     </div>
@@ -249,49 +233,42 @@
 
     <div class="card">
       <h2>Steps</h2>
-      <div class="day-status" id="trendsStepsDirection" style="display:none;"></div>
       <canvas id="trendsStepsChart"></canvas>
       <div class="empty-state" id="trendsStepsEmpty" style="display:none;">Log steps on a few days to see a trend.</div>
     </div>
 
     <div class="card">
       <h2>Sleep</h2>
-      <div class="day-status" id="trendsSleepDirection" style="display:none;"></div>
       <canvas id="trendsSleepChart"></canvas>
       <div class="empty-state" id="trendsSleepEmpty" style="display:none;">Log sleep on a few days to see a trend.</div>
     </div>
 
     <div class="card">
       <h2>Water</h2>
-      <div class="day-status" id="trendsWaterDirection" style="display:none;"></div>
       <canvas id="trendsWaterChart"></canvas>
       <div class="empty-state" id="trendsWaterEmpty" style="display:none;">Log water on a few days to see a trend.</div>
     </div>
 
     <div class="card">
       <h2>Cigarettes</h2>
-      <div class="day-status" id="trendsCigarettesDirection" style="display:none;"></div>
       <canvas id="trendsCigarettesChart"></canvas>
       <div class="empty-state" id="trendsCigarettesEmpty" style="display:none;">Log cigarettes on a few days to see a trend.</div>
     </div>
 
     <div class="card">
       <h2>Protein</h2>
-      <div class="day-status" id="trendsProteinDirection" style="display:none;"></div>
       <canvas id="trendsProteinChart"></canvas>
       <div class="empty-state" id="trendsProteinEmpty" style="display:none;">Log protein on a few days to see a trend.</div>
     </div>
 
     <div class="card">
       <h2>Carbs</h2>
-      <div class="day-status" id="trendsCarbsDirection" style="display:none;"></div>
       <canvas id="trendsCarbsChart"></canvas>
       <div class="empty-state" id="trendsCarbsEmpty" style="display:none;">Log carbs on a few days to see a trend.</div>
     </div>
 
     <div class="card">
       <h2>Fat</h2>
-      <div class="day-status" id="trendsFatDirection" style="display:none;"></div>
       <canvas id="trendsFatChart"></canvas>
       <div class="empty-state" id="trendsFatEmpty" style="display:none;">Log fat on a few days to see a trend.</div>
     </div>
