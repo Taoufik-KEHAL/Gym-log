@@ -779,14 +779,19 @@
       ctx.fillStyle = textMain;
       ctx.font = "bold 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
       var edge = w * 0.12;
+      var pointY = function (p) { return padY + h - ((p.value - min) / (max - min)) * h; };
       var drawValueLabel = function (p, above) {
         var x = padX + (dateIndex[p.date] / (allDates.length - 1)) * w;
-        var y = padY + h - ((p.value - min) / (max - min)) * h;
+        var y = pointY(p);
         ctx.textAlign = x <= padX + edge ? "left" : x >= padX + w - edge ? "right" : "center";
         ctx.fillText(formatChartPointValue(p.value), x, above ? y - 6 : y + 14);
       };
       drawValueLabel(maxPoint, true);
       if (minPoint !== maxPoint) drawValueLabel(minPoint, false);
+      var lastPoint = pts[pts.length - 1];
+      if (lastPoint !== maxPoint && lastPoint !== minPoint) {
+        drawValueLabel(lastPoint, pointY(lastPoint) > padY + h / 2);
+      }
     }
 
     var textDim = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
