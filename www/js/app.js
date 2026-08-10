@@ -1977,27 +1977,14 @@
 
   function renderActivityAutoSuggestion() {
     var hint = document.getElementById("activityAutoSuggestion");
-    var btn = document.getElementById("useAutoActivityBtn");
     var suggestion = computeActivityLevelFromHistory();
     if (!suggestion) {
       hint.style.display = "none";
-      btn.style.display = "none";
       return;
     }
-    var settings = loadSettings();
-    var current = settings.activityLevel || "moderate";
     hint.innerHTML = "📊 Based on your last " + suggestion.loggedDays + " logged days (" + suggestion.activeDays +
       " active), your activity level looks like <strong>" + ACTIVITY_LEVEL_LABELS[suggestion.level] + "</strong>.";
     hint.style.display = "block";
-    btn.dataset.level = suggestion.level;
-    btn.style.display = suggestion.level === current ? "none" : "inline-block";
-  }
-
-  function handleUseAutoActivity() {
-    var level = document.getElementById("useAutoActivityBtn").dataset.level;
-    if (!level) return;
-    document.getElementById("activityLevelSelect").value = level;
-    handleMaintenanceInputChange();
   }
 
   var MEASURED_MAINTENANCE_WINDOW_DAYS = 28;
@@ -2226,7 +2213,6 @@
     document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("applyMaintenanceBtn").addEventListener("click", handleApplyMaintenance);
-    document.getElementById("useAutoActivityBtn").addEventListener("click", handleUseAutoActivity);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
