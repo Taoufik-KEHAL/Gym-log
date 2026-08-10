@@ -301,9 +301,6 @@
   <section class="view" id="view-data">
     <div class="card">
       <h2>Maintenance Calories</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        Calculated from your logged weight and calorie data whenever you have enough history; otherwise estimated from your age, height, and most recent logged body weight using a standard BMR formula. This is a rough estimate, not medical advice.
-      </p>
       <div class="field">
         <label>Sex (for the BMR formula)</label>
         <div class="segmented" id="sexToggle">
@@ -338,16 +335,10 @@
         <div class="mini-field"><label for="restDeficitInput">Rest deficit (%)</label><input type="number" id="restDeficitInput" step="0.5" min="0" max="50" value="10" inputmode="decimal" /></div>
       </div>
       <button type="button" class="secondary" id="applyMaintenanceBtn" style="margin-top:10px;">Use as my calorie targets</button>
-      <p style="color:var(--text-dim); font-size:0.78rem; margin-bottom:0;">
-        Applies the deficit percentages above to your estimated maintenance calories — a small, sustainable deficit by default. Fills in the fields below, which you can still edit directly any time.
-      </p>
     </div>
 
     <div class="card">
       <h2>Calorie Targets</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        Set a target for rest days and workout days. Pick a day type on the Today tab to see how you're tracking against it.
-      </p>
       <div class="field">
         <label for="restCaloriesInput">Rest day target (kcal)</label>
         <input type="number" id="restCaloriesInput" step="1" min="0" placeholder="e.g. 2000" inputmode="numeric" />
@@ -364,9 +355,6 @@
 
     <div class="card">
       <h2>My Foods</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        Your own known foods and home-cooked dishes (tajine, msemen, etc.) — this is the full list searched on the Food tab.
-      </p>
       <div id="customFoodList"></div>
       <div class="field" style="margin-top:10px;">
         <label for="myFoodName">Food name</label>
@@ -386,17 +374,11 @@
 
     <div class="card">
       <h2>Workout Templates</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        Saved exercise lists — load one on the Workout tab to skip re-adding the same exercises, then just fill in today's sets. To modify one, load it, change the exercise list, and save again with the same name.
-      </p>
       <div id="workoutTemplateList"></div>
     </div>
 
     <div class="card">
       <h2>Backup &amp; Restore</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        All data is stored only on this device. Export a backup regularly, especially before clearing browser data — on the Export prompt, choose Drive (or any cloud app you have installed) to save it there.
-      </p>
       <div class="btn-row fill">
         <button type="button" class="secondary" id="exportBtn">Export JSON</button>
         <button type="button" class="secondary" id="importFileBtn">Import File</button>
