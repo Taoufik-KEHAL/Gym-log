@@ -699,10 +699,16 @@
   function drawLineChart(canvasId, emptyId, points) {
     var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
     var color = isDark ? "#5ec2a0" : "#1f8f6c";
-    drawMultiLineChart(canvasId, emptyId, [{ points: points, color: color }]);
+    drawMultiLineChart(canvasId, emptyId, [{ points: points, color: color }], { showMinMax: true });
   }
 
-  function drawMultiLineChart(canvasId, emptyId, seriesList) {
+  function formatChartPointValue(v) {
+    var r = Math.round(v * 10) / 10;
+    return String(r);
+  }
+
+  function drawMultiLineChart(canvasId, emptyId, seriesList, options) {
+    options = options || {};
     var canvas = document.getElementById(canvasId);
     var emptyEl = document.getElementById(emptyId);
 
@@ -768,6 +774,27 @@
       });
     });
 
+    if (options.showMinMax && seriesList.length === 1 && seriesList[0].points.length > 0) {
+      var pts = seriesList[0].points;
+      var maxPoint = pts[0], minPoint = pts[0];
+      pts.forEach(function (p) {
+        if (p.value > maxPoint.value) maxPoint = p;
+        if (p.value < minPoint.value) minPoint = p;
+      });
+      var textMain = getComputedStyle(document.documentElement).getPropertyValue("--text").trim() || "#f2f3f5";
+      ctx.fillStyle = textMain;
+      ctx.font = "bold 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+      var edge = w * 0.12;
+      var drawValueLabel = function (p, above) {
+        var x = padX + (dateIndex[p.date] / (allDates.length - 1)) * w;
+        var y = padY + h - ((p.value - min) / (max - min)) * h;
+        ctx.textAlign = x <= padX + edge ? "left" : x >= padX + w - edge ? "right" : "center";
+        ctx.fillText(formatChartPointValue(p.value), x, above ? y - 6 : y + 14);
+      };
+      drawValueLabel(maxPoint, true);
+      if (minPoint !== maxPoint) drawValueLabel(minPoint, false);
+    }
+
     var textDim = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
     ctx.fillStyle = textDim;
     ctx.font = "9px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -776,25 +803,6 @@
       ctx.textAlign = idx === 0 ? "left" : idx === allDates.length - 1 ? "right" : "center";
       ctx.fillText(formatDateShort(allDates[idx]), x, cssHeight - 3);
     });
-  }
-
-  function renderWeightDirection(points, daySpan) {
-    var el = document.getElementById("weightTrendDirection");
-    if (points.length < 2) {
-      el.style.display = "none";
-      el.innerHTML = "";
-      return;
-    }
-    var delta = round1(points[points.length - 1].value - points[0].value);
-    var icon, label, cls;
-    if (delta < 0) { icon = "📉"; label = "Diminishing"; cls = "trend-down"; }
-    else if (delta > 0) { icon = "📈"; label = "Increasing"; cls = "trend-up"; }
-    else { icon = "➖"; label = "Stable"; cls = ""; }
-    var dayLabel = "past " + daySpan + " day" + (daySpan === 1 ? "" : "s");
-    el.innerHTML =
-      '<span class="day-badge' + (cls ? " " + cls : "") + '">' + icon + " " + label + "</span>" +
-      "<span>" + (delta > 0 ? "+" : "") + delta + " kg over " + dayLabel + "</span>";
-    el.style.display = "flex";
   }
 
   function getDefaultWeightTrendStart(end) {
@@ -815,44 +823,16 @@
     return { start: start, end: end };
   }
 
-  var TREND_DIRECTION_WINDOW_DAYS = 7;
-
-  function buildTrailingWindowPoints(daily, key, end, days) {
-    var start = addDaysISO(end, -(days - 1));
-    return Object.keys(daily)
-      .filter(function (d) { return d >= start && d <= end && daily[d][key] != null; })
-      .sort()
-      .map(function (d) { return { date: d, value: daily[d][key] }; });
-  }
-
   function renderWeightTrend(daily) {
     var range = getWeightTrendRange();
     var points = Object.keys(daily)
       .filter(function (d) { return d >= range.start && d <= range.end && daily[d].weight != null; })
       .sort()
       .map(function (d) { return { date: d, value: daily[d].weight }; });
-    var directionPoints = buildTrailingWindowPoints(daily, "weight", range.end, TREND_DIRECTION_WINDOW_DAYS);
-    renderWeightDirection(directionPoints, TREND_DIRECTION_WINDOW_DAYS);
     drawLineChart("weightChart", "chartEmpty", points);
   }
 
   // ---------- trends view ----------
-
-  function renderTrendDirection(elId, points, unit, decimals) {
-    var el = document.getElementById(elId);
-    if (points.length < 2) {
-      el.style.display = "none";
-      el.innerHTML = "";
-      return;
-    }
-    var delta = roundN(points[points.length - 1].value - points[0].value, decimals);
-    var icon = delta < 0 ? "📉" : delta > 0 ? "📈" : "➖";
-    var label = delta < 0 ? "Diminishing" : delta > 0 ? "Increasing" : "Stable";
-    el.innerHTML =
-      '<span class="day-badge">' + icon + " " + label + "</span>" +
-      "<span>" + (delta > 0 ? "+" : "") + delta + (unit ? " " + unit : "") + "</span>";
-    el.style.display = "flex";
-  }
 
   function getEarliestLoggedDate() {
     var daily = loadDaily();
@@ -879,13 +859,13 @@
   }
 
   var TREND_METRICS = [
-    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty", directionId: "trendsSleepDirection", unit: "h", decimals: 1 },
-    { key: "water", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty", directionId: "trendsWaterDirection", unit: "L", decimals: 1 },
-    { key: "cigarettes", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty", directionId: "trendsCigarettesDirection", unit: "", decimals: 0 },
-    { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty", directionId: "trendsProteinDirection", unit: "g", decimals: 0 },
-    { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty", directionId: "trendsCarbsDirection", unit: "g", decimals: 0 },
-    { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty", directionId: "trendsFatDirection", unit: "g", decimals: 0 },
-    { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty", directionId: "trendsStepsDirection", unit: "steps", decimals: 0 }
+    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" },
+    { key: "water", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty" },
+    { key: "cigarettes", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty" },
+    { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty" },
+    { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty" },
+    { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty" },
+    { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty" }
   ];
 
   function renderMetricTrend(cfg, daily, range) {
@@ -893,8 +873,6 @@
       .filter(function (d) { return d >= range.start && d <= range.end && daily[d][cfg.key] != null; })
       .sort()
       .map(function (d) { return { date: d, value: daily[d][cfg.key] }; });
-    var directionPoints = buildTrailingWindowPoints(daily, cfg.key, range.end, TREND_DIRECTION_WINDOW_DAYS);
-    renderTrendDirection(cfg.directionId, directionPoints, cfg.unit, cfg.decimals);
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
   }
 
