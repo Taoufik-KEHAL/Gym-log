@@ -161,18 +161,6 @@ canvas {
   line-height: 1.3;
 }
 
-.range-stats {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.range-stats + .range-stats {
-  margin-top: 8px;
-  padding-top: 0;
-  border-top: none;
-}
-
 .trend-legend {
   display: flex;
   flex-wrap: wrap;
