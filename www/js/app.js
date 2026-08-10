@@ -777,25 +777,6 @@
     });
   }
 
-  function renderRangeStats(elId, points, unit) {
-    var el = document.getElementById(elId);
-    if (points.length < 2) {
-      el.style.display = "none";
-      el.innerHTML = "";
-      return;
-    }
-    var values = points.map(function (p) { return p.value; });
-    var max = Math.max.apply(null, values);
-    var min = Math.min.apply(null, values);
-    var suffix = unit ? " (" + unit + ")" : "";
-    el.className = "summary-grid range-stats";
-    el.innerHTML =
-      '<div class="stat"><div class="value">' + round1(max) + '</div><div class="label">High' + suffix + "</div></div>" +
-      '<div class="stat"><div class="value">' + round1(min) + '</div><div class="label">Low' + suffix + "</div></div>" +
-      '<div class="stat"><div class="value">' + round1(max - min) + '</div><div class="label">Diff' + suffix + "</div></div>";
-    el.style.display = "grid";
-  }
-
   function renderWeightDirection(points, daySpan) {
     var el = document.getElementById("weightTrendDirection");
     if (points.length < 2) {
@@ -842,7 +823,6 @@
     var daySpan = Math.round((new Date(range.end + "T00:00:00") - new Date(range.start + "T00:00:00")) / 86400000) + 1;
     renderWeightDirection(points, daySpan);
     drawLineChart("weightChart", "chartEmpty", points);
-    renderRangeStats("weightTrendStats", points, "kg");
   }
 
   // ---------- trends view ----------
@@ -888,13 +868,13 @@
   }
 
   var TREND_METRICS = [
-    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty", statsId: "trendsSleepStats", directionId: "trendsSleepDirection", unit: "h", decimals: 1 },
-    { key: "water", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty", statsId: "trendsWaterStats", directionId: "trendsWaterDirection", unit: "L", decimals: 1 },
-    { key: "cigarettes", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty", statsId: "trendsCigarettesStats", directionId: "trendsCigarettesDirection", unit: "", decimals: 0 },
-    { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty", statsId: "trendsProteinStats", directionId: "trendsProteinDirection", unit: "g", decimals: 0 },
-    { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty", statsId: "trendsCarbsStats", directionId: "trendsCarbsDirection", unit: "g", decimals: 0 },
-    { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty", statsId: "trendsFatStats", directionId: "trendsFatDirection", unit: "g", decimals: 0 },
-    { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty", statsId: "trendsStepsStats", directionId: "trendsStepsDirection", unit: "steps", decimals: 0 }
+    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty", directionId: "trendsSleepDirection", unit: "h", decimals: 1 },
+    { key: "water", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty", directionId: "trendsWaterDirection", unit: "L", decimals: 1 },
+    { key: "cigarettes", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty", directionId: "trendsCigarettesDirection", unit: "", decimals: 0 },
+    { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty", directionId: "trendsProteinDirection", unit: "g", decimals: 0 },
+    { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty", directionId: "trendsCarbsDirection", unit: "g", decimals: 0 },
+    { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty", directionId: "trendsFatDirection", unit: "g", decimals: 0 },
+    { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty", directionId: "trendsStepsDirection", unit: "steps", decimals: 0 }
   ];
 
   function renderMetricTrend(cfg, daily, range) {
@@ -904,7 +884,6 @@
       .map(function (d) { return { date: d, value: daily[d][cfg.key] }; });
     renderTrendDirection(cfg.directionId, points, cfg.unit, cfg.decimals);
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
-    renderRangeStats(cfg.statsId, points, cfg.unit);
   }
 
   function buildFlatDateSeries(start, end, value) {
@@ -964,9 +943,6 @@
     }
 
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
-    renderRangeStats("trendsCaloriesIntakeStats", intakePoints, "kcal intake");
-    renderRangeStats("trendsCaloriesBurnedStats", burnedPoints, "kcal burned");
-    renderRangeStats("trendsCaloriesGoalStats", goalPoints, "kcal goal");
   }
 
   function renderTrends() {
