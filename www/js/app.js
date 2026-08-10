@@ -153,6 +153,7 @@
 
   function saveDaily(data) {
     localStorage.setItem(STORAGE.daily, JSON.stringify(data));
+    syncMaintenanceTargets(computeMaintenanceCalories());
   }
 
   function loadWorkouts() {
@@ -1891,7 +1892,7 @@
     renderMaintenanceEstimate();
   }
 
-  function handleSettingsChange() {
+  function persistTargetsAndDeficits() {
     var rest = document.getElementById("restCaloriesInput").value;
     var workout = document.getElementById("workoutCaloriesInput").value;
     var cardio = document.getElementById("cardioCaloriesInput").value;
@@ -1906,8 +1907,21 @@
     settings.cardioDeficitPct = isNaN(cardioDeficit) ? DEFAULT_CARDIO_DEFICIT_PCT : cardioDeficit;
     settings.restDeficitPct = isNaN(restDeficit) ? DEFAULT_REST_DEFICIT_PCT : restDeficit;
     saveSettings(settings);
-    toast("Targets saved");
     renderToday();
+  }
+
+  function handleSettingsChange() {
+    persistTargetsAndDeficits();
+    toast("Targets saved");
+  }
+
+  function handleDeficitInputChange() {
+    var result = computeMaintenanceCalories();
+    if (result) {
+      applyMaintenanceTargets(result, true);
+    } else {
+      handleSettingsChange();
+    }
   }
 
   // ---------- maintenance calories ----------
@@ -1963,27 +1977,14 @@
 
   function renderActivityAutoSuggestion() {
     var hint = document.getElementById("activityAutoSuggestion");
-    var btn = document.getElementById("useAutoActivityBtn");
     var suggestion = computeActivityLevelFromHistory();
     if (!suggestion) {
       hint.style.display = "none";
-      btn.style.display = "none";
       return;
     }
-    var settings = loadSettings();
-    var current = settings.activityLevel || "moderate";
     hint.innerHTML = "📊 Based on your last " + suggestion.loggedDays + " logged days (" + suggestion.activeDays +
       " active), your activity level looks like <strong>" + ACTIVITY_LEVEL_LABELS[suggestion.level] + "</strong>.";
     hint.style.display = "block";
-    btn.dataset.level = suggestion.level;
-    btn.style.display = suggestion.level === current ? "none" : "inline-block";
-  }
-
-  function handleUseAutoActivity() {
-    var level = document.getElementById("useAutoActivityBtn").dataset.level;
-    if (!level) return;
-    document.getElementById("activityLevelSelect").value = level;
-    handleMaintenanceInputChange();
   }
 
   var MEASURED_MAINTENANCE_WINDOW_DAYS = 28;
@@ -2072,10 +2073,45 @@
     return { tdee: tdee, method: "formula", weight: weight, usedDefaultWeight: !latest, weightDate: latest ? latest.date : null };
   }
 
+  function applyMaintenanceTargets(result, showToast) {
+    var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
+    var cardioDeficit = parseFloat(document.getElementById("cardioDeficitInput").value);
+    var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
+    if (isNaN(workoutDeficit)) workoutDeficit = DEFAULT_WORKOUT_DEFICIT_PCT;
+    if (isNaN(cardioDeficit)) cardioDeficit = DEFAULT_CARDIO_DEFICIT_PCT;
+    if (isNaN(restDeficit)) restDeficit = DEFAULT_REST_DEFICIT_PCT;
+    var workoutTarget = Math.round((result.tdee * (1 - workoutDeficit / 100)) / 10) * 10;
+    var cardioTarget = Math.round((result.tdee * (1 - cardioDeficit / 100)) / 10) * 10;
+    var restTarget = Math.round((result.tdee * (1 - restDeficit / 100)) / 10) * 10;
+    document.getElementById("restCaloriesInput").value = restTarget;
+    document.getElementById("workoutCaloriesInput").value = workoutTarget;
+    document.getElementById("cardioCaloriesInput").value = cardioTarget;
+    persistTargetsAndDeficits();
+    var settings = loadSettings();
+    settings.maintenanceTdeeForTargets = result.tdee;
+    saveSettings(settings);
+    if (showToast) toast("Calorie targets updated");
+  }
+
+  // Keeps the calorie targets following the maintenance estimate: the first time it's
+  // ever computed it just records a baseline (so it doesn't clobber an existing manual
+  // target), and after that, any time the estimate moves, targets are recomputed from it.
+  function syncMaintenanceTargets(result) {
+    if (!result) return;
+    var settings = loadSettings();
+    if (settings.maintenanceTdeeForTargets == null || settings.maintenanceTdeeForTargets === result.tdee) {
+      settings.maintenanceTdeeForTargets = result.tdee;
+      saveSettings(settings);
+      return;
+    }
+    applyMaintenanceTargets(result, false);
+  }
+
   function renderMaintenanceEstimate() {
     renderActivityAutoSuggestion();
     var el = document.getElementById("maintenanceResult");
     var result = computeMaintenanceCalories();
+    syncMaintenanceTargets(result);
     if (!result) {
       el.innerHTML = "<span>Enter your age and height above to estimate maintenance calories.</span>";
       el.style.display = "flex";
@@ -2119,19 +2155,7 @@
       toast("Enter your age and height first");
       return;
     }
-    var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
-    var cardioDeficit = parseFloat(document.getElementById("cardioDeficitInput").value);
-    var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
-    if (isNaN(workoutDeficit)) workoutDeficit = DEFAULT_WORKOUT_DEFICIT_PCT;
-    if (isNaN(cardioDeficit)) cardioDeficit = DEFAULT_CARDIO_DEFICIT_PCT;
-    if (isNaN(restDeficit)) restDeficit = DEFAULT_REST_DEFICIT_PCT;
-    var workoutTarget = Math.round((result.tdee * (1 - workoutDeficit / 100)) / 10) * 10;
-    var cardioTarget = Math.round((result.tdee * (1 - cardioDeficit / 100)) / 10) * 10;
-    var restTarget = Math.round((result.tdee * (1 - restDeficit / 100)) / 10) * 10;
-    document.getElementById("restCaloriesInput").value = restTarget;
-    document.getElementById("workoutCaloriesInput").value = workoutTarget;
-    document.getElementById("cardioCaloriesInput").value = cardioTarget;
-    handleSettingsChange();
+    applyMaintenanceTargets(result, true);
   }
 
   // ---------- init ----------
@@ -2175,9 +2199,9 @@
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("cardioCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("workoutDeficitInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("cardioDeficitInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("restDeficitInput").addEventListener("change", handleSettingsChange);
+    document.getElementById("workoutDeficitInput").addEventListener("change", handleDeficitInputChange);
+    document.getElementById("cardioDeficitInput").addEventListener("change", handleDeficitInputChange);
+    document.getElementById("restDeficitInput").addEventListener("change", handleDeficitInputChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -2189,7 +2213,6 @@
     document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("applyMaintenanceBtn").addEventListener("click", handleApplyMaintenance);
-    document.getElementById("useAutoActivityBtn").addEventListener("click", handleUseAutoActivity);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
