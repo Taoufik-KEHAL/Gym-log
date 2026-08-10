@@ -2093,17 +2093,12 @@
     if (showToast) toast("Calorie targets updated");
   }
 
-  // Keeps the calorie targets following the maintenance estimate: the first time it's
-  // ever computed it just records a baseline (so it doesn't clobber an existing manual
-  // target), and after that, any time the estimate moves, targets are recomputed from it.
+  // Keeps the calorie targets following the maintenance estimate: any time the estimate
+  // moves (or hasn't been applied yet), the targets are recomputed from it.
   function syncMaintenanceTargets(result) {
     if (!result) return;
     var settings = loadSettings();
-    if (settings.maintenanceTdeeForTargets == null || settings.maintenanceTdeeForTargets === result.tdee) {
-      settings.maintenanceTdeeForTargets = result.tdee;
-      saveSettings(settings);
-      return;
-    }
+    if (settings.maintenanceTdeeForTargets === result.tdee) return;
     applyMaintenanceTargets(result, false);
   }
 
@@ -2147,15 +2142,6 @@
     settings.sex = currentSex;
     saveSettings(settings);
     renderMaintenanceEstimate();
-  }
-
-  function handleApplyMaintenance() {
-    var result = computeMaintenanceCalories();
-    if (!result) {
-      toast("Enter your age and height first");
-      return;
-    }
-    applyMaintenanceTargets(result, true);
   }
 
   // ---------- init ----------
@@ -2212,7 +2198,6 @@
     document.getElementById("ageInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
     document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
-    document.getElementById("applyMaintenanceBtn").addEventListener("click", handleApplyMaintenance);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
