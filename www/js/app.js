@@ -2199,9 +2199,9 @@
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("cardioCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("workoutDeficitInput").addEventListener("change", handleDeficitInputChange);
-    document.getElementById("cardioDeficitInput").addEventListener("change", handleDeficitInputChange);
-    document.getElementById("restDeficitInput").addEventListener("change", handleDeficitInputChange);
+    document.getElementById("workoutDeficitInput").addEventListener("input", handleDeficitInputChange);
+    document.getElementById("cardioDeficitInput").addEventListener("input", handleDeficitInputChange);
+    document.getElementById("restDeficitInput").addEventListener("input", handleDeficitInputChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {
