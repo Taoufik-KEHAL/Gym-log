@@ -923,10 +923,23 @@
       { points: burnedPoints, color: accent2Color }
     ];
 
+    var today = todayISO();
+    var todayEntry = daily[today];
+    var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
+    var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
+    var todayGoalKey = todayEntry && DAY_TYPE_CALORIE_SETTINGS_KEY[todayEntry.dayType];
+    var todayGoal = todayGoalKey ? settings[todayGoalKey] : null;
+
+    document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
+      todayIntake != null ? "Intake (" + todayIntake + " kcal)" : "Intake";
+    document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + " kcal)";
+
     var goalLegend = document.getElementById("trendsCaloriesGoalLegend");
     if (goalPoints.length > 0) {
       series.push({ points: goalPoints, color: accent3Color });
       goalLegend.style.display = "flex";
+      document.getElementById("trendsCaloriesGoalLegendLabel").textContent =
+        todayGoal != null ? "Goal (" + todayGoal + " kcal)" : "Goal";
     } else {
       goalLegend.style.display = "none";
     }
