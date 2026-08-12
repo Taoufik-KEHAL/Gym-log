@@ -82,6 +82,13 @@
   var DEFAULT_WORKOUT_DEFICIT_PCT = 2; // % below maintenance, applied by "Use as my calorie targets" unless overridden
   var DEFAULT_CARDIO_DEFICIT_PCT = 5; // % below maintenance, applied by "Use as my calorie targets" unless overridden
   var DEFAULT_REST_DEFICIT_PCT = 10; // % below maintenance, applied by "Use as my calorie targets" unless overridden
+  var MIN_HEALTHY_DEFICIT_PCT = 2; // below this, unlikely to produce meaningful fat loss
+  var MAX_HEALTHY_DEFICIT_PCT = 20; // above this, risks muscle loss / unsustainable
+
+  function clampDeficitPct(v) {
+    if (isNaN(v)) return v;
+    return Math.min(MAX_HEALTHY_DEFICIT_PCT, Math.max(MIN_HEALTHY_DEFICIT_PCT, v));
+  }
 
   var DAY_TYPE_LABELS = {
     rest: "😴 Rest day",
@@ -957,7 +964,7 @@
     }
 
     var deficitPct = Math.round(((maintenance.tdee - todayGoal) / maintenance.tdee) * 100);
-    var deficitHealthy = deficitPct >= 2 && deficitPct <= 20;
+    var deficitHealthy = deficitPct >= MIN_HEALTHY_DEFICIT_PCT && deficitPct <= MAX_HEALTHY_DEFICIT_PCT;
     var deficitNote = deficitPct < 0
       ? "goal is " + Math.abs(deficitPct) + "% above maintenance (surplus)"
       : "goal is " + deficitPct + "% below maintenance";
@@ -1910,9 +1917,9 @@
     document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
     document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
     document.getElementById("cardioCaloriesInput").value = settings.cardioCalories != null ? settings.cardioCalories : "";
-    document.getElementById("workoutDeficitInput").value = settings.workoutDeficitPct != null ? settings.workoutDeficitPct : DEFAULT_WORKOUT_DEFICIT_PCT;
-    document.getElementById("cardioDeficitInput").value = settings.cardioDeficitPct != null ? settings.cardioDeficitPct : DEFAULT_CARDIO_DEFICIT_PCT;
-    document.getElementById("restDeficitInput").value = settings.restDeficitPct != null ? settings.restDeficitPct : DEFAULT_REST_DEFICIT_PCT;
+    document.getElementById("workoutDeficitInput").value = clampDeficitPct(settings.workoutDeficitPct != null ? settings.workoutDeficitPct : DEFAULT_WORKOUT_DEFICIT_PCT);
+    document.getElementById("cardioDeficitInput").value = clampDeficitPct(settings.cardioDeficitPct != null ? settings.cardioDeficitPct : DEFAULT_CARDIO_DEFICIT_PCT);
+    document.getElementById("restDeficitInput").value = clampDeficitPct(settings.restDeficitPct != null ? settings.restDeficitPct : DEFAULT_REST_DEFICIT_PCT);
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     document.getElementById("activityLevelSelect").value = settings.activityLevel || "moderate";
@@ -1924,9 +1931,12 @@
     var rest = document.getElementById("restCaloriesInput").value;
     var workout = document.getElementById("workoutCaloriesInput").value;
     var cardio = document.getElementById("cardioCaloriesInput").value;
-    var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
-    var cardioDeficit = parseFloat(document.getElementById("cardioDeficitInput").value);
-    var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
+    var workoutDeficit = clampDeficitPct(parseFloat(document.getElementById("workoutDeficitInput").value));
+    var cardioDeficit = clampDeficitPct(parseFloat(document.getElementById("cardioDeficitInput").value));
+    var restDeficit = clampDeficitPct(parseFloat(document.getElementById("restDeficitInput").value));
+    document.getElementById("workoutDeficitInput").value = isNaN(workoutDeficit) ? DEFAULT_WORKOUT_DEFICIT_PCT : workoutDeficit;
+    document.getElementById("cardioDeficitInput").value = isNaN(cardioDeficit) ? DEFAULT_CARDIO_DEFICIT_PCT : cardioDeficit;
+    document.getElementById("restDeficitInput").value = isNaN(restDeficit) ? DEFAULT_REST_DEFICIT_PCT : restDeficit;
     var settings = loadSettings();
     if (rest !== "") settings.restCalories = Math.round(parseFloat(rest)); else delete settings.restCalories;
     if (workout !== "") settings.workoutCalories = Math.round(parseFloat(workout)); else delete settings.workoutCalories;
@@ -2102,9 +2112,9 @@
   }
 
   function applyMaintenanceTargets(result, showToast) {
-    var workoutDeficit = parseFloat(document.getElementById("workoutDeficitInput").value);
-    var cardioDeficit = parseFloat(document.getElementById("cardioDeficitInput").value);
-    var restDeficit = parseFloat(document.getElementById("restDeficitInput").value);
+    var workoutDeficit = clampDeficitPct(parseFloat(document.getElementById("workoutDeficitInput").value));
+    var cardioDeficit = clampDeficitPct(parseFloat(document.getElementById("cardioDeficitInput").value));
+    var restDeficit = clampDeficitPct(parseFloat(document.getElementById("restDeficitInput").value));
     if (isNaN(workoutDeficit)) workoutDeficit = DEFAULT_WORKOUT_DEFICIT_PCT;
     if (isNaN(cardioDeficit)) cardioDeficit = DEFAULT_CARDIO_DEFICIT_PCT;
     if (isNaN(restDeficit)) restDeficit = DEFAULT_REST_DEFICIT_PCT;
