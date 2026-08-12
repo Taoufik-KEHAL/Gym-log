@@ -944,7 +944,47 @@
       maintenanceLegend.style.display = "none";
     }
 
+    renderCalorieAlignment(todayIntake, todayGoal, maintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
+  }
+
+  function renderCalorieAlignment(todayIntake, todayGoal, maintenance) {
+    var el = document.getElementById("trendsCaloriesAlignment");
+    if (todayGoal == null || !maintenance) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+
+    var deficitPct = Math.round(((maintenance.tdee - todayGoal) / maintenance.tdee) * 100);
+    var deficitHealthy = deficitPct >= 2 && deficitPct <= 20;
+    var deficitNote = deficitPct < 0
+      ? "goal is " + Math.abs(deficitPct) + "% above maintenance (surplus)"
+      : "goal is " + deficitPct + "% below maintenance";
+
+    var intakeHealthy = null;
+    var intakeNote = "";
+    if (todayIntake != null) {
+      var intakeDiffPct = Math.round(((todayIntake - todayGoal) / todayGoal) * 100);
+      intakeHealthy = Math.abs(intakeDiffPct) <= 10;
+      intakeNote = intakeDiffPct > 0
+        ? "intake is " + intakeDiffPct + "% over today's goal"
+        : intakeDiffPct < 0
+          ? "intake is " + Math.abs(intakeDiffPct) + "% under today's goal"
+          : "intake matches today's goal";
+    }
+
+    var checks = intakeHealthy == null ? 1 : 2;
+    var passCount = (deficitHealthy ? 1 : 0) + (intakeHealthy ? 1 : 0);
+    var icon, label, cls;
+    if (passCount === checks) { icon = "🟢"; label = "Aligned"; cls = "status-good"; }
+    else if (passCount === 0) { icon = "🔴"; label = "Not aligned"; cls = "status-bad"; }
+    else { icon = "🟡"; label = "Partially aligned"; cls = "status-warn"; }
+
+    var note = deficitNote + (intakeHealthy != null ? " · " + intakeNote : "");
+    el.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + label + "</span>" +
+      "<span>" + note + "</span>";
+    el.style.display = "flex";
   }
 
   function renderTrends() {

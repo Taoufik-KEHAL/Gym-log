@@ -211,6 +211,10 @@ canvas {
   color: var(--text);
 }
 
+.day-status .day-badge.status-good { color: var(--accent); }
+.day-status .day-badge.status-warn { color: var(--accent-2); }
+.day-status .day-badge.status-bad { color: var(--danger); }
+
 .segmented {
   display: flex;
   gap: 8px;
