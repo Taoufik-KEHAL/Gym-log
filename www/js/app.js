@@ -4,7 +4,7 @@
   var STORAGE = {
     daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
-    settings: "gymlog.settings", // { restCalories, workoutCalories, workoutDeficitPct, restDeficitPct }
+    settings: "gymlog.settings", // { restCalories, workoutCalories, cardioCalories, age, heightCm, activityLevel, sex }
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
@@ -79,16 +79,16 @@
   };
   var ACTIVE_DAY_STEPS_THRESHOLD = 8000; // steps on a day with no logged workout still count as "active"
   var currentSex = "male"; // 'male' | 'female', for the maintenance-calorie form
-  var DEFAULT_WORKOUT_DEFICIT_PCT = 2; // % below maintenance, applied by "Use as my calorie targets" unless overridden
-  var DEFAULT_CARDIO_DEFICIT_PCT = 5; // % below maintenance, applied by "Use as my calorie targets" unless overridden
-  var DEFAULT_REST_DEFICIT_PCT = 10; // % below maintenance, applied by "Use as my calorie targets" unless overridden
-  var MIN_HEALTHY_DEFICIT_PCT = 2; // below this, unlikely to produce meaningful fat loss
-  var MAX_HEALTHY_DEFICIT_PCT = 20; // above this, risks muscle loss / unsustainable
-
-  function clampDeficitPct(v) {
-    if (isNaN(v)) return v;
-    return Math.min(MAX_HEALTHY_DEFICIT_PCT, Math.max(MIN_HEALTHY_DEFICIT_PCT, v));
-  }
+  // Fixed deficit for all calorie targets (rest/workout/cardio) — evidence-based range for
+  // fat loss while preserving muscle is ~10-25% below maintenance; not user-adjustable.
+  var FIXED_DEFICIT_PCT = 25;
+  // Bumped whenever the target-computation policy changes, so installs with targets computed
+  // under an older policy (e.g. the old per-day-type deficit %s) force a one-time recompute.
+  var CALORIE_TARGET_POLICY = "fixed25";
+  var MIN_HEALTHY_DEFICIT_PCT = 10; // below this, unlikely to produce meaningful fat loss
+  var MAX_HEALTHY_DEFICIT_PCT = 25; // above this, risks muscle loss / unsustainable
+  var MIN_HEALTHY_WEEKLY_LOSS_PCT = 0.5; // % of bodyweight per week
+  var MAX_HEALTHY_WEEKLY_LOSS_PCT = 1.0; // % of bodyweight per week
 
   var DAY_TYPE_LABELS = {
     rest: "😴 Rest day",
@@ -981,16 +981,34 @@
           : "intake matches today's goal";
     }
 
-    var checks = intakeHealthy == null ? 1 : 2;
-    var passCount = (deficitHealthy ? 1 : 0) + (intakeHealthy ? 1 : 0);
+    // Weight-loss rate is the metric muscle-preservation research actually targets
+    // (0.5-1.0% of bodyweight/week) — only available once measured maintenance kicks in,
+    // since that's the same 14+ day window this needs to be meaningful.
+    var rateHealthy = null;
+    var rateNote = "";
+    if (maintenance.method === "measured" && maintenance.measured && maintenance.measured.weightStart) {
+      var m = maintenance.measured;
+      var ratePctPerWeek = (m.weightChangeKg / m.periodDays * 7) / m.weightStart * 100;
+      rateHealthy = ratePctPerWeek >= MIN_HEALTHY_WEEKLY_LOSS_PCT && ratePctPerWeek <= MAX_HEALTHY_WEEKLY_LOSS_PCT;
+      rateNote = ratePctPerWeek > 0
+        ? "losing " + ratePctPerWeek.toFixed(1) + "%/week"
+        : ratePctPerWeek < 0
+          ? "gaining " + Math.abs(ratePctPerWeek).toFixed(1) + "%/week"
+          : "weight stable";
+    }
+
+    var checks = 1 + (intakeHealthy == null ? 0 : 1) + (rateHealthy == null ? 0 : 1);
+    var passCount = (deficitHealthy ? 1 : 0) + (intakeHealthy ? 1 : 0) + (rateHealthy ? 1 : 0);
     var icon, label, cls;
     if (passCount === checks) { icon = "🟢"; label = "Aligned"; cls = "status-good"; }
     else if (passCount === 0) { icon = "🔴"; label = "Not aligned"; cls = "status-bad"; }
     else { icon = "🟡"; label = "Partially aligned"; cls = "status-warn"; }
 
-    var note = deficitNote + (intakeHealthy != null ? " · " + intakeNote : "");
+    var notes = [deficitNote];
+    if (intakeHealthy != null) notes.push(intakeNote);
+    if (rateHealthy != null) notes.push(rateNote);
     el.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + label + "</span>" +
-      "<span>" + note + "</span>";
+      "<span>" + notes.join(" · ") + "</span>";
     el.style.display = "flex";
   }
 
@@ -1917,9 +1935,6 @@
     document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
     document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
     document.getElementById("cardioCaloriesInput").value = settings.cardioCalories != null ? settings.cardioCalories : "";
-    document.getElementById("workoutDeficitInput").value = clampDeficitPct(settings.workoutDeficitPct != null ? settings.workoutDeficitPct : DEFAULT_WORKOUT_DEFICIT_PCT);
-    document.getElementById("cardioDeficitInput").value = clampDeficitPct(settings.cardioDeficitPct != null ? settings.cardioDeficitPct : DEFAULT_CARDIO_DEFICIT_PCT);
-    document.getElementById("restDeficitInput").value = clampDeficitPct(settings.restDeficitPct != null ? settings.restDeficitPct : DEFAULT_REST_DEFICIT_PCT);
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     document.getElementById("activityLevelSelect").value = settings.activityLevel || "moderate";
@@ -1931,19 +1946,10 @@
     var rest = document.getElementById("restCaloriesInput").value;
     var workout = document.getElementById("workoutCaloriesInput").value;
     var cardio = document.getElementById("cardioCaloriesInput").value;
-    var workoutDeficit = clampDeficitPct(parseFloat(document.getElementById("workoutDeficitInput").value));
-    var cardioDeficit = clampDeficitPct(parseFloat(document.getElementById("cardioDeficitInput").value));
-    var restDeficit = clampDeficitPct(parseFloat(document.getElementById("restDeficitInput").value));
-    document.getElementById("workoutDeficitInput").value = isNaN(workoutDeficit) ? DEFAULT_WORKOUT_DEFICIT_PCT : workoutDeficit;
-    document.getElementById("cardioDeficitInput").value = isNaN(cardioDeficit) ? DEFAULT_CARDIO_DEFICIT_PCT : cardioDeficit;
-    document.getElementById("restDeficitInput").value = isNaN(restDeficit) ? DEFAULT_REST_DEFICIT_PCT : restDeficit;
     var settings = loadSettings();
     if (rest !== "") settings.restCalories = Math.round(parseFloat(rest)); else delete settings.restCalories;
     if (workout !== "") settings.workoutCalories = Math.round(parseFloat(workout)); else delete settings.workoutCalories;
     if (cardio !== "") settings.cardioCalories = Math.round(parseFloat(cardio)); else delete settings.cardioCalories;
-    settings.workoutDeficitPct = isNaN(workoutDeficit) ? DEFAULT_WORKOUT_DEFICIT_PCT : workoutDeficit;
-    settings.cardioDeficitPct = isNaN(cardioDeficit) ? DEFAULT_CARDIO_DEFICIT_PCT : cardioDeficit;
-    settings.restDeficitPct = isNaN(restDeficit) ? DEFAULT_REST_DEFICIT_PCT : restDeficit;
     saveSettings(settings);
     renderToday();
   }
@@ -1951,15 +1957,6 @@
   function handleSettingsChange() {
     persistTargetsAndDeficits();
     toast("Targets saved");
-  }
-
-  function handleDeficitInputChange() {
-    var result = computeMaintenanceCalories();
-    if (result) {
-      applyMaintenanceTargets(result, true);
-    } else {
-      handleSettingsChange();
-    }
   }
 
   // ---------- maintenance calories ----------
@@ -2112,31 +2109,25 @@
   }
 
   function applyMaintenanceTargets(result, showToast) {
-    var workoutDeficit = clampDeficitPct(parseFloat(document.getElementById("workoutDeficitInput").value));
-    var cardioDeficit = clampDeficitPct(parseFloat(document.getElementById("cardioDeficitInput").value));
-    var restDeficit = clampDeficitPct(parseFloat(document.getElementById("restDeficitInput").value));
-    if (isNaN(workoutDeficit)) workoutDeficit = DEFAULT_WORKOUT_DEFICIT_PCT;
-    if (isNaN(cardioDeficit)) cardioDeficit = DEFAULT_CARDIO_DEFICIT_PCT;
-    if (isNaN(restDeficit)) restDeficit = DEFAULT_REST_DEFICIT_PCT;
-    var workoutTarget = Math.round((result.tdee * (1 - workoutDeficit / 100)) / 10) * 10;
-    var cardioTarget = Math.round((result.tdee * (1 - cardioDeficit / 100)) / 10) * 10;
-    var restTarget = Math.round((result.tdee * (1 - restDeficit / 100)) / 10) * 10;
-    document.getElementById("restCaloriesInput").value = restTarget;
-    document.getElementById("workoutCaloriesInput").value = workoutTarget;
-    document.getElementById("cardioCaloriesInput").value = cardioTarget;
+    var target = Math.round((result.tdee * (1 - FIXED_DEFICIT_PCT / 100)) / 10) * 10;
+    document.getElementById("restCaloriesInput").value = target;
+    document.getElementById("workoutCaloriesInput").value = target;
+    document.getElementById("cardioCaloriesInput").value = target;
     persistTargetsAndDeficits();
     var settings = loadSettings();
     settings.maintenanceTdeeForTargets = result.tdee;
+    settings.calorieTargetPolicy = CALORIE_TARGET_POLICY;
     saveSettings(settings);
     if (showToast) toast("Calorie targets updated");
   }
 
   // Keeps the calorie targets following the maintenance estimate: any time the estimate
-  // moves (or hasn't been applied yet), the targets are recomputed from it.
+  // moves (or hasn't been applied yet, or the target-computation policy changed), the
+  // targets are recomputed from it.
   function syncMaintenanceTargets(result) {
     if (!result) return;
     var settings = loadSettings();
-    if (settings.maintenanceTdeeForTargets === result.tdee) return;
+    if (settings.calorieTargetPolicy === CALORIE_TARGET_POLICY && settings.maintenanceTdeeForTargets === result.tdee) return;
     applyMaintenanceTargets(result, false);
   }
 
@@ -2223,9 +2214,6 @@
     document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
     document.getElementById("cardioCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("workoutDeficitInput").addEventListener("input", handleDeficitInputChange);
-    document.getElementById("cardioDeficitInput").addEventListener("input", handleDeficitInputChange);
-    document.getElementById("restDeficitInput").addEventListener("input", handleDeficitInputChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {
