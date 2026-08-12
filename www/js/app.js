@@ -1932,31 +1932,26 @@
 
   function fillSettingsForm() {
     var settings = loadSettings();
-    document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
-    document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
-    document.getElementById("cardioCaloriesInput").value = settings.cardioCalories != null ? settings.cardioCalories : "";
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     document.getElementById("activityLevelSelect").value = settings.activityLevel || "moderate";
     setSexToggle(settings.sex || "male");
+    renderCalorieTargetDisplay();
     renderMaintenanceEstimate();
   }
 
-  function persistTargetsAndDeficits() {
-    var rest = document.getElementById("restCaloriesInput").value;
-    var workout = document.getElementById("workoutCaloriesInput").value;
-    var cardio = document.getElementById("cardioCaloriesInput").value;
+  function renderCalorieTargetDisplay() {
     var settings = loadSettings();
-    if (rest !== "") settings.restCalories = Math.round(parseFloat(rest)); else delete settings.restCalories;
-    if (workout !== "") settings.workoutCalories = Math.round(parseFloat(workout)); else delete settings.workoutCalories;
-    if (cardio !== "") settings.cardioCalories = Math.round(parseFloat(cardio)); else delete settings.cardioCalories;
-    saveSettings(settings);
-    renderToday();
-  }
-
-  function handleSettingsChange() {
-    persistTargetsAndDeficits();
-    toast("Targets saved");
+    var el = document.getElementById("calorieTargetDisplay");
+    var target = settings.workoutCalories;
+    if (target == null) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    el.innerHTML = '<span class="day-badge">' + target + " kcal/day</span>" +
+      "<span>Same for rest, workout, and cardio days — fixed 25% below maintenance.</span>";
+    el.style.display = "flex";
   }
 
   // ---------- maintenance calories ----------
@@ -2110,14 +2105,15 @@
 
   function applyMaintenanceTargets(result, showToast) {
     var target = Math.round((result.tdee * (1 - FIXED_DEFICIT_PCT / 100)) / 10) * 10;
-    document.getElementById("restCaloriesInput").value = target;
-    document.getElementById("workoutCaloriesInput").value = target;
-    document.getElementById("cardioCaloriesInput").value = target;
-    persistTargetsAndDeficits();
     var settings = loadSettings();
+    settings.restCalories = target;
+    settings.workoutCalories = target;
+    settings.cardioCalories = target;
     settings.maintenanceTdeeForTargets = result.tdee;
     settings.calorieTargetPolicy = CALORIE_TARGET_POLICY;
     saveSettings(settings);
+    renderCalorieTargetDisplay();
+    renderToday();
     if (showToast) toast("Calorie targets updated");
   }
 
@@ -2211,9 +2207,6 @@
     document.getElementById("trendsEndInput").addEventListener("change", renderTrends);
 
     fillSettingsForm();
-    document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("cardioCaloriesInput").addEventListener("change", handleSettingsChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {
