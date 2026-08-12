@@ -50,6 +50,14 @@
   var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
+  // Evidence-based daily minimums for the Today stat-card good/bad coloring (see research notes
+  // in-session: protein 2.2-3.0 g/kg for fat loss + muscle retention, fat 0.5-1.5 g/kg, carbs
+  // 2-5 g/kg for resistance-training performance — using the lower bound of each range).
+  var PROTEIN_G_PER_KG_MIN = 2.2;
+  var CARBS_G_PER_KG_MIN = 2;
+  var FAT_G_PER_KG_MIN = 0.5;
+  var WATER_L_TARGET = 4;
+  var SLEEP_HOURS_MIN = 7; // general adult guideline is 7-9h; resistance-trained individuals lean toward the higher end
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
   var STEPS_KCAL_PER_STEP_PER_KG = 0.0005; // rough walking-equivalent burn per step per kg bodyweight
   var CARDIO_MET_TABLE = {
@@ -508,8 +516,63 @@
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     KPI_TREND_CONFIG.forEach(function (cfg) { renderKpiTrend(cfg, daily, today); });
+    renderStatStatuses(entry, daily, today);
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
+  }
+
+  function setStatStatus(elId, status) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    el.classList.remove("stat-good", "stat-bad");
+    if (status === "good") el.classList.add("stat-good");
+    else if (status === "bad") el.classList.add("stat-bad");
+  }
+
+  function renderStatStatuses(entry, daily, today) {
+    // Weight: good if it's lower than it was ~3-7 days ago (a real downtrend, not daily noise).
+    var weightStatus = null;
+    if (entry.weight != null) {
+      for (var back = 7; back >= 3; back--) {
+        var refEntry = daily[addDaysISO(today, -back)];
+        if (refEntry && refEntry.weight != null) {
+          weightStatus = entry.weight < refEntry.weight ? "good" : "bad";
+          break;
+        }
+      }
+    }
+    setStatStatus("statWeight", weightStatus);
+
+    // Protein/carbs/fat: good at or above the evidence-based minimum for the logged (or most
+    // recently known, or default) bodyweight.
+    var latestWeight = getLatestLoggedWeight();
+    var bw = entry.weight != null ? entry.weight : (latestWeight ? latestWeight.weight : DEFAULT_BODYWEIGHT_KG);
+    setStatStatus("statProtein", entry.protein != null ? (entry.protein >= PROTEIN_G_PER_KG_MIN * bw ? "good" : "bad") : null);
+    setStatStatus("statCarbs", entry.carbs != null ? (entry.carbs >= CARBS_G_PER_KG_MIN * bw ? "good" : "bad") : null);
+    setStatStatus("statFat", entry.fat != null ? (entry.fat >= FAT_G_PER_KG_MIN * bw ? "good" : "bad") : null);
+
+    // Water: good at or above the daily target.
+    setStatStatus("statWater", entry.water != null ? (entry.water >= WATER_L_TARGET ? "good" : "bad") : null);
+
+    // Sleep: good at or above the general adult minimum.
+    setStatStatus("statSleep", entry.sleepHours != null ? (entry.sleepHours >= SLEEP_HOURS_MIN ? "good" : "bad") : null);
+
+    // Steps: good at or above the app's existing "active day" threshold.
+    setStatStatus("statSteps", entry.steps != null ? (entry.steps >= ACTIVE_DAY_STEPS_THRESHOLD ? "good" : "bad") : null);
+
+    // Cigarettes: good if zero, or fewer than yesterday.
+    var cigStatus = null;
+    if (entry.cigarettes != null) {
+      if (entry.cigarettes === 0) {
+        cigStatus = "good";
+      } else {
+        var yestEntry = daily[addDaysISO(today, -1)];
+        if (yestEntry && yestEntry.cigarettes != null) {
+          cigStatus = entry.cigarettes < yestEntry.cigarettes ? "good" : "bad";
+        }
+      }
+    }
+    setStatStatus("statCigarettes", cigStatus);
   }
 
   var DAY_TYPE_CALORIE_SETTINGS_KEY = {
@@ -526,6 +589,7 @@
     if (target == null) {
       el.textContent = "";
       el.className = "stat-sub";
+      setStatStatus("statCalories", null);
       return;
     }
     var consumed = entry.calories != null ? entry.calories : 0;
@@ -540,6 +604,7 @@
       el.textContent = Math.abs(remaining) + " kcal over";
       el.className = "stat-sub diff-over";
     }
+    setStatStatus("statCalories", remaining >= 0 ? "good" : "bad");
   }
 
   function getCardioMET(name, pace) {
@@ -1932,31 +1997,26 @@
 
   function fillSettingsForm() {
     var settings = loadSettings();
-    document.getElementById("restCaloriesInput").value = settings.restCalories != null ? settings.restCalories : "";
-    document.getElementById("workoutCaloriesInput").value = settings.workoutCalories != null ? settings.workoutCalories : "";
-    document.getElementById("cardioCaloriesInput").value = settings.cardioCalories != null ? settings.cardioCalories : "";
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     document.getElementById("activityLevelSelect").value = settings.activityLevel || "moderate";
     setSexToggle(settings.sex || "male");
+    renderCalorieTargetDisplay();
     renderMaintenanceEstimate();
   }
 
-  function persistTargetsAndDeficits() {
-    var rest = document.getElementById("restCaloriesInput").value;
-    var workout = document.getElementById("workoutCaloriesInput").value;
-    var cardio = document.getElementById("cardioCaloriesInput").value;
+  function renderCalorieTargetDisplay() {
     var settings = loadSettings();
-    if (rest !== "") settings.restCalories = Math.round(parseFloat(rest)); else delete settings.restCalories;
-    if (workout !== "") settings.workoutCalories = Math.round(parseFloat(workout)); else delete settings.workoutCalories;
-    if (cardio !== "") settings.cardioCalories = Math.round(parseFloat(cardio)); else delete settings.cardioCalories;
-    saveSettings(settings);
-    renderToday();
-  }
-
-  function handleSettingsChange() {
-    persistTargetsAndDeficits();
-    toast("Targets saved");
+    var el = document.getElementById("calorieTargetDisplay");
+    var target = settings.workoutCalories;
+    if (target == null) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    el.innerHTML = '<span class="day-badge">' + target + " kcal/day</span>" +
+      "<span>Same for rest, workout, and cardio days — fixed 25% below maintenance.</span>";
+    el.style.display = "flex";
   }
 
   // ---------- maintenance calories ----------
@@ -2110,14 +2170,15 @@
 
   function applyMaintenanceTargets(result, showToast) {
     var target = Math.round((result.tdee * (1 - FIXED_DEFICIT_PCT / 100)) / 10) * 10;
-    document.getElementById("restCaloriesInput").value = target;
-    document.getElementById("workoutCaloriesInput").value = target;
-    document.getElementById("cardioCaloriesInput").value = target;
-    persistTargetsAndDeficits();
     var settings = loadSettings();
+    settings.restCalories = target;
+    settings.workoutCalories = target;
+    settings.cardioCalories = target;
     settings.maintenanceTdeeForTargets = result.tdee;
     settings.calorieTargetPolicy = CALORIE_TARGET_POLICY;
     saveSettings(settings);
+    renderCalorieTargetDisplay();
+    renderToday();
     if (showToast) toast("Calorie targets updated");
   }
 
@@ -2211,9 +2272,6 @@
     document.getElementById("trendsEndInput").addEventListener("change", renderTrends);
 
     fillSettingsForm();
-    document.getElementById("restCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("workoutCaloriesInput").addEventListener("change", handleSettingsChange);
-    document.getElementById("cardioCaloriesInput").addEventListener("change", handleSettingsChange);
 
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {

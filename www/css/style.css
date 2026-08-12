@@ -129,7 +129,11 @@ canvas {
   border-radius: 10px;
   padding: 10px 8px;
   text-align: center;
+  border: 2px solid transparent;
 }
+
+.stat.stat-good { border-color: var(--accent); }
+.stat.stat-bad { border-color: var(--danger); }
 
 .stat .value {
   font-size: 1.3rem;
