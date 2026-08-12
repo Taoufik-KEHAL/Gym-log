@@ -589,6 +589,7 @@
     if (target == null) {
       el.textContent = "";
       el.className = "stat-sub";
+      setStatStatus("statCalories", null);
       return;
     }
     var consumed = entry.calories != null ? entry.calories : 0;
@@ -603,6 +604,7 @@
       el.textContent = Math.abs(remaining) + " kcal over";
       el.className = "stat-sub diff-over";
     }
+    setStatStatus("statCalories", remaining >= 0 ? "good" : "bad");
   }
 
   function getCardioMET(name, pace) {
