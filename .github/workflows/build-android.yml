@@ -51,13 +51,23 @@ jobs:
           name: gym-log-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Read app version
+        id: version
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' android/app/build.gradle)
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK with version
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "Gym-Log-v${{ steps.version.outputs.name }}-debug.apk"
+
       - name: Publish APK to a GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
-          name: Gym Log Android (latest)
+          name: Gym Log Android v${{ steps.version.outputs.name }} (latest)
           body: |
             Auto-built debug APK from commit ${{ github.sha }}.
-            Download `app-debug.apk` below and open it on your phone to install (allow "install from this source" if prompted).
+            Download `Gym-Log-v${{ steps.version.outputs.name }}-debug.apk` below and open it on your phone to install (allow "install from this source" if prompted).
           make_latest: true
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: Gym-Log-v${{ steps.version.outputs.name }}-debug.apk
