@@ -50,6 +50,13 @@
   var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
+  // Evidence-based daily minimums for the Today stat-card good/bad coloring (see research notes
+  // in-session: protein 2.2-3.0 g/kg for fat loss + muscle retention, fat 0.5-1.5 g/kg, carbs
+  // 2-5 g/kg for resistance-training performance — using the lower bound of each range).
+  var PROTEIN_G_PER_KG_MIN = 2.2;
+  var CARBS_G_PER_KG_MIN = 2;
+  var FAT_G_PER_KG_MIN = 0.5;
+  var WATER_L_TARGET = 4;
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
   var STEPS_KCAL_PER_STEP_PER_KG = 0.0005; // rough walking-equivalent burn per step per kg bodyweight
   var CARDIO_MET_TABLE = {
@@ -508,8 +515,57 @@
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     KPI_TREND_CONFIG.forEach(function (cfg) { renderKpiTrend(cfg, daily, today); });
+    renderStatStatuses(entry, daily, today);
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
+  }
+
+  function setStatStatus(elId, status) {
+    var el = document.getElementById(elId);
+    if (!el) return;
+    el.classList.remove("stat-good", "stat-bad");
+    if (status === "good") el.classList.add("stat-good");
+    else if (status === "bad") el.classList.add("stat-bad");
+  }
+
+  function renderStatStatuses(entry, daily, today) {
+    // Weight: good if it's lower than it was ~3-7 days ago (a real downtrend, not daily noise).
+    var weightStatus = null;
+    if (entry.weight != null) {
+      for (var back = 7; back >= 3; back--) {
+        var refEntry = daily[addDaysISO(today, -back)];
+        if (refEntry && refEntry.weight != null) {
+          weightStatus = entry.weight < refEntry.weight ? "good" : "bad";
+          break;
+        }
+      }
+    }
+    setStatStatus("statWeight", weightStatus);
+
+    // Protein/carbs/fat: good at or above the evidence-based minimum for the logged (or most
+    // recently known, or default) bodyweight.
+    var latestWeight = getLatestLoggedWeight();
+    var bw = entry.weight != null ? entry.weight : (latestWeight ? latestWeight.weight : DEFAULT_BODYWEIGHT_KG);
+    setStatStatus("statProtein", entry.protein != null ? (entry.protein >= PROTEIN_G_PER_KG_MIN * bw ? "good" : "bad") : null);
+    setStatStatus("statCarbs", entry.carbs != null ? (entry.carbs >= CARBS_G_PER_KG_MIN * bw ? "good" : "bad") : null);
+    setStatStatus("statFat", entry.fat != null ? (entry.fat >= FAT_G_PER_KG_MIN * bw ? "good" : "bad") : null);
+
+    // Water: good at or above the daily target.
+    setStatStatus("statWater", entry.water != null ? (entry.water >= WATER_L_TARGET ? "good" : "bad") : null);
+
+    // Cigarettes: good if zero, or fewer than yesterday.
+    var cigStatus = null;
+    if (entry.cigarettes != null) {
+      if (entry.cigarettes === 0) {
+        cigStatus = "good";
+      } else {
+        var yestEntry = daily[addDaysISO(today, -1)];
+        if (yestEntry && yestEntry.cigarettes != null) {
+          cigStatus = entry.cigarettes < yestEntry.cigarettes ? "good" : "bad";
+        }
+      }
+    }
+    setStatStatus("statCigarettes", cigStatus);
   }
 
   var DAY_TYPE_CALORIE_SETTINGS_KEY = {
