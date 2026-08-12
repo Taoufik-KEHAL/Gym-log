@@ -57,6 +57,7 @@
   var CARBS_G_PER_KG_MIN = 2;
   var FAT_G_PER_KG_MIN = 0.5;
   var WATER_L_TARGET = 4;
+  var SLEEP_HOURS_MIN = 7; // general adult guideline is 7-9h; resistance-trained individuals lean toward the higher end
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
   var STEPS_KCAL_PER_STEP_PER_KG = 0.0005; // rough walking-equivalent burn per step per kg bodyweight
   var CARDIO_MET_TABLE = {
@@ -552,6 +553,12 @@
 
     // Water: good at or above the daily target.
     setStatStatus("statWater", entry.water != null ? (entry.water >= WATER_L_TARGET ? "good" : "bad") : null);
+
+    // Sleep: good at or above the general adult minimum.
+    setStatStatus("statSleep", entry.sleepHours != null ? (entry.sleepHours >= SLEEP_HOURS_MIN ? "good" : "bad") : null);
+
+    // Steps: good at or above the app's existing "active day" threshold.
+    setStatStatus("statSteps", entry.steps != null ? (entry.steps >= ACTIVE_DAY_STEPS_THRESHOLD ? "good" : "bad") : null);
 
     // Cigarettes: good if zero, or fewer than yesterday.
     var cigStatus = null;
