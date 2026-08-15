@@ -50,12 +50,7 @@
   var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
-  // Evidence-based daily minimums for the Today stat-card good/bad coloring (see research notes
-  // in-session: protein 2.2-3.0 g/kg for fat loss + muscle retention, fat 0.5-1.5 g/kg, carbs
-  // 2-5 g/kg for resistance-training performance — using the lower bound of each range).
-  var PROTEIN_G_PER_KG_MIN = 2.2;
-  var CARBS_G_PER_KG_MIN = 2;
-  var FAT_G_PER_KG_MIN = 0.5;
+  // Evidence-based daily minimums for the Today stat-card good/bad coloring.
   var WATER_L_TARGET = 4;
   var SLEEP_HOURS_MIN = 7; // general adult guideline is 7-9h; resistance-trained individuals lean toward the higher end
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
@@ -463,9 +458,6 @@
     { key: "weight", elId: "sumWeightTrend", decimals: 1 },
     { key: "sleepHours", elId: "sumSleepTrend", decimals: 1 },
     { key: "calories", elId: "sumCaloriesTrend", decimals: 0 },
-    { key: "protein", elId: "sumProteinTrend", decimals: 0 },
-    { key: "carbs", elId: "sumCarbsTrend", decimals: 0 },
-    { key: "fat", elId: "sumFatTrend", decimals: 0 },
     { key: "steps", elId: "sumStepsTrend", decimals: 0 },
     { key: "water", elId: "sumWaterTrend", decimals: 1 },
     { key: "cigarettes", elId: "sumCigarettesTrend", decimals: 0 }
@@ -542,14 +534,6 @@
       }
     }
     setStatStatus("statWeight", weightStatus);
-
-    // Protein/carbs/fat: good at or above the evidence-based minimum for the logged (or most
-    // recently known, or default) bodyweight.
-    var latestWeight = getLatestLoggedWeight();
-    var bw = entry.weight != null ? entry.weight : (latestWeight ? latestWeight.weight : DEFAULT_BODYWEIGHT_KG);
-    setStatStatus("statProtein", entry.protein != null ? (entry.protein >= PROTEIN_G_PER_KG_MIN * bw ? "good" : "bad") : null);
-    setStatStatus("statCarbs", entry.carbs != null ? (entry.carbs >= CARBS_G_PER_KG_MIN * bw ? "good" : "bad") : null);
-    setStatStatus("statFat", entry.fat != null ? (entry.fat >= FAT_G_PER_KG_MIN * bw ? "good" : "bad") : null);
 
     // Water: good at or above the daily target.
     setStatStatus("statWater", entry.water != null ? (entry.water >= WATER_L_TARGET ? "good" : "bad") : null);
