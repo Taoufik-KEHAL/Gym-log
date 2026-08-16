@@ -1,0 +1,67 @@
+name: Build Flutter Android APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "mobile/**"
+      - ".github/workflows/build-flutter-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Upload APK as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gym-log-flutter-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Read app version
+        id: version
+        run: |
+          VERSION_NAME=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK with version
+        run: |
+          cp build/app/outputs/flutter-apk/app-debug.apk "../Gym-Log-Flutter-v${{ steps.version.outputs.name }}-debug.apk"
+
+      - name: Publish APK to a GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: flutter-android-latest
+          name: Gym Log Flutter Android v${{ steps.version.outputs.name }} (latest)
+          body: |
+            Auto-built debug APK of the Flutter rewrite from commit ${{ github.sha }}.
+            Download `Gym-Log-Flutter-v${{ steps.version.outputs.name }}-debug.apk` below and open it on your phone to install (allow "install from this source" if prompted).
+          make_latest: false
+          files: Gym-Log-Flutter-v${{ steps.version.outputs.name }}-debug.apk

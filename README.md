@@ -1,8 +1,29 @@
 # Gym Log
 
-A simple, installable web app for tracking daily body weight, workouts, calorie intake, and protein. All data is stored locally on your device (`localStorage`) — nothing is sent to a server, and your logs persist across app restarts.
+A simple app for tracking daily body weight, workouts, calorie intake, and protein. All data is stored locally on your device — nothing is sent to a server, and your logs persist across app restarts.
 
-The web app's source lives in `www/`. There are two ways to run it: as a website (Add to Home Screen), or as a real installed Android app.
+There are two implementations in this repo:
+
+- **`mobile/`** — a native Flutter/Dart rewrite (v2.0). This is the actively developed version going forward.
+- **`www/`** — the original vanilla HTML/JS/CSS PWA, kept working for now. See below for how to run it.
+
+## Flutter app (`mobile/`)
+
+Requires the [Flutter SDK](https://docs.flutter.dev/get-started/install). Data is stored on-device via `shared_preferences`, under the same keys the original web app used in `localStorage` — a JSON backup exported from either app can be imported into the other.
+
+```
+cd mobile
+flutter pub get
+flutter run              # launch on a connected device/emulator
+flutter test              # unit + widget tests
+flutter build apk --debug # APK output: mobile/build/app/outputs/flutter-apk/app-debug.apk
+```
+
+`.github/workflows/build-flutter-android.yml` builds a debug APK and publishes it to the `flutter-android-latest` GitHub Release on every push to `main` that touches `mobile/`.
+
+## Legacy web app (`www/`)
+
+There are two ways to run the web app: as a website (Add to Home Screen), or as a real installed Android app.
 
 ## Option A — Install as a website (PWA)
 
