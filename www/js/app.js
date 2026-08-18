@@ -431,7 +431,7 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
-    renderCaloriesVsBurned(entry);
+    renderCaloriesVsBurned(entry, today, daily);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
@@ -442,9 +442,9 @@
     renderWeightTrend(daily);
   }
 
-  function renderCaloriesVsBurned(entry) {
+  function renderCaloriesVsBurned(entry, date, daily) {
     var el = document.getElementById("sumCaloriesGoal");
-    var bmr = computeBMR();
+    var bmr = computeBMRForDate(date, entry, daily);
     if (entry.calories == null || bmr == null) {
       el.textContent = "";
       el.className = "stat-sub";
@@ -813,27 +813,20 @@
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
   }
 
-  function buildFlatDateSeries(start, end, value) {
-    var points = [];
-    var d = start;
-    while (d <= end) {
-      points.push({ date: d, value: value });
-      d = addDaysISO(d, 1);
-    }
-    return points;
-  }
-
   function renderCaloriesTrend(daily, range) {
     var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
     var intakePoints = [];
     var burnedPoints = [];
+    var bmrPoints = [];
     var maintenancePoints = [];
     dates.forEach(function (d) {
       var entry = daily[d];
       if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
       var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
       if (burned > 0) burnedPoints.push({ date: d, value: burned });
-      var maintenance = getMaintenanceForDay(d, entry);
+      var bmr = computeBMRForDate(d, entry, daily);
+      if (bmr != null) bmrPoints.push({ date: d, value: bmr });
+      var maintenance = getMaintenanceForDay(d, entry, daily);
       if (maintenance != null) maintenancePoints.push({ date: d, value: maintenance });
     });
 
@@ -848,12 +841,10 @@
       { points: burnedPoints, color: accent2Color }
     ];
 
-    var bmr = computeBMR();
     var bmrLegend = document.getElementById("trendsCaloriesBmrLegend");
-    if (bmr != null) {
-      series.push({ points: buildFlatDateSeries(range.start, range.end, bmr), color: textDimColor, dashed: true });
+    if (bmrPoints.length > 0) {
+      series.push({ points: bmrPoints, color: textDimColor, dashed: true });
       bmrLegend.style.display = "flex";
-      document.getElementById("trendsCaloriesBmrLegendLabel").textContent = "BMR (" + bmr + ")";
     } else {
       bmrLegend.style.display = "none";
     }
@@ -870,17 +861,22 @@
     var todayEntry = daily[today];
     var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
     var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
-    var todayMaintenance = getMaintenanceForDay(today, todayEntry);
+    var todayBmr = computeBMRForDate(today, todayEntry, daily);
+    var todayMaintenance = getMaintenanceForDay(today, todayEntry, daily);
 
     document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
       todayIntake != null ? "Intake (" + todayIntake + ")" : "Intake";
     document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + ")";
+    if (bmrPoints.length > 0) {
+      document.getElementById("trendsCaloriesBmrLegendLabel").textContent =
+        todayBmr != null ? "BMR (" + todayBmr + ")" : "BMR";
+    }
     if (maintenancePoints.length > 0) {
       document.getElementById("trendsCaloriesMaintenanceLegendLabel").textContent =
         todayMaintenance != null ? "Maintenance (" + todayMaintenance + ")" : "Maintenance";
     }
 
-    renderCalorieAlignment(todayIntake, bmr, todayMaintenance);
+    renderCalorieAlignment(todayIntake, todayBmr, todayMaintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
   }
 
@@ -1869,20 +1865,33 @@
     renderTrends();
   }
 
-  // Mifflin-St Jeor: resting energy burn only (no activity). Uses the most recently logged
-  // weight, falling back to a default if none logged yet.
-  function computeBMR() {
-    var settings = loadSettings();
-    if (settings.age == null || settings.heightCm == null) return null;
+  // That day's own logged weight, else the most recently logged weight before it, else the
+  // closest logged weight overall, else a default. Used so BMR reflects the body weight
+  // that was actually true on that day instead of always using today's latest weigh-in.
+  function resolveWeightForDate(date, entry, daily) {
+    if (entry && entry.weight != null) return entry.weight;
+    var priorDates = Object.keys(daily).filter(function (d) { return d < date && daily[d].weight != null; }).sort();
+    if (priorDates.length > 0) return daily[priorDates[priorDates.length - 1]].weight;
     var latest = getLatestLoggedWeight();
-    var weight = latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
+    return latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
+  }
+
+  // Mifflin-St Jeor: resting energy burn only (no activity), for a given body weight.
+  function computeBMRForWeight(weight) {
+    var settings = loadSettings();
+    if (settings.age == null || settings.heightCm == null || weight == null) return null;
     var bmr = 10 * weight + 6.25 * settings.heightCm - 5 * settings.age + (settings.sex === "female" ? -161 : 5);
     return Math.round(bmr / 10) * 10;
   }
 
-  // Total expenditure for a specific day: resting burn (BMR) + that day's activity burn.
-  function getMaintenanceForDay(date, entry) {
-    var bmr = computeBMR();
+  // BMR for a specific day, using that day's own weight where available.
+  function computeBMRForDate(date, entry, daily) {
+    return computeBMRForWeight(resolveWeightForDate(date, entry, daily));
+  }
+
+  // Total expenditure for a specific day: resting burn (BMR, using that day's weight) + that day's activity burn.
+  function getMaintenanceForDay(date, entry, daily) {
+    var bmr = computeBMRForDate(date, entry, daily);
     if (bmr == null) return null;
     var burned = Math.round(getCaloriesBurnedBreakdown(date, entry && entry.weight, entry && entry.steps).total);
     return bmr + burned;
