@@ -51,8 +51,6 @@
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
   // Evidence-based daily minimums for the Today stat-card good/bad coloring.
-  var WATER_L_TARGET = 4;
-  var SLEEP_HOURS_MIN = 7; // general adult guideline is 7-9h; resistance-trained individuals lean toward the higher end
   var STRENGTH_MET = 6.0; // general resistance training, ~1 minute assumed per set
   var STEPS_KCAL_PER_STEP_PER_KG = 0.0005; // rough walking-equivalent burn per step per kg bodyweight
   var CARDIO_MET_TABLE = {
@@ -65,8 +63,6 @@
     "assault bike": 8.0,
     "ski erg": 7.0
   };
-
-  var ACTIVE_DAY_STEPS_THRESHOLD = 8000; // steps on a day with no logged workout still count as "active"
 
   var DAY_TYPE_LABELS = {
     rest: "😴 Rest day",
@@ -428,45 +424,6 @@
 
   // ---------- today view ----------
 
-  var KPI_TREND_CONFIG = [
-    { key: "weight", elId: "sumWeightTrend", decimals: 1 },
-    { key: "sleepHours", elId: "sumSleepTrend", decimals: 1 },
-    { key: "calories", elId: "sumCaloriesTrend", decimals: 0 },
-    { key: "steps", elId: "sumStepsTrend", decimals: 0 },
-    { key: "water", elId: "sumWaterTrend", decimals: 1 },
-    { key: "cigarettes", elId: "sumCigarettesTrend", decimals: 0 }
-  ];
-
-  function renderKpiTrend(cfg, daily, dateISO) {
-    var el = document.getElementById(cfg.elId);
-    var todayVal = daily[dateISO] ? daily[dateISO][cfg.key] : null;
-    var yestVal = daily[addDaysISO(dateISO, -1)] ? daily[addDaysISO(dateISO, -1)][cfg.key] : null;
-
-    var parts = [];
-    if (todayVal != null && yestVal != null) {
-      var diff = roundN(todayVal - yestVal, cfg.decimals);
-      parts.push((diff > 0 ? "+" : "") + diff + " vs yday");
-    }
-
-    var vals = [];
-    for (var i = 0; i < 7; i++) {
-      var entry = daily[addDaysISO(dateISO, -i)];
-      if (entry && entry[cfg.key] != null) vals.push(entry[cfg.key]);
-    }
-    if (vals.length > 0) {
-      var avg = vals.reduce(function (sum, v) { return sum + v; }, 0) / vals.length;
-      parts.push("7d avg " + roundN(avg, cfg.decimals));
-    }
-
-    if (parts.length === 0) {
-      el.style.display = "none";
-      el.textContent = "";
-      return;
-    }
-    el.textContent = parts.join(" · ");
-    el.style.display = "block";
-  }
-
   function renderToday() {
     var daily = loadDaily();
     var today = document.getElementById("logDate").value || todayISO();
@@ -474,91 +431,28 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
-    renderCaloriesVsBurned(entry, today);
+    renderCaloriesVsBurned(entry, today, daily);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
-    KPI_TREND_CONFIG.forEach(function (cfg) { renderKpiTrend(cfg, daily, today); });
-    renderStatStatuses(entry, daily, today);
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
   }
 
-  function setStatStatus(elId, status) {
-    var el = document.getElementById(elId);
-    if (!el) return;
-    el.classList.remove("stat-good", "stat-bad");
-    if (status === "good") el.classList.add("stat-good");
-    else if (status === "bad") el.classList.add("stat-bad");
-  }
-
-  function renderStatStatuses(entry, daily, today) {
-    // Weight: good if it's lower than it was ~3-7 days ago (a real downtrend, not daily noise).
-    var weightStatus = null;
-    if (entry.weight != null) {
-      for (var back = 7; back >= 3; back--) {
-        var refEntry = daily[addDaysISO(today, -back)];
-        if (refEntry && refEntry.weight != null) {
-          weightStatus = entry.weight < refEntry.weight ? "good" : "bad";
-          break;
-        }
-      }
-    }
-    setStatStatus("statWeight", weightStatus);
-
-    // Water: good at or above the daily target.
-    setStatStatus("statWater", entry.water != null ? (entry.water >= WATER_L_TARGET ? "good" : "bad") : null);
-
-    // Sleep: good at or above the general adult minimum.
-    setStatStatus("statSleep", entry.sleepHours != null ? (entry.sleepHours >= SLEEP_HOURS_MIN ? "good" : "bad") : null);
-
-    // Steps: good at or above the app's existing "active day" threshold.
-    setStatStatus("statSteps", entry.steps != null ? (entry.steps >= ACTIVE_DAY_STEPS_THRESHOLD ? "good" : "bad") : null);
-
-    // Cigarettes: good if zero, or fewer than yesterday.
-    var cigStatus = null;
-    if (entry.cigarettes != null) {
-      if (entry.cigarettes === 0) {
-        cigStatus = "good";
-      } else {
-        var yestEntry = daily[addDaysISO(today, -1)];
-        if (yestEntry && yestEntry.cigarettes != null) {
-          cigStatus = entry.cigarettes < yestEntry.cigarettes ? "good" : "bad";
-        }
-      }
-    }
-    setStatStatus("statCigarettes", cigStatus);
-  }
-
-  function renderCaloriesVsBurned(entry, date) {
+  function renderCaloriesVsBurned(entry, date, daily) {
     var el = document.getElementById("sumCaloriesGoal");
-    if (entry.calories == null) {
+    var bmr = computeBMRForDate(date, entry, daily);
+    if (entry.calories == null || bmr == null) {
       el.textContent = "";
       el.className = "stat-sub";
-      setStatStatus("statCalories", null);
       return;
     }
-    // Prefer comparing against total expenditure (BMR + activity) once a profile is set;
-    // fall back to activity-only "burned" otherwise.
-    var maintenance = getMaintenanceForDay(date, entry);
-    var reference = maintenance != null ? maintenance : Math.round(getCaloriesBurnedBreakdown(date, entry.weight, entry.steps).total);
-    var bmr = computeBMR();
-    var prefix = bmr != null && entry.calories < bmr ? "⚠️ below BMR · " : "";
-    var remaining = reference - entry.calories;
-    if (remaining > 0) {
-      el.textContent = prefix + remaining + " kcal remaining";
-      el.className = "stat-sub diff-under";
-    } else if (remaining === 0) {
-      el.textContent = prefix + "On target";
-      el.className = "stat-sub diff-under";
-    } else {
-      el.textContent = prefix + Math.abs(remaining) + " kcal over";
-      el.className = "stat-sub diff-over";
-    }
-    setStatStatus("statCalories", remaining >= 0 ? "good" : "bad");
+    var diff = entry.calories - bmr;
+    el.textContent = (diff > 0 ? "+" : "") + diff + " vs BMR";
+    el.className = "stat-sub";
   }
 
   function getCardioMET(name, pace) {
@@ -644,6 +538,12 @@
     });
   }
 
+  var MOOD_FIELDS = [
+    { input: "moodMorningInput", value: "moodMorningValue", entry: "moodMorning" },
+    { input: "moodMiddayInput", value: "moodMiddayValue", entry: "moodMidday" },
+    { input: "moodEveningInput", value: "moodEveningValue", entry: "moodEvening" }
+  ];
+
   function fillFormFromDate(iso) {
     var daily = loadDaily();
     var entry = daily[iso] || {};
@@ -653,6 +553,14 @@
     document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
+    MOOD_FIELDS.forEach(function (f) {
+      var input = document.getElementById(f.input);
+      var valueEl = document.getElementById(f.value);
+      var stored = entry[f.entry];
+      input.value = stored != null ? stored : 5;
+      input.dataset.touched = stored != null ? "1" : "0";
+      valueEl.textContent = stored != null ? stored : "—";
+    });
   }
 
   function handleDailySubmit(e) {
@@ -678,6 +586,10 @@
     if (water !== "") entry.water = parseFloat(water);
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
+    MOOD_FIELDS.forEach(function (f) {
+      var input = document.getElementById(f.input);
+      if (input.dataset.touched === "1") entry[f.entry] = parseInt(input.value, 10);
+    });
 
     if (Object.keys(entry).length === 0) {
       delete daily[date];
@@ -901,27 +813,20 @@
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
   }
 
-  function buildFlatDateSeries(start, end, value) {
-    var points = [];
-    var d = start;
-    while (d <= end) {
-      points.push({ date: d, value: value });
-      d = addDaysISO(d, 1);
-    }
-    return points;
-  }
-
   function renderCaloriesTrend(daily, range) {
     var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
     var intakePoints = [];
     var burnedPoints = [];
+    var bmrPoints = [];
     var maintenancePoints = [];
     dates.forEach(function (d) {
       var entry = daily[d];
       if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
       var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
       if (burned > 0) burnedPoints.push({ date: d, value: burned });
-      var maintenance = getMaintenanceForDay(d, entry);
+      var bmr = computeBMRForDate(d, entry, daily);
+      if (bmr != null) bmrPoints.push({ date: d, value: bmr });
+      var maintenance = getMaintenanceForDay(d, entry, daily);
       if (maintenance != null) maintenancePoints.push({ date: d, value: maintenance });
     });
 
@@ -936,12 +841,10 @@
       { points: burnedPoints, color: accent2Color }
     ];
 
-    var bmr = computeBMR();
     var bmrLegend = document.getElementById("trendsCaloriesBmrLegend");
-    if (bmr != null) {
-      series.push({ points: buildFlatDateSeries(range.start, range.end, bmr), color: textDimColor, dashed: true });
+    if (bmrPoints.length > 0) {
+      series.push({ points: bmrPoints, color: textDimColor, dashed: true });
       bmrLegend.style.display = "flex";
-      document.getElementById("trendsCaloriesBmrLegendLabel").textContent = "BMR (" + bmr + ")";
     } else {
       bmrLegend.style.display = "none";
     }
@@ -958,17 +861,22 @@
     var todayEntry = daily[today];
     var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
     var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
-    var todayMaintenance = getMaintenanceForDay(today, todayEntry);
+    var todayBmr = computeBMRForDate(today, todayEntry, daily);
+    var todayMaintenance = getMaintenanceForDay(today, todayEntry, daily);
 
     document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
       todayIntake != null ? "Intake (" + todayIntake + ")" : "Intake";
     document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + ")";
+    if (bmrPoints.length > 0) {
+      document.getElementById("trendsCaloriesBmrLegendLabel").textContent =
+        todayBmr != null ? "BMR (" + todayBmr + ")" : "BMR";
+    }
     if (maintenancePoints.length > 0) {
       document.getElementById("trendsCaloriesMaintenanceLegendLabel").textContent =
         todayMaintenance != null ? "Maintenance (" + todayMaintenance + ")" : "Maintenance";
     }
 
-    renderCalorieAlignment(todayIntake, bmr, todayMaintenance);
+    renderCalorieAlignment(todayIntake, todayBmr, todayMaintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
   }
 
@@ -1957,20 +1865,33 @@
     renderTrends();
   }
 
-  // Mifflin-St Jeor: resting energy burn only (no activity). Uses the most recently logged
-  // weight, falling back to a default if none logged yet.
-  function computeBMR() {
-    var settings = loadSettings();
-    if (settings.age == null || settings.heightCm == null) return null;
+  // That day's own logged weight, else the most recently logged weight before it, else the
+  // closest logged weight overall, else a default. Used so BMR reflects the body weight
+  // that was actually true on that day instead of always using today's latest weigh-in.
+  function resolveWeightForDate(date, entry, daily) {
+    if (entry && entry.weight != null) return entry.weight;
+    var priorDates = Object.keys(daily).filter(function (d) { return d < date && daily[d].weight != null; }).sort();
+    if (priorDates.length > 0) return daily[priorDates[priorDates.length - 1]].weight;
     var latest = getLatestLoggedWeight();
-    var weight = latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
+    return latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
+  }
+
+  // Mifflin-St Jeor: resting energy burn only (no activity), for a given body weight.
+  function computeBMRForWeight(weight) {
+    var settings = loadSettings();
+    if (settings.age == null || settings.heightCm == null || weight == null) return null;
     var bmr = 10 * weight + 6.25 * settings.heightCm - 5 * settings.age + (settings.sex === "female" ? -161 : 5);
     return Math.round(bmr / 10) * 10;
   }
 
-  // Total expenditure for a specific day: resting burn (BMR) + that day's activity burn.
-  function getMaintenanceForDay(date, entry) {
-    var bmr = computeBMR();
+  // BMR for a specific day, using that day's own weight where available.
+  function computeBMRForDate(date, entry, daily) {
+    return computeBMRForWeight(resolveWeightForDate(date, entry, daily));
+  }
+
+  // Total expenditure for a specific day: resting burn (BMR, using that day's weight) + that day's activity burn.
+  function getMaintenanceForDay(date, entry, daily) {
+    var bmr = computeBMRForDate(date, entry, daily);
     if (bmr == null) return null;
     var burned = Math.round(getCaloriesBurnedBreakdown(date, entry && entry.weight, entry && entry.steps).total);
     return bmr + burned;
@@ -1999,6 +1920,14 @@
     document.getElementById("dailyForm").addEventListener("submit", handleDailySubmit);
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
+    });
+    MOOD_FIELDS.forEach(function (f) {
+      var input = document.getElementById(f.input);
+      var valueEl = document.getElementById(f.value);
+      input.addEventListener("input", function () {
+        input.dataset.touched = "1";
+        valueEl.textContent = input.value;
+      });
     });
 
     document.querySelectorAll("#dayTypeToggle .segment").forEach(function (btn) {
