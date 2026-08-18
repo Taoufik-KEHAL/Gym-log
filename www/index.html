@@ -224,6 +224,8 @@
       <div class="trend-legend">
         <span class="legend-item"><span class="legend-dot legend-dot--a"></span><span id="trendsCaloriesIntakeLegendLabel">Intake</span></span>
         <span class="legend-item"><span class="legend-dot legend-dot--b"></span><span id="trendsCaloriesBurnedLegendLabel">Burned</span></span>
+        <span class="legend-item" id="trendsCaloriesBmrLegend" style="display:none;"><span class="legend-dot legend-dot--c"></span><span id="trendsCaloriesBmrLegendLabel">BMR</span></span>
+        <span class="legend-item" id="trendsCaloriesMaintenanceLegend" style="display:none;"><span class="legend-dot legend-dot--d"></span><span id="trendsCaloriesMaintenanceLegendLabel">Maintenance</span></span>
       </div>
       <canvas id="trendsCaloriesChart"></canvas>
       <div class="empty-state" id="trendsCaloriesEmpty" style="display:none;">Log calories, workouts, or steps on a few days to see a trend.</div>
@@ -275,6 +277,21 @@
 
   <!-- DATA VIEW -->
   <section class="view" id="view-data">
+
+    <div class="card">
+      <h2>Profile</h2>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:0;">
+        <div class="mini-field"><label for="ageInput">Age</label><input type="number" id="ageInput" step="1" min="0" inputmode="numeric" /></div>
+        <div class="mini-field"><label for="heightInput">Height (cm)</label><input type="number" id="heightInput" step="1" min="0" inputmode="numeric" /></div>
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>Sex</label>
+        <div class="segmented" id="sexToggle">
+          <button type="button" class="segment" data-sex="male">Male</button>
+          <button type="button" class="segment" data-sex="female">Female</button>
+        </div>
+      </div>
+    </div>
 
     <div class="card">
       <h2>My Foods</h2>

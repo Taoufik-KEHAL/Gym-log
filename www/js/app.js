@@ -541,16 +541,21 @@
       setStatStatus("statCalories", null);
       return;
     }
-    var burned = Math.round(getCaloriesBurnedBreakdown(date, entry.weight, entry.steps).total);
-    var remaining = burned - entry.calories;
+    // Prefer comparing against total expenditure (BMR + activity) once a profile is set;
+    // fall back to activity-only "burned" otherwise.
+    var maintenance = getMaintenanceForDay(date, entry);
+    var reference = maintenance != null ? maintenance : Math.round(getCaloriesBurnedBreakdown(date, entry.weight, entry.steps).total);
+    var bmr = computeBMR();
+    var prefix = bmr != null && entry.calories < bmr ? "⚠️ below BMR · " : "";
+    var remaining = reference - entry.calories;
     if (remaining > 0) {
-      el.textContent = remaining + " kcal under burned";
+      el.textContent = prefix + remaining + " kcal remaining";
       el.className = "stat-sub diff-under";
     } else if (remaining === 0) {
-      el.textContent = "Matches burned";
+      el.textContent = prefix + "On target";
       el.className = "stat-sub diff-under";
     } else {
-      el.textContent = Math.abs(remaining) + " kcal over burned";
+      el.textContent = prefix + Math.abs(remaining) + " kcal over";
       el.className = "stat-sub diff-over";
     }
     setStatStatus("statCalories", remaining >= 0 ? "good" : "bad");
@@ -896,57 +901,99 @@
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
   }
 
+  function buildFlatDateSeries(start, end, value) {
+    var points = [];
+    var d = start;
+    while (d <= end) {
+      points.push({ date: d, value: value });
+      d = addDaysISO(d, 1);
+    }
+    return points;
+  }
+
   function renderCaloriesTrend(daily, range) {
     var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
     var intakePoints = [];
     var burnedPoints = [];
+    var maintenancePoints = [];
     dates.forEach(function (d) {
       var entry = daily[d];
       if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
       var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
       if (burned > 0) burnedPoints.push({ date: d, value: burned });
+      var maintenance = getMaintenanceForDay(d, entry);
+      if (maintenance != null) maintenancePoints.push({ date: d, value: maintenance });
     });
 
     var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
     var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
     var accent2Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-2").trim() || "#f0a03c";
+    var accent3Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-3").trim() || "#5b9bd5";
+    var textDimColor = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
 
     var series = [
       { points: intakePoints, color: accentColor },
       { points: burnedPoints, color: accent2Color }
     ];
 
+    var bmr = computeBMR();
+    var bmrLegend = document.getElementById("trendsCaloriesBmrLegend");
+    if (bmr != null) {
+      series.push({ points: buildFlatDateSeries(range.start, range.end, bmr), color: textDimColor, dashed: true });
+      bmrLegend.style.display = "flex";
+      document.getElementById("trendsCaloriesBmrLegendLabel").textContent = "BMR (" + bmr + ")";
+    } else {
+      bmrLegend.style.display = "none";
+    }
+
+    var maintenanceLegend = document.getElementById("trendsCaloriesMaintenanceLegend");
+    if (maintenancePoints.length > 0) {
+      series.push({ points: maintenancePoints, color: accent3Color, dashed: true });
+      maintenanceLegend.style.display = "flex";
+    } else {
+      maintenanceLegend.style.display = "none";
+    }
+
     var today = todayISO();
     var todayEntry = daily[today];
     var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
     var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
+    var todayMaintenance = getMaintenanceForDay(today, todayEntry);
 
     document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
       todayIntake != null ? "Intake (" + todayIntake + ")" : "Intake";
     document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + ")";
+    if (maintenancePoints.length > 0) {
+      document.getElementById("trendsCaloriesMaintenanceLegendLabel").textContent =
+        todayMaintenance != null ? "Maintenance (" + todayMaintenance + ")" : "Maintenance";
+    }
 
-    renderCalorieAlignment(todayIntake, todayBurned);
+    renderCalorieAlignment(todayIntake, bmr, todayMaintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
   }
 
-  function renderCalorieAlignment(todayIntake, todayBurned) {
+  function renderCalorieAlignment(todayIntake, bmr, todayMaintenance) {
     var el = document.getElementById("trendsCaloriesAlignment");
-    if (todayIntake == null) {
+    if (todayIntake == null || todayMaintenance == null) {
       el.style.display = "none";
       el.innerHTML = "";
       return;
     }
-    var remaining = todayBurned - todayIntake;
-    var icon, label, cls, note;
+    var remaining = todayMaintenance - todayIntake;
+    var icon, label, cls;
+    var notes = [];
     if (remaining >= 0) {
       icon = "🟢"; label = "In deficit"; cls = "status-good";
-      note = remaining + " kcal under what you burned today";
+      notes.push(remaining + " kcal under maintenance");
     } else {
-      icon = "🔴"; label = "Over burned"; cls = "status-bad";
-      note = Math.abs(remaining) + " kcal over what you burned today";
+      icon = "🔴"; label = "Over maintenance"; cls = "status-bad";
+      notes.push(Math.abs(remaining) + " kcal over maintenance");
+    }
+    if (bmr != null && todayIntake < bmr) {
+      notes.push("⚠️ below BMR (" + bmr + ")");
     }
     el.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + label + "</span>" +
-      "<span>" + note + "</span>";
+      "<span>" + notes.join(" · ") + "</span>";
     el.style.display = "flex";
   }
 
@@ -1824,6 +1871,7 @@
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
     toast("Import complete");
+    fillProfileForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
@@ -1849,6 +1897,7 @@
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
+    fillProfileForm();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
     renderToday();
@@ -1870,6 +1919,61 @@
     var daily = loadDaily();
     var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
     return dates.length ? dates[0] : null;
+  }
+
+  function getLatestLoggedWeight() {
+    var daily = loadDaily();
+    var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
+    if (dates.length === 0) return null;
+    var date = dates[dates.length - 1];
+    return { weight: daily[date].weight, date: date };
+  }
+
+  var currentSex = "male";
+
+  function setSexToggle(sex) {
+    currentSex = sex;
+    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.sex === sex);
+    });
+  }
+
+  function fillProfileForm() {
+    var settings = loadSettings();
+    document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
+    document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
+    setSexToggle(settings.sex || "male");
+  }
+
+  function handleProfileChange() {
+    var age = document.getElementById("ageInput").value;
+    var height = document.getElementById("heightInput").value;
+    var settings = loadSettings();
+    if (age !== "") settings.age = Math.round(parseFloat(age)); else delete settings.age;
+    if (height !== "") settings.heightCm = Math.round(parseFloat(height)); else delete settings.heightCm;
+    settings.sex = currentSex;
+    saveSettings(settings);
+    renderToday();
+    renderTrends();
+  }
+
+  // Mifflin-St Jeor: resting energy burn only (no activity). Uses the most recently logged
+  // weight, falling back to a default if none logged yet.
+  function computeBMR() {
+    var settings = loadSettings();
+    if (settings.age == null || settings.heightCm == null) return null;
+    var latest = getLatestLoggedWeight();
+    var weight = latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
+    var bmr = 10 * weight + 6.25 * settings.heightCm - 5 * settings.age + (settings.sex === "female" ? -161 : 5);
+    return Math.round(bmr / 10) * 10;
+  }
+
+  // Total expenditure for a specific day: resting burn (BMR) + that day's activity burn.
+  function getMaintenanceForDay(date, entry) {
+    var bmr = computeBMR();
+    if (bmr == null) return null;
+    var burned = Math.round(getCaloriesBurnedBreakdown(date, entry && entry.weight, entry && entry.steps).total);
+    return bmr + burned;
   }
 
   // ---------- init ----------
@@ -1908,6 +2012,16 @@
 
     document.getElementById("trendsStartInput").addEventListener("change", renderTrends);
     document.getElementById("trendsEndInput").addEventListener("change", renderTrends);
+
+    fillProfileForm();
+    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setSexToggle(btn.dataset.sex);
+        handleProfileChange();
+      });
+    });
+    document.getElementById("ageInput").addEventListener("change", handleProfileChange);
+    document.getElementById("heightInput").addEventListener("change", handleProfileChange);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
