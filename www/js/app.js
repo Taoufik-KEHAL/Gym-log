@@ -4,7 +4,7 @@
   var STORAGE = {
     daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
-    settings: "gymlog.settings", // { restCalories, workoutCalories, cardioCalories, age, heightCm, activityLevel, sex }
+    settings: "gymlog.settings", // reserved for future use; currently unused
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
@@ -66,32 +66,7 @@
     "ski erg": 7.0
   };
 
-  var ACTIVITY_MULTIPLIERS = {
-    sedentary: 1.2,
-    light: 1.375,
-    moderate: 1.55,
-    active: 1.725,
-    very_active: 1.9
-  };
-  var ACTIVITY_LEVEL_LABELS = {
-    sedentary: "Sedentary",
-    light: "Light",
-    moderate: "Moderate",
-    active: "Active",
-    very_active: "Very active"
-  };
   var ACTIVE_DAY_STEPS_THRESHOLD = 8000; // steps on a day with no logged workout still count as "active"
-  var currentSex = "male"; // 'male' | 'female', for the maintenance-calorie form
-  // Fixed deficit for all calorie targets (rest/workout/cardio) — evidence-based range for
-  // fat loss while preserving muscle is ~10-25% below maintenance; not user-adjustable.
-  var FIXED_DEFICIT_PCT = 25;
-  // Bumped whenever the target-computation policy changes, so installs with targets computed
-  // under an older policy (e.g. the old per-day-type deficit %s) force a one-time recompute.
-  var CALORIE_TARGET_POLICY = "fixed25";
-  var MIN_HEALTHY_DEFICIT_PCT = 10; // below this, unlikely to produce meaningful fat loss
-  var MAX_HEALTHY_DEFICIT_PCT = 25; // above this, risks muscle loss / unsustainable
-  var MIN_HEALTHY_WEEKLY_LOSS_PCT = 0.5; // % of bodyweight per week
-  var MAX_HEALTHY_WEEKLY_LOSS_PCT = 1.0; // % of bodyweight per week
 
   var DAY_TYPE_LABELS = {
     rest: "😴 Rest day",
@@ -163,7 +138,6 @@
 
   function saveDaily(data) {
     localStorage.setItem(STORAGE.daily, JSON.stringify(data));
-    syncMaintenanceTargets(computeMaintenanceCalories());
   }
 
   function loadWorkouts() {
@@ -449,7 +423,7 @@
     if (name === "workout") { renderWorkoutBuilder(); populateWorkoutTemplateSelect(); }
     if (name === "food") renderFoodLog(document.getElementById("foodDate").value || todayISO());
     if (name === "trends") renderTrends();
-    if (name === "data") { renderMaintenanceEstimate(); renderCustomFoodList(); renderWorkoutTemplateList(); }
+    if (name === "data") { renderCustomFoodList(); renderWorkoutTemplateList(); }
   }
 
   // ---------- today view ----------
@@ -500,7 +474,7 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
-    renderCaloriesGoalDelta(entry);
+    renderCaloriesVsBurned(entry, today);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
@@ -559,33 +533,29 @@
     setStatStatus("statCigarettes", cigStatus);
   }
 
-  var DAY_TYPE_CALORIE_SETTINGS_KEY = {
-    rest: "restCalories",
-    workout: "workoutCalories",
-    cardio: "cardioCalories"
-  };
-
-  function renderCaloriesGoalDelta(entry) {
+  function renderCaloriesVsBurned(entry, date) {
     var el = document.getElementById("sumCaloriesGoal");
-    var settings = loadSettings();
-    var settingsKey = DAY_TYPE_CALORIE_SETTINGS_KEY[entry.dayType];
-    var target = settingsKey ? settings[settingsKey] : null;
-    if (target == null) {
+    if (entry.calories == null) {
       el.textContent = "";
       el.className = "stat-sub";
       setStatStatus("statCalories", null);
       return;
     }
-    var consumed = entry.calories != null ? entry.calories : 0;
-    var remaining = target - consumed;
+    // Prefer comparing against total expenditure (BMR + activity) once a profile is set;
+    // fall back to activity-only "burned" otherwise.
+    var maintenance = getMaintenanceForDay(date, entry);
+    var reference = maintenance != null ? maintenance : Math.round(getCaloriesBurnedBreakdown(date, entry.weight, entry.steps).total);
+    var bmr = computeBMR();
+    var prefix = bmr != null && entry.calories < bmr ? "⚠️ below BMR · " : "";
+    var remaining = reference - entry.calories;
     if (remaining > 0) {
-      el.textContent = remaining + " kcal remaining";
+      el.textContent = prefix + remaining + " kcal remaining";
       el.className = "stat-sub diff-under";
     } else if (remaining === 0) {
-      el.textContent = "On goal";
+      el.textContent = prefix + "On target";
       el.className = "stat-sub diff-under";
     } else {
-      el.textContent = Math.abs(remaining) + " kcal over";
+      el.textContent = prefix + Math.abs(remaining) + " kcal over";
       el.className = "stat-sub diff-over";
     }
     setStatStatus("statCalories", remaining >= 0 ? "good" : "bad");
@@ -942,19 +912,17 @@
   }
 
   function renderCaloriesTrend(daily, range) {
-    var settings = loadSettings();
     var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
     var intakePoints = [];
     var burnedPoints = [];
-    var goalPoints = [];
+    var maintenancePoints = [];
     dates.forEach(function (d) {
       var entry = daily[d];
       if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
       var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
       if (burned > 0) burnedPoints.push({ date: d, value: burned });
-      var goalSettingsKey = DAY_TYPE_CALORIE_SETTINGS_KEY[entry.dayType];
-      var goal = goalSettingsKey ? settings[goalSettingsKey] : null;
-      if (goal != null) goalPoints.push({ date: d, value: goal });
+      var maintenance = getMaintenanceForDay(d, entry);
+      if (maintenance != null) maintenancePoints.push({ date: d, value: maintenance });
     });
 
     var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -968,94 +936,62 @@
       { points: burnedPoints, color: accent2Color }
     ];
 
-    var today = todayISO();
-    var todayEntry = daily[today];
-    var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
-    var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
-    var todayGoalKey = todayEntry && DAY_TYPE_CALORIE_SETTINGS_KEY[todayEntry.dayType];
-    var todayGoal = todayGoalKey ? settings[todayGoalKey] : null;
-
-    document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
-      todayIntake != null ? "Intake (" + todayIntake + ")" : "Intake";
-    document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + ")";
-
-    var goalLegend = document.getElementById("trendsCaloriesGoalLegend");
-    if (goalPoints.length > 0) {
-      series.push({ points: goalPoints, color: accent3Color });
-      goalLegend.style.display = "flex";
-      document.getElementById("trendsCaloriesGoalLegendLabel").textContent =
-        todayGoal != null ? "Goal (" + todayGoal + ")" : "Goal";
+    var bmr = computeBMR();
+    var bmrLegend = document.getElementById("trendsCaloriesBmrLegend");
+    if (bmr != null) {
+      series.push({ points: buildFlatDateSeries(range.start, range.end, bmr), color: textDimColor, dashed: true });
+      bmrLegend.style.display = "flex";
+      document.getElementById("trendsCaloriesBmrLegendLabel").textContent = "BMR (" + bmr + ")";
     } else {
-      goalLegend.style.display = "none";
+      bmrLegend.style.display = "none";
     }
 
-    var maintenance = (intakePoints.length > 0 || burnedPoints.length > 0) ? computeMaintenanceCalories() : null;
     var maintenanceLegend = document.getElementById("trendsCaloriesMaintenanceLegend");
-    if (maintenance) {
-      series.push({ points: buildFlatDateSeries(range.start, range.end, maintenance.tdee), color: textDimColor, dashed: true });
+    if (maintenancePoints.length > 0) {
+      series.push({ points: maintenancePoints, color: accent3Color, dashed: true });
       maintenanceLegend.style.display = "flex";
-      var maintenanceKind = maintenance.method === "measured" ? "measured" : "estimated";
-      document.getElementById("trendsCaloriesMaintenanceLabel").textContent = "Maintenance, " + maintenanceKind + " (" + maintenance.tdee + " kcal)";
     } else {
       maintenanceLegend.style.display = "none";
     }
 
-    renderCalorieAlignment(todayIntake, todayGoal, maintenance);
+    var today = todayISO();
+    var todayEntry = daily[today];
+    var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
+    var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
+    var todayMaintenance = getMaintenanceForDay(today, todayEntry);
+
+    document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
+      todayIntake != null ? "Intake (" + todayIntake + ")" : "Intake";
+    document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + ")";
+    if (maintenancePoints.length > 0) {
+      document.getElementById("trendsCaloriesMaintenanceLegendLabel").textContent =
+        todayMaintenance != null ? "Maintenance (" + todayMaintenance + ")" : "Maintenance";
+    }
+
+    renderCalorieAlignment(todayIntake, bmr, todayMaintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
   }
 
-  function renderCalorieAlignment(todayIntake, todayGoal, maintenance) {
+  function renderCalorieAlignment(todayIntake, bmr, todayMaintenance) {
     var el = document.getElementById("trendsCaloriesAlignment");
-    if (todayGoal == null || !maintenance) {
+    if (todayIntake == null || todayMaintenance == null) {
       el.style.display = "none";
       el.innerHTML = "";
       return;
     }
-
-    var deficitPct = Math.round(((maintenance.tdee - todayGoal) / maintenance.tdee) * 100);
-    var deficitHealthy = deficitPct >= MIN_HEALTHY_DEFICIT_PCT && deficitPct <= MAX_HEALTHY_DEFICIT_PCT;
-    var deficitNote = deficitPct < 0
-      ? "goal is " + Math.abs(deficitPct) + "% above maintenance (surplus)"
-      : "goal is " + deficitPct + "% below maintenance";
-
-    var intakeHealthy = null;
-    var intakeNote = "";
-    if (todayIntake != null) {
-      var intakeDiffPct = Math.round(((todayIntake - todayGoal) / todayGoal) * 100);
-      intakeHealthy = Math.abs(intakeDiffPct) <= 10;
-      intakeNote = intakeDiffPct > 0
-        ? "intake is " + intakeDiffPct + "% over today's goal"
-        : intakeDiffPct < 0
-          ? "intake is " + Math.abs(intakeDiffPct) + "% under today's goal"
-          : "intake matches today's goal";
-    }
-
-    // Weight-loss rate is the metric muscle-preservation research actually targets
-    // (0.5-1.0% of bodyweight/week) — only available once measured maintenance kicks in,
-    // since that's the same 14+ day window this needs to be meaningful.
-    var rateHealthy = null;
-    var rateNote = "";
-    if (maintenance.method === "measured" && maintenance.measured && maintenance.measured.weightStart) {
-      var m = maintenance.measured;
-      var ratePctPerWeek = (m.weightChangeKg / m.periodDays * 7) / m.weightStart * 100;
-      rateHealthy = ratePctPerWeek >= MIN_HEALTHY_WEEKLY_LOSS_PCT && ratePctPerWeek <= MAX_HEALTHY_WEEKLY_LOSS_PCT;
-      rateNote = ratePctPerWeek > 0
-        ? "losing " + ratePctPerWeek.toFixed(1) + "%/week"
-        : ratePctPerWeek < 0
-          ? "gaining " + Math.abs(ratePctPerWeek).toFixed(1) + "%/week"
-          : "weight stable";
-    }
-
-    var checks = 1 + (intakeHealthy == null ? 0 : 1) + (rateHealthy == null ? 0 : 1);
-    var passCount = (deficitHealthy ? 1 : 0) + (intakeHealthy ? 1 : 0) + (rateHealthy ? 1 : 0);
+    var remaining = todayMaintenance - todayIntake;
     var icon, label, cls;
-    if (passCount === checks) { icon = "🟢"; label = "Aligned"; cls = "status-good"; }
-    else if (passCount === 0) { icon = "🔴"; label = "Not aligned"; cls = "status-bad"; }
-    else { icon = "🟡"; label = "Partially aligned"; cls = "status-warn"; }
-
-    var notes = [deficitNote];
-    if (intakeHealthy != null) notes.push(intakeNote);
-    if (rateHealthy != null) notes.push(rateNote);
+    var notes = [];
+    if (remaining >= 0) {
+      icon = "🟢"; label = "In deficit"; cls = "status-good";
+      notes.push(remaining + " kcal under maintenance");
+    } else {
+      icon = "🔴"; label = "Over maintenance"; cls = "status-bad";
+      notes.push(Math.abs(remaining) + " kcal over maintenance");
+    }
+    if (bmr != null && todayIntake < bmr) {
+      notes.push("⚠️ below BMR (" + bmr + ")");
+    }
     el.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + label + "</span>" +
       "<span>" + notes.join(" · ") + "</span>";
     el.style.display = "flex";
@@ -1935,7 +1871,7 @@
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
     toast("Import complete");
-    fillSettingsForm();
+    fillProfileForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
@@ -1961,7 +1897,7 @@
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
-    fillSettingsForm();
+    fillProfileForm();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
     renderToday();
@@ -1979,37 +1915,10 @@
 
   // ---------- settings ----------
 
-  function fillSettingsForm() {
-    var settings = loadSettings();
-    document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
-    document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
-    document.getElementById("activityLevelSelect").value = settings.activityLevel || "moderate";
-    setSexToggle(settings.sex || "male");
-    renderCalorieTargetDisplay();
-    renderMaintenanceEstimate();
-  }
-
-  function renderCalorieTargetDisplay() {
-    var settings = loadSettings();
-    var el = document.getElementById("calorieTargetDisplay");
-    var target = settings.workoutCalories;
-    if (target == null) {
-      el.style.display = "none";
-      el.innerHTML = "";
-      return;
-    }
-    el.innerHTML = '<span class="day-badge">' + target + " kcal/day</span>" +
-      "<span>Same for rest, workout, and cardio days — fixed 25% below maintenance.</span>";
-    el.style.display = "flex";
-  }
-
-  // ---------- maintenance calories ----------
-
-  function setSexToggle(sex) {
-    currentSex = sex;
-    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.sex === sex);
-    });
+  function getEarliestLoggedWeightDate() {
+    var daily = loadDaily();
+    var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
+    return dates.length ? dates[0] : null;
   }
 
   function getLatestLoggedWeight() {
@@ -2020,202 +1929,51 @@
     return { weight: daily[date].weight, date: date };
   }
 
-  function getEarliestLoggedWeightDate() {
-    var daily = loadDaily();
-    var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
-    return dates.length ? dates[0] : null;
-  }
+  var currentSex = "male";
 
-  function computeActivityLevelFromHistory() {
-    var end = todayISO();
-    var start = addDaysISO(end, -6);
-    var daily = loadDaily();
-    var loggedDays = Object.keys(daily).filter(function (d) { return d >= start && d <= end; });
-    if (loggedDays.length < 4) return null;
-
-    var activeDates = {};
-    loggedDays.forEach(function (d) {
-      var entry = daily[d];
-      if (entry.dayType === "workout" || entry.dayType === "cardio") activeDates[d] = true;
-      if (entry.steps != null && entry.steps >= ACTIVE_DAY_STEPS_THRESHOLD) activeDates[d] = true;
+  function setSexToggle(sex) {
+    currentSex = sex;
+    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.sex === sex);
     });
-    loadWorkouts().forEach(function (w) {
-      if (w.date >= start && w.date <= end) activeDates[w.date] = true;
-    });
-
-    var activeCount = Object.keys(activeDates).length;
-    var level;
-    if (activeCount <= 1) level = "sedentary";
-    else if (activeCount <= 3) level = "light";
-    else if (activeCount <= 5) level = "moderate";
-    else if (activeCount === 6) level = "active";
-    else level = "very_active";
-
-    return { level: level, activeDays: activeCount, loggedDays: loggedDays.length };
   }
 
-  function renderActivityAutoSuggestion() {
-    var hint = document.getElementById("activityAutoSuggestion");
-    var suggestion = computeActivityLevelFromHistory();
-    if (!suggestion) {
-      hint.style.display = "none";
-      return;
-    }
-    hint.innerHTML = "📊 Based on your last " + suggestion.loggedDays + " logged days (" + suggestion.activeDays +
-      " active), your activity level looks like <strong>" + ACTIVITY_LEVEL_LABELS[suggestion.level] + "</strong>.";
-    hint.style.display = "block";
-  }
-
-  var MEASURED_MAINTENANCE_WINDOW_DAYS = 28;
-  var MEASURED_MAINTENANCE_MIN_DAYS = 14;
-
-  function daysBetweenISO(a, b) {
-    var da = new Date(a + "T00:00:00");
-    var db = new Date(b + "T00:00:00");
-    return Math.round((db - da) / 86400000);
-  }
-
-  // avg_kcal_intake = average(daily logged calories) over the period
-  // weight_start / weight_end = 7-day average weight at the start/end of the period
-  // weight_change_kg = weight_start - weight_end (positive = loss)
-  // total_deficit_kcal = weight_change_kg * 7700; daily_deficit_kcal = total_deficit_kcal / days
-  // TDEE = avg_kcal_intake + daily_deficit_kcal
-  function computeMeasuredMaintenance() {
-    var daily = loadDaily();
-    var weightDates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
-    if (weightDates.length === 0) return null;
-
-    var earliest = weightDates[0];
-    var end = weightDates[weightDates.length - 1];
-    var start = addDaysISO(end, -(MEASURED_MAINTENANCE_WINDOW_DAYS - 1));
-    if (start < earliest) start = earliest;
-    var periodDays = daysBetweenISO(start, end) + 1;
-    if (periodDays < MEASURED_MAINTENANCE_MIN_DAYS) return null;
-
-    function avgWeightInWindow(winStart, winEnd) {
-      var vals = [];
-      var d = winStart;
-      while (d <= winEnd) {
-        if (daily[d] && daily[d].weight != null) vals.push(daily[d].weight);
-        d = addDaysISO(d, 1);
-      }
-      return vals.length >= 3 ? vals.reduce(function (a, b) { return a + b; }, 0) / vals.length : null;
-    }
-
-    var weightStart = avgWeightInWindow(start, addDaysISO(start, 6));
-    var weightEnd = avgWeightInWindow(addDaysISO(end, -6), end);
-    if (weightStart == null || weightEnd == null) return null;
-
-    var calorieVals = [];
-    var d = start;
-    while (d <= end) {
-      if (daily[d] && daily[d].calories != null) calorieVals.push(daily[d].calories);
-      d = addDaysISO(d, 1);
-    }
-    if (calorieVals.length < 7) return null;
-    var avgIntake = calorieVals.reduce(function (a, b) { return a + b; }, 0) / calorieVals.length;
-
-    var weightChangeKg = weightStart - weightEnd;
-    var totalDeficitKcal = weightChangeKg * 7700;
-    var dailyDeficitKcal = totalDeficitKcal / periodDays;
-    var tdee = Math.round((avgIntake + dailyDeficitKcal) / 10) * 10;
-
-    return {
-      tdee: tdee,
-      avgIntake: Math.round(avgIntake),
-      weightStart: weightStart,
-      weightEnd: weightEnd,
-      weightChangeKg: weightChangeKg,
-      periodDays: periodDays,
-      loggedCalorieDays: calorieVals.length,
-      start: start,
-      end: end
-    };
-  }
-
-  function computeMaintenanceCalories() {
-    var measured = computeMeasuredMaintenance();
-    if (measured) return { tdee: measured.tdee, method: "measured", measured: measured };
-
+  function fillProfileForm() {
     var settings = loadSettings();
-    var age = settings.age;
-    var heightCm = settings.heightCm;
-    if (age == null || heightCm == null) return null;
-
-    var latest = getLatestLoggedWeight();
-    var weight = latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
-
-    var bmr = 10 * weight + 6.25 * heightCm - 5 * age + (currentSex === "female" ? -161 : 5);
-    var multiplier = ACTIVITY_MULTIPLIERS[settings.activityLevel] || ACTIVITY_MULTIPLIERS.moderate;
-    var tdee = Math.round((bmr * multiplier) / 10) * 10;
-
-    return { tdee: tdee, method: "formula", weight: weight, usedDefaultWeight: !latest, weightDate: latest ? latest.date : null };
+    document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
+    document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
+    setSexToggle(settings.sex || "male");
   }
 
-  function applyMaintenanceTargets(result, showToast) {
-    var target = Math.round((result.tdee * (1 - FIXED_DEFICIT_PCT / 100)) / 10) * 10;
-    var settings = loadSettings();
-    settings.restCalories = target;
-    settings.workoutCalories = target;
-    settings.cardioCalories = target;
-    settings.maintenanceTdeeForTargets = result.tdee;
-    settings.calorieTargetPolicy = CALORIE_TARGET_POLICY;
-    saveSettings(settings);
-    renderCalorieTargetDisplay();
-    renderToday();
-    if (showToast) toast("Calorie targets updated");
-  }
-
-  // Keeps the calorie targets following the maintenance estimate: any time the estimate
-  // moves (or hasn't been applied yet, or the target-computation policy changed), the
-  // targets are recomputed from it.
-  function syncMaintenanceTargets(result) {
-    if (!result) return;
-    var settings = loadSettings();
-    if (settings.calorieTargetPolicy === CALORIE_TARGET_POLICY && settings.maintenanceTdeeForTargets === result.tdee) return;
-    applyMaintenanceTargets(result, false);
-  }
-
-  function renderMaintenanceEstimate() {
-    renderActivityAutoSuggestion();
-    var el = document.getElementById("maintenanceResult");
-    var result = computeMaintenanceCalories();
-    syncMaintenanceTargets(result);
-    if (!result) {
-      el.innerHTML = "<span>Enter your age and height above to estimate maintenance calories.</span>";
-      el.style.display = "flex";
-      return;
-    }
-    var label, note;
-    if (result.method === "measured") {
-      var m = result.measured;
-      var changeAbs = Math.abs(m.weightChangeKg).toFixed(1);
-      var trendWord = m.weightChangeKg > 0 ? "lost" : (m.weightChangeKg < 0 ? "gained" : "held steady on");
-      label = "Measured maintenance: ";
-      note = "from " + m.periodDays + " days of your data (" + formatDateShort(m.start) + "–" + formatDateShort(m.end) +
-        "): avg intake " + m.avgIntake + " kcal, " + trendWord + " " + changeAbs + " kg";
-    } else {
-      label = "Estimated maintenance: ";
-      note = result.usedDefaultWeight
-        ? DEFAULT_BODYWEIGHT_KG + " kg assumed — log a weight on Today for a real estimate"
-        : "using " + result.weight + " kg from " + formatDateLong(result.weightDate) + " (log weight + calories daily to switch to a measured estimate)";
-    }
-    el.innerHTML = '<span class="day-badge">' + label + result.tdee + " kcal</span>" +
-      "<span>" + note + "</span>";
-    el.style.display = "flex";
-  }
-
-  function handleMaintenanceInputChange() {
+  function handleProfileChange() {
     var age = document.getElementById("ageInput").value;
     var height = document.getElementById("heightInput").value;
-    var activityLevel = document.getElementById("activityLevelSelect").value;
     var settings = loadSettings();
     if (age !== "") settings.age = Math.round(parseFloat(age)); else delete settings.age;
     if (height !== "") settings.heightCm = Math.round(parseFloat(height)); else delete settings.heightCm;
-    settings.activityLevel = activityLevel;
     settings.sex = currentSex;
     saveSettings(settings);
-    renderMaintenanceEstimate();
+    renderToday();
+    renderTrends();
+  }
+
+  // Mifflin-St Jeor: resting energy burn only (no activity). Uses the most recently logged
+  // weight, falling back to a default if none logged yet.
+  function computeBMR() {
+    var settings = loadSettings();
+    if (settings.age == null || settings.heightCm == null) return null;
+    var latest = getLatestLoggedWeight();
+    var weight = latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
+    var bmr = 10 * weight + 6.25 * settings.heightCm - 5 * settings.age + (settings.sex === "female" ? -161 : 5);
+    return Math.round(bmr / 10) * 10;
+  }
+
+  // Total expenditure for a specific day: resting burn (BMR) + that day's activity burn.
+  function getMaintenanceForDay(date, entry) {
+    var bmr = computeBMR();
+    if (bmr == null) return null;
+    var burned = Math.round(getCaloriesBurnedBreakdown(date, entry && entry.weight, entry && entry.steps).total);
+    return bmr + burned;
   }
 
   // ---------- init ----------
@@ -2255,17 +2013,15 @@
     document.getElementById("trendsStartInput").addEventListener("change", renderTrends);
     document.getElementById("trendsEndInput").addEventListener("change", renderTrends);
 
-    fillSettingsForm();
-
+    fillProfileForm();
     document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () {
         setSexToggle(btn.dataset.sex);
-        handleMaintenanceInputChange();
+        handleProfileChange();
       });
     });
-    document.getElementById("ageInput").addEventListener("change", handleMaintenanceInputChange);
-    document.getElementById("heightInput").addEventListener("change", handleMaintenanceInputChange);
-    document.getElementById("activityLevelSelect").addEventListener("change", handleMaintenanceInputChange);
+    document.getElementById("ageInput").addEventListener("change", handleProfileChange);
+    document.getElementById("heightInput").addEventListener("change", handleProfileChange);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
