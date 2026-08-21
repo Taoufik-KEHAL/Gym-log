@@ -433,6 +433,7 @@
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
+    renderCalorieTarget(today, entry, daily);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
@@ -454,6 +455,31 @@
     var diff = entry.calories - bmr;
     el.textContent = (diff > 0 ? "+" : "") + diff + " vs BMR";
     el.className = "stat-sub";
+  }
+
+  // Suggested intake for a day: Maintenance minus a 500-750 kcal deficit, never below BMR.
+  function computeSuggestedCalorieRange(date, entry, daily) {
+    var maintenance = getMaintenanceForDay(date, entry, daily);
+    var bmr = computeBMRForDate(date, entry, daily);
+    if (maintenance == null || bmr == null) return null;
+    var high = Math.round((maintenance - 500) / 10) * 10;
+    var low = Math.round((maintenance - 750) / 10) * 10;
+    high = Math.max(high, bmr);
+    low = Math.max(low, bmr);
+    if (low > high) low = high;
+    return { low: low, high: high };
+  }
+
+  function renderCalorieTarget(date, entry, daily) {
+    var el = document.getElementById("sumCaloriesTarget");
+    var range = computeSuggestedCalorieRange(date, entry, daily);
+    if (range == null) {
+      el.textContent = "";
+      return;
+    }
+    el.textContent = range.low === range.high
+      ? "Target " + range.low
+      : "Target " + range.low + "–" + range.high;
   }
 
   function getCardioMET(name, pace) {
