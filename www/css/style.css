@@ -265,6 +265,11 @@ canvas {
   accent-color: var(--accent);
 }
 
+.mood-field input[type="range"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 input, select, textarea {
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
