@@ -48,6 +48,7 @@
 
   var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
   var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
+  var editingFoodLogEntry = null; // { date, id } while editing an already-logged entry's quantity
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
   // Evidence-based daily minimums for the Today stat-card good/bad coloring.
@@ -562,7 +563,10 @@
       var stored = entry[f.entry];
       input.value = stored != null ? stored : 5;
       input.dataset.touched = stored != null ? "1" : "0";
-      valueEl.textContent = stored != null ? stored : "—";
+      // Once a mood is logged for a given day it's locked in permanently -- it's a
+      // record of how you felt at that moment, not something to revise in hindsight.
+      input.disabled = stored != null;
+      valueEl.textContent = stored != null ? stored + " 🔒" : "—";
     });
   }
 
@@ -590,6 +594,9 @@
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
     MOOD_FIELDS.forEach(function (f) {
+      // Already logged for this day -- keep it exactly as first recorded, even if the
+      // disabled slider were somehow bypassed.
+      if (existing[f.entry] != null) { entry[f.entry] = existing[f.entry]; return; }
       var input = document.getElementById(f.input);
       if (input.dataset.touched === "1") entry[f.entry] = parseInt(input.value, 10);
     });
@@ -1400,10 +1407,7 @@
     var grams = getEffectiveGrams();
     if (grams <= 0) { toast("Enter a quantity"); return; }
     var factor = grams / 100;
-    var date = document.getElementById("foodDate").value || todayISO();
-    var entry = {
-      id: makeId(),
-      name: selectedFoodProduct.name,
+    var updated = {
       grams: Math.round(grams),
       calories: Math.round(selectedFoodProduct.per100.calories * factor),
       protein: Math.round(selectedFoodProduct.per100.protein * factor),
@@ -1411,15 +1415,108 @@
       fat: Math.round(selectedFoodProduct.per100.fat * factor)
     };
     if (currentQtyMode === "units") {
-      entry.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
-      entry.unitGrams = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
+      updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
+      updated.unitGrams = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
     }
-    addFoodEntry(date, entry);
+
+    if (editingFoodLogEntry) {
+      updateFoodLogEntryQuantity(editingFoodLogEntry.date, editingFoodLogEntry.id, updated);
+      editingFoodLogEntry = null;
+    } else {
+      var date = document.getElementById("foodDate").value || todayISO();
+      updated.id = makeId();
+      updated.name = selectedFoodProduct.name;
+      addFoodEntry(date, updated);
+    }
 
     selectedFoodProduct = null;
     document.getElementById("foodQuantityCard").style.display = "none";
+    document.getElementById("addFoodBtn").textContent = "Add to log";
+    document.getElementById("cancelEditFoodLogBtn").style.display = "none";
     document.getElementById("foodSearchInput").value = "";
     clearFoodSearchState();
+  }
+
+  function startEditFoodLogEntry(date, id) {
+    var entries = loadFoodLog()[date] || [];
+    var entry = null;
+    entries.forEach(function (e) { if (e.id === id) entry = e; });
+    if (!entry) return;
+    editingFoodLogEntry = { date: date, id: id };
+
+    var per100Factor = entry.grams > 0 ? 100 / entry.grams : 0;
+    selectedFoodProduct = {
+      name: entry.name,
+      per100: {
+        calories: entry.calories * per100Factor,
+        protein: entry.protein * per100Factor,
+        carbs: entry.carbs * per100Factor,
+        fat: entry.fat * per100Factor
+      }
+    };
+
+    document.getElementById("foodQuantityName").textContent = "Edit: " + entry.name;
+    document.getElementById("foodQuantityCard").style.display = "block";
+    document.getElementById("addFoodBtn").textContent = "Update log entry";
+    document.getElementById("cancelEditFoodLogBtn").style.display = "inline-block";
+    document.getElementById("foodSearchInput").value = "";
+    clearFoodSearchState();
+
+    if (entry.units != null) {
+      document.getElementById("foodUnitsInput").value = entry.units;
+      document.getElementById("foodUnitGramsInput").value = entry.unitGrams;
+      setQtyMode("units");
+    } else {
+      document.getElementById("foodGramsInput").value = entry.grams;
+      setQtyMode("grams");
+    }
+    document.getElementById("foodQuantityCard").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function cancelEditFoodLogEntry() {
+    editingFoodLogEntry = null;
+    selectedFoodProduct = null;
+    document.getElementById("foodQuantityCard").style.display = "none";
+    document.getElementById("addFoodBtn").textContent = "Add to log";
+    document.getElementById("cancelEditFoodLogBtn").style.display = "none";
+  }
+
+  function updateFoodLogEntryQuantity(date, id, updated) {
+    var log = loadFoodLog();
+    var entries = log[date] || [];
+    var idx = -1;
+    entries.forEach(function (entry, i) { if (entry.id === id) idx = i; });
+    if (idx === -1) return;
+    var old = entries[idx];
+    var next = {
+      id: old.id,
+      name: old.name,
+      grams: updated.grams,
+      calories: updated.calories,
+      protein: updated.protein,
+      carbs: updated.carbs,
+      fat: updated.fat
+    };
+    if (updated.units != null) {
+      next.units = updated.units;
+      next.unitGrams = updated.unitGrams;
+    }
+    entries[idx] = next;
+    saveFoodLog(log);
+
+    var daily = loadDaily();
+    var d = daily[date];
+    if (d) {
+      d.calories = Math.max(0, (d.calories || 0) - old.calories + updated.calories);
+      d.protein = Math.max(0, (d.protein || 0) - old.protein + updated.protein);
+      d.carbs = Math.max(0, (d.carbs || 0) - old.carbs + updated.carbs);
+      d.fat = Math.max(0, (d.fat || 0) - old.fat + updated.fat);
+      saveDaily(daily);
+    }
+
+    toast("Updated food log");
+    renderFoodLog(date);
+    syncTodayIfSameDate(date);
   }
 
   function handleSaveNewFood() {
@@ -1485,6 +1582,10 @@
       saveDaily(daily);
     }
 
+    if (editingFoodLogEntry && editingFoodLogEntry.date === date && editingFoodLogEntry.id === id) {
+      cancelEditFoodLogEntry();
+    }
+
     toast("Removed from food log");
     renderFoodLog(date);
     syncTodayIfSameDate(date);
@@ -1532,14 +1633,26 @@
       info.appendChild(nameEl);
       info.appendChild(macrosEl);
 
+      var actions = document.createElement("div");
+      actions.className = "food-log-actions";
+
+      var editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "icon-btn";
+      editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", function () { startEditFoodLogEntry(date, entry.id); });
+
       var removeBtn = document.createElement("button");
       removeBtn.type = "button";
       removeBtn.className = "remove";
       removeBtn.textContent = "✕";
       removeBtn.addEventListener("click", function () { removeFoodEntry(date, entry.id); });
 
+      actions.appendChild(editBtn);
+      actions.appendChild(removeBtn);
+
       item.appendChild(info);
-      item.appendChild(removeBtn);
+      item.appendChild(actions);
       list.appendChild(item);
     });
 
@@ -2011,6 +2124,7 @@
       btn.addEventListener("click", function () { setQtyMode(btn.dataset.qtyMode); });
     });
     document.getElementById("addFoodBtn").addEventListener("click", handleAddFoodFromSearch);
+    document.getElementById("cancelEditFoodLogBtn").addEventListener("click", cancelEditFoodLogEntry);
     document.getElementById("showNewFoodBtn").addEventListener("click", function () {
       var card = document.getElementById("newFoodCard");
       card.style.display = card.style.display === "none" ? "block" : "none";
