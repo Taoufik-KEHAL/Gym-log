@@ -608,6 +608,7 @@
     }
     saveDaily(daily);
     toast("Saved " + formatDateLong(date));
+    fillFormFromDate(date);
     renderToday();
   }
 
