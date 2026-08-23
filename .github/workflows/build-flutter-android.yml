@@ -75,6 +75,20 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Delete stale assets from the target release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r asset; do
+              echo "Deleting stale asset: $asset"
+              gh release delete-asset "$TAG" "$asset" -y
+            done
+          else
+            echo "No existing release for tag $TAG yet — nothing to clean up."
+          fi
+
       - name: Publish APK to a GitHub Release
         uses: softprops/action-gh-release@v2
         with:
