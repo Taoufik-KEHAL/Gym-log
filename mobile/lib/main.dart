@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'firebase_options.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/root_shell.dart';
 import 'screens/sign_in_screen.dart';
 import 'services/account_info.dart';
@@ -113,11 +114,22 @@ class GymLogHome extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             theme: buildTheme(AppColors.light, Brightness.light),
             darkTheme: buildTheme(AppColors.dark, Brightness.dark),
-            home: const RootShell(),
+            home: const _AppGate(),
           ),
         );
       },
     );
+  }
+}
+
+/// Shows the one-time profile setup until it's complete, then the app.
+class _AppGate extends StatelessWidget {
+  const _AppGate();
+
+  @override
+  Widget build(BuildContext context) {
+    final needsOnboarding = context.watch<AppState>().settings.needsOnboarding;
+    return needsOnboarding ? const OnboardingScreen() : const RootShell();
   }
 }
 

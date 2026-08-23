@@ -5,7 +5,16 @@ class AppSettings {
   int? restCalories;
   int? workoutCalories;
   int? cardioCalories;
-  int? age;
+
+  /// ISO "yyyy-MM-dd". The preferred way to know age — read through [age],
+  /// which is computed live so it keeps itself up to date without the user
+  /// ever having to touch it again.
+  String? dateOfBirth;
+
+  /// Fallback for settings saved before [dateOfBirth] existed. Only read
+  /// through [age] when there's no birth date on file yet.
+  int? legacyAgeYears;
+
   int? heightCm;
   ActivityLevel activityLevel;
   Sex sex;
@@ -16,7 +25,8 @@ class AppSettings {
     this.restCalories,
     this.workoutCalories,
     this.cardioCalories,
-    this.age,
+    this.dateOfBirth,
+    this.legacyAgeYears,
     this.heightCm,
     this.activityLevel = ActivityLevel.moderate,
     this.sex = Sex.male,
@@ -24,11 +34,31 @@ class AppSettings {
     this.calorieTargetPolicy,
   });
 
+  /// Age in whole years, derived from [dateOfBirth] when it's set (so it
+  /// keeps advancing on its own), falling back to a one-time stored age for
+  /// settings saved before date-of-birth was collected.
+  int? get age {
+    final dob = dateOfBirth;
+    if (dob == null) return legacyAgeYears;
+    final birth = DateTime.parse(dob);
+    final now = DateTime.now();
+    var years = now.year - birth.year;
+    final hadBirthdayThisYear =
+        (now.month > birth.month) || (now.month == birth.month && now.day >= birth.day);
+    if (!hadBirthdayThisYear) years--;
+    return years;
+  }
+
+  /// True until sex, date of birth, and height have all been entered once —
+  /// gates the one-time onboarding flow.
+  bool get needsOnboarding => dateOfBirth == null || heightCm == null;
+
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
     restCalories: (json['restCalories'] as num?)?.round(),
     workoutCalories: (json['workoutCalories'] as num?)?.round(),
     cardioCalories: (json['cardioCalories'] as num?)?.round(),
-    age: (json['age'] as num?)?.round(),
+    dateOfBirth: json['dateOfBirth'] as String?,
+    legacyAgeYears: (json['age'] as num?)?.round(),
     heightCm: (json['heightCm'] as num?)?.round(),
     activityLevel: activityLevelFromJson(json['activityLevel'] as String?),
     sex: sexFromJson(json['sex'] as String?),
@@ -41,7 +71,8 @@ class AppSettings {
     if (restCalories != null) 'restCalories': restCalories,
     if (workoutCalories != null) 'workoutCalories': workoutCalories,
     if (cardioCalories != null) 'cardioCalories': cardioCalories,
-    if (age != null) 'age': age,
+    if (dateOfBirth != null) 'dateOfBirth': dateOfBirth,
+    if (dateOfBirth == null && legacyAgeYears != null) 'age': legacyAgeYears,
     if (heightCm != null) 'heightCm': heightCm,
     'activityLevel': activityLevelToJson(activityLevel),
     'sex': sexToJson(sex),

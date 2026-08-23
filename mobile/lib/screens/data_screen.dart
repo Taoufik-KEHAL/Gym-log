@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/enums.dart';
+import '../models/settings.dart';
 import '../services/account_info.dart';
 import '../services/app_state.dart';
 import '../theme.dart';
@@ -15,7 +16,7 @@ import '../utils/calc.dart' as calc;
 import '../utils/dates.dart';
 import '../widgets/list_row.dart';
 import '../widgets/section_card.dart';
-import '../widgets/segmented_toggle.dart';
+import 'onboarding_screen.dart';
 
 class DataScreen extends StatefulWidget {
   const DataScreen({super.key});
@@ -25,35 +26,17 @@ class DataScreen extends StatefulWidget {
 }
 
 class _DataScreenState extends State<DataScreen> {
-  late final TextEditingController _ageCtrl;
-  late final TextEditingController _heightCtrl;
   bool _showImportBox = false;
   final _importCtrl = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-    final settings = context.read<AppState>().settings;
-    _ageCtrl = TextEditingController(text: settings.age?.toString() ?? '');
-    _heightCtrl = TextEditingController(text: settings.heightCm?.toString() ?? '');
-  }
-
-  @override
   void dispose() {
-    _ageCtrl.dispose();
-    _heightCtrl.dispose();
     _importCtrl.dispose();
     super.dispose();
   }
 
-  void _onSettingsFieldChanged() {
-    final app = context.read<AppState>();
-    app.updateSettings(
-      age: int.tryParse(_ageCtrl.text),
-      clearAge: _ageCtrl.text.trim().isEmpty,
-      heightCm: int.tryParse(_heightCtrl.text),
-      clearHeight: _heightCtrl.text.trim().isEmpty,
-    );
+  void _editProfile() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnboardingScreen()));
   }
 
   Future<void> _export() async {
@@ -85,11 +68,6 @@ class _DataScreenState extends State<DataScreen> {
     }
     await context.read<AppState>().importAll(payload);
     if (!mounted) return;
-    final settings = context.read<AppState>().settings;
-    setState(() {
-      _ageCtrl.text = settings.age?.toString() ?? '';
-      _heightCtrl.text = settings.heightCm?.toString() ?? '';
-    });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Import complete')));
   }
 
@@ -109,10 +87,6 @@ class _DataScreenState extends State<DataScreen> {
     if (confirmed != true) return;
     await appState.clearAll();
     if (!mounted) return;
-    setState(() {
-      _ageCtrl.clear();
-      _heightCtrl.clear();
-    });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All data erased')));
   }
 
@@ -155,30 +129,13 @@ class _DataScreenState extends State<DataScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _ageCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Age'),
-                      onChanged: (_) => _onSettingsFieldChanged(),
+                    child: Text(
+                      _profileSummary(settings),
+                      style: TextStyle(color: c.text, fontSize: 13),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _heightCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Height (cm)'),
-                      onChanged: (_) => _onSettingsFieldChanged(),
-                    ),
-                  ),
+                  TextButton(onPressed: _editProfile, child: const Text('Edit')),
                 ],
-              ),
-              const SizedBox(height: 12),
-              SegmentedToggle<Sex>(
-                values: const [Sex.male, Sex.female],
-                selected: settings.sex,
-                labelFor: (s) => s == Sex.male ? 'Male' : 'Female',
-                onChanged: (s) => app.updateSettings(sex: s),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<ActivityLevel>(
@@ -201,7 +158,7 @@ class _DataScreenState extends State<DataScreen> {
               ],
               const SizedBox(height: 12),
               if (maintenance == null)
-                Text('Enter your age and height above to estimate maintenance calories.', style: TextStyle(color: c.textDim, fontSize: 13))
+                Text('Finish your profile above to estimate maintenance calories.', style: TextStyle(color: c.textDim, fontSize: 13))
               else
                 _MaintenanceResultView(result: maintenance),
               if (settings.workoutCalories != null) ...[
@@ -314,4 +271,12 @@ class _MaintenanceResultView extends StatelessWidget {
       ],
     );
   }
+}
+
+String _profileSummary(AppSettings settings) {
+  if (settings.dateOfBirth == null || settings.heightCm == null) {
+    return 'Set up your profile (sex, date of birth, height).';
+  }
+  final sexLabel = settings.sex == Sex.male ? 'Male' : 'Female';
+  return '$sexLabel · ${settings.age} y/o · ${settings.heightCm} cm';
 }
