@@ -46,6 +46,9 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
     private SensorManager sensorManager;
     private Sensor stepCounterSensor;
     private PluginCall pendingCall;
+    // Non-null while a setTodaySteps() call is waiting on a sensor read: holds the
+    // authoritative "steps so far today" value to splice in as the new baseline.
+    private Integer recalibrateTargetSteps;
 
     @Override
     public void load() {
@@ -65,10 +68,33 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
 
     @PluginMethod
     public void getTodaySteps(PluginCall call) {
+        recalibrateTargetSteps = null;
         if (stepCounterSensor == null) {
             call.reject("No step counter sensor on this device");
             return;
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && getPermissionState("activity") != PermissionState.GRANTED) {
+            requestPermissionForAlias("activity", call, "permissionCallback");
+            return;
+        }
+        readSteps(call);
+    }
+
+    // Recalibrates today's baseline so future reads report the given "steps so far"
+    // value plus whatever new steps happen from now on -- used when an imported backup's
+    // step count for today is more accurate than this device's own running tally.
+    @PluginMethod
+    public void setTodaySteps(PluginCall call) {
+        Integer stepsValue = call.getInt("steps");
+        if (stepsValue == null) {
+            call.reject("Missing steps value");
+            return;
+        }
+        if (stepCounterSensor == null) {
+            call.reject("No step counter sensor on this device");
+            return;
+        }
+        recalibrateTargetSteps = stepsValue;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && getPermissionState("activity") != PermissionState.GRANTED) {
             requestPermissionForAlias("activity", call, "permissionCallback");
             return;
@@ -81,6 +107,7 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
         if (getPermissionState("activity") == PermissionState.GRANTED) {
             readSteps(call);
         } else {
+            recalibrateTargetSteps = null;
             call.reject("Activity recognition permission denied");
         }
     }
@@ -98,16 +125,22 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
 
         SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-        String baselineDate = prefs.getString("baseline_date", null);
         float baseline;
-        if (today.equals(baselineDate)) {
-            baseline = prefs.getFloat("baseline_value", totalSinceBoot);
+
+        if (recalibrateTargetSteps != null) {
+            baseline = totalSinceBoot - recalibrateTargetSteps;
+            recalibrateTargetSteps = null;
         } else {
-            // No baseline captured for today yet (the periodic worker hasn't ticked since
-            // midnight rolled over) -- fall back to starting the count from right now.
-            baseline = totalSinceBoot;
-            prefs.edit().putString("baseline_date", today).putFloat("baseline_value", baseline).apply();
+            String baselineDate = prefs.getString("baseline_date", null);
+            if (today.equals(baselineDate)) {
+                baseline = prefs.getFloat("baseline_value", totalSinceBoot);
+            } else {
+                // No baseline captured for today yet (the periodic worker hasn't ticked
+                // since midnight rolled over) -- fall back to starting from right now.
+                baseline = totalSinceBoot;
+            }
         }
+        prefs.edit().putString("baseline_date", today).putFloat("baseline_value", baseline).apply();
         int todaySteps = (int) Math.max(0, totalSinceBoot - baseline);
 
         JSObject ret = new JSObject();
