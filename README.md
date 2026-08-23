@@ -9,7 +9,7 @@ There are two implementations in this repo:
 
 ## Flutter app (`mobile/`)
 
-Requires the [Flutter SDK](https://docs.flutter.dev/get-started/install). Data is stored on-device via `shared_preferences`, under the same keys the original web app used in `localStorage` — a JSON backup exported from either app can be imported into the other.
+Requires the [Flutter SDK](https://docs.flutter.dev/get-started/install). Sign in with Google and your data syncs to Firestore, so it's available across every device you sign into — the export/import JSON is the same shape the original web app used in `localStorage`, so a backup from either app can still be imported into the other.
 
 ```
 cd mobile
@@ -18,6 +18,8 @@ flutter run              # launch on a connected device/emulator
 flutter test              # unit + widget tests
 flutter build apk --debug # APK output: mobile/build/app/outputs/flutter-apk/app-debug.apk
 ```
+
+The app needs a Firebase project connected before sign-in/sync will work — see `mobile/README.md` for the one-time setup (`flutterfire configure`, enabling Google sign-in, deploying `mobile/firestore.rules`). Without that, it builds and runs fine but stops at a "Firebase isn't configured" screen.
 
 `.github/workflows/build-flutter-android.yml` builds a debug APK and publishes it to the `flutter-android-latest` GitHub Release on every push to `main` that touches `mobile/`.
 

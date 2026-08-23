@@ -11,16 +11,17 @@ import '../models/settings.dart';
 import '../models/workout.dart';
 import '../models/workout_template.dart';
 import '../utils/calc.dart' as calc;
-import 'storage_service.dart';
+import 'storage_backend.dart';
 
 const _uuid = Uuid();
 
-/// Central in-memory store for every collection, backed by [StorageService].
-/// Every mutation updates memory, persists through storage, and calls
-/// [notifyListeners] — the Flutter analogue of the web app's
-/// `loadX()` → mutate → `saveX()` → re-render pattern.
+/// Central in-memory store for every collection, backed by a
+/// [GymLogStorage] (on-device or cloud). Every mutation updates memory,
+/// persists through storage, and calls [notifyListeners] — the Flutter
+/// analogue of the web app's `loadX()` → mutate → `saveX()` → re-render
+/// pattern.
 class AppState extends ChangeNotifier {
-  final StorageService _storage;
+  final GymLogStorage _storage;
 
   AppState(this._storage);
 
@@ -32,33 +33,32 @@ class AppState extends ChangeNotifier {
   List<CustomExercise> customExercises = [];
   List<WorkoutTemplate> workoutTemplates = [];
 
-  static Future<AppState> create() async {
-    final storage = await StorageService.create();
+  static Future<AppState> create(GymLogStorage storage) async {
     final state = AppState(storage);
-    state._load();
+    await state._load();
     return state;
   }
 
-  void _load() {
-    daily = _storage.loadDaily();
-    workouts = _storage.loadWorkouts();
-    settings = _storage.loadSettings();
-    foodLog = _storage.loadFoodLog();
-    customFoods = _storage.loadCustomFoods();
-    customExercises = _storage.loadCustomExercises();
-    workoutTemplates = _storage.loadWorkoutTemplates();
+  Future<void> _load() async {
+    daily = await _storage.loadDaily();
+    workouts = await _storage.loadWorkouts();
+    settings = await _storage.loadSettings();
+    foodLog = await _storage.loadFoodLog();
+    customFoods = await _storage.loadCustomFoods();
+    customExercises = await _storage.loadCustomExercises();
+    workoutTemplates = await _storage.loadWorkoutTemplates();
 
-    if (!_storage.hasCustomFoods) {
+    if (!await _storage.hasCustomFoods) {
       customFoods = customFoodSeed
           .map((f) => CustomFood(id: _uuid.v4(), name: f.name, per100: f.per100))
           .toList();
-      _storage.saveCustomFoods(customFoods);
+      await _storage.saveCustomFoods(customFoods);
     }
-    if (!_storage.hasWorkoutTemplates) {
+    if (!await _storage.hasWorkoutTemplates) {
       workoutTemplates = workoutTemplateSeed
           .map((t) => WorkoutTemplate(id: _uuid.v4(), name: t.name, exercises: t.exercises))
           .toList();
-      _storage.saveWorkoutTemplates(workoutTemplates);
+      await _storage.saveWorkoutTemplates(workoutTemplates);
     }
     notifyListeners();
   }
@@ -229,7 +229,18 @@ class AppState extends ChangeNotifier {
 
   // ---------- data export / import / clear ----------
 
-  Map<String, dynamic> exportAll() => _storage.exportAll();
+  /// Raw export payload built from in-memory state — every collection as a
+  /// `toJson`-ready map, matching the shape of the web app's export JSON.
+  Map<String, dynamic> exportAll() => {
+    'exportedAt': DateTime.now().toIso8601String(),
+    'daily': daily.map((k, v) => MapEntry(k, v.toJson())),
+    'workouts': workouts.map((w) => w.toJson()).toList(),
+    'settings': settings.toJson(),
+    'foodlog': foodLog.map((k, v) => MapEntry(k, v.map((e) => e.toJson()).toList())),
+    'customFoods': customFoods.map((f) => f.toJson()).toList(),
+    'customExercises': customExercises.map((e) => e.toJson()).toList(),
+    'customWorkoutTemplates': workoutTemplates.map((t) => t.toJson()).toList(),
+  };
 
   Future<void> importAll(Map<String, dynamic> payload) async {
     if (payload['daily'] is Map) {

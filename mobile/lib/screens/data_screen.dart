@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/enums.dart';
+import '../services/account_info.dart';
 import '../services/app_state.dart';
 import '../theme.dart';
 import '../utils/calc.dart' as calc;
@@ -97,8 +98,8 @@ class _DataScreenState extends State<DataScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Erase all logged data on this device?'),
-        content: const Text('This cannot be undone.'),
+        title: const Text('Erase all logged data?'),
+        content: const Text('This erases your synced data everywhere it appears. This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Erase')),
@@ -123,10 +124,29 @@ class _DataScreenState extends State<DataScreen> {
 
     final suggestion = calc.computeActivityLevelFromHistory(daily: app.daily, workouts: app.workouts);
     final maintenance = calc.computeMaintenanceCalories(daily: app.daily, settings: settings);
+    final account = context.watch<AccountInfo>();
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (account.email != null)
+          SectionCard(
+            title: 'Account',
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Signed in as ${account.email}',
+                    style: TextStyle(color: c.text, fontSize: 13),
+                  ),
+                ),
+                TextButton(
+                  onPressed: account.signOut,
+                  child: const Text('Sign out'),
+                ),
+              ],
+            ),
+          ),
         SectionCard(
           title: 'Maintenance calories',
           child: Column(

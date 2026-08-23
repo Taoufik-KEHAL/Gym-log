@@ -2,11 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:gymlog/main.dart';
+import 'package:gymlog/services/local_storage_service.dart';
 
+// These pump [GymLogHome] directly (the storage-parameterized app shell),
+// bypassing [GymLogApp]'s Firebase/Google-sign-in gate entirely — that gate
+// has nothing to do with what these tests check, and Firebase isn't
+// initialized in the test environment.
 void main() {
   testWidgets('App launches and shows the bottom tab bar', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(const GymLogApp());
+    await tester.pumpWidget(GymLogHome(storage: await LocalStorageService.create()));
     await tester.pumpAndSettle();
 
     expect(find.text('Gym Log'), findsWidgets);
@@ -17,7 +22,7 @@ void main() {
 
   testWidgets('Every tab renders without throwing', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(const GymLogApp());
+    await tester.pumpWidget(GymLogHome(storage: await LocalStorageService.create()));
     await tester.pumpAndSettle();
 
     for (final label in ['Today', 'Workout', 'Food', 'History', 'Trends', 'Data']) {
@@ -38,7 +43,7 @@ void main() {
       'gymlog.foodlog': '{"2026-01-01":[{"id":"f1","name":"Chicken breast","grams":150,'
           '"calories":248,"protein":47,"carbs":0,"fat":5}]}',
     });
-    await tester.pumpWidget(const GymLogApp());
+    await tester.pumpWidget(GymLogHome(storage: await LocalStorageService.create()));
     await tester.pumpAndSettle();
 
     for (final label in ['Today', 'Workout', 'Food', 'History', 'Trends', 'Data']) {
