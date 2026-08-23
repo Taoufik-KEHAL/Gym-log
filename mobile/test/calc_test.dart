@@ -108,7 +108,12 @@ void main() {
 
   group('computeMaintenanceCalories (formula fallback)', () {
     test('uses Mifflin-St Jeor with default bodyweight when nothing logged', () {
-      final settings = AppSettings(age: 30, heightCm: 180, sex: Sex.male, activityLevel: ActivityLevel.moderate);
+      final settings = AppSettings(
+        legacyAgeYears: 30,
+        heightCm: 180,
+        sex: Sex.male,
+        activityLevel: ActivityLevel.moderate,
+      );
       final result = calc.computeMaintenanceCalories(daily: {}, settings: settings);
       expect(result, isNotNull);
       expect(result!.method, 'formula');

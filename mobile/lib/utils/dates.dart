@@ -18,6 +18,8 @@ String formatDateLong(String iso) =>
 
 String formatDateShort(String iso) => DateFormat('d MMM').format(fromISO(iso));
 
+String formatDateOfBirth(String iso) => DateFormat('d MMM yyyy').format(fromISO(iso));
+
 String getDefaultWorkoutSessionName(String iso) {
   final d = fromISO(iso);
   final dayName = DateFormat('EEEE').format(d);

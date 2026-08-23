@@ -211,14 +211,14 @@ class AppState extends ChangeNotifier {
   // ---------- settings ----------
 
   Future<void> updateSettings({
-    int? age,
-    bool clearAge = false,
+    String? dateOfBirth,
+    bool clearDateOfBirth = false,
     int? heightCm,
     bool clearHeight = false,
     ActivityLevel? activityLevel,
     Sex? sex,
   }) async {
-    settings.age = clearAge ? null : (age ?? settings.age);
+    settings.dateOfBirth = clearDateOfBirth ? null : (dateOfBirth ?? settings.dateOfBirth);
     settings.heightCm = clearHeight ? null : (heightCm ?? settings.heightCm);
     if (activityLevel != null) settings.activityLevel = activityLevel;
     if (sex != null) settings.sex = sex;
