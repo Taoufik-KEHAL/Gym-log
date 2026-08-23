@@ -589,6 +589,18 @@
     });
   }
 
+  // If the imported backup includes today's step count, treat it as the accurate
+  // "steps so far" reference point: recalibrate the native baseline so future sensor
+  // reads (auto-fill, the sync button, the periodic background check) report this
+  // imported number plus whatever new steps happen from now on, instead of the
+  // device's own possibly-stale baseline overwriting it.
+  function recalibrateStepsFromImport(daily) {
+    if (!nativeStepsAvailable()) return;
+    var entry = daily[todayISO()];
+    if (!entry || entry.steps == null) return;
+    window.Capacitor.Plugins.Steps.setTodaySteps({ steps: entry.steps }).catch(function () {});
+  }
+
   function fillFormFromDate(iso) {
     var daily = loadDaily();
     var entry = daily[iso] || {};
@@ -1930,7 +1942,7 @@
       toast("Invalid JSON");
       return;
     }
-    if (payload.daily) saveDaily(payload.daily);
+    if (payload.daily) { saveDaily(payload.daily); recalibrateStepsFromImport(payload.daily); }
     if (payload.workouts) saveWorkouts(payload.workouts);
     if (payload.settings) saveSettings(payload.settings);
     if (payload.foodlog) saveFoodLog(payload.foodlog);
