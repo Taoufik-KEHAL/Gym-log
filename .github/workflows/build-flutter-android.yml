@@ -8,6 +8,15 @@ on:
       - "mobile/**"
       - ".github/workflows/build-flutter-android.yml"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Git tag to publish the release under"
+        required: false
+        default: "flutter-android-latest"
+      release_name:
+        description: "Release title (leave blank to auto-generate from the app version)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -56,11 +65,21 @@ jobs:
         run: |
           cp build/app/outputs/flutter-apk/app-debug.apk "../Gym-Log-Flutter-v${{ steps.version.outputs.name }}-debug.apk"
 
+      - name: Resolve release tag/name
+        id: release
+        run: |
+          TAG="${{ github.event.inputs.release_tag }}"
+          if [ -z "$TAG" ]; then TAG="flutter-android-latest"; fi
+          NAME="${{ github.event.inputs.release_name }}"
+          if [ -z "$NAME" ]; then NAME="Gym Log Flutter Android v${{ steps.version.outputs.name }} (latest)"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
       - name: Publish APK to a GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: flutter-android-latest
-          name: Gym Log Flutter Android v${{ steps.version.outputs.name }} (latest)
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.name }}
           body: |
             Auto-built debug APK of the Flutter rewrite from commit ${{ github.sha }}.
             Download `Gym-Log-Flutter-v${{ steps.version.outputs.name }}-debug.apk` below and open it on your phone to install (allow "install from this source" if prompted).
