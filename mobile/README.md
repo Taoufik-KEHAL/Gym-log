@@ -10,30 +10,26 @@ flutter run
 flutter test
 ```
 
-## Firebase setup (required)
+## Firebase setup
 
-The app signs in with Google and stores your data in Firestore, so it needs a real Firebase project before it'll do anything beyond show a "Firebase isn't configured" screen. `lib/firebase_options.dart` ships with placeholder values on purpose — nobody should be able to write to a project they didn't create.
+The app signs in with Google and stores your data in Firestore. The project (`gym-log-4e139`) is already created and wired up for **Android** — `lib/firebase_options.dart` and `android/app/google-services.json` hold its real config, committed to the repo (these files identify the app to Firebase; they aren't secrets — real access control lives in Firestore's security rules and Firebase Auth).
 
-1. Create a project at [console.firebase.google.com](https://console.firebase.google.com).
-2. In the project, enable:
-   - **Authentication** → Sign-in method → **Google**.
-   - **Firestore Database** (production mode is fine — the rules below lock it down).
-3. From `mobile/`, install the FlutterFire CLI once and run it:
-   ```
-   dart pub global activate flutterfire_cli
-   flutterfire configure
-   ```
-   Pick your project and the platforms you build for (Android/iOS at minimum). This registers the app with Firebase, downloads `google-services.json` / `GoogleService-Info.plist` into the platform folders, and overwrites `lib/firebase_options.dart` with your project's real values.
-4. **Android only** — Google Sign-In needs your debug (and release) signing certificate's SHA-1 registered on the Firebase Android app:
+Still to do, in the Firebase console at [console.firebase.google.com/project/gym-log-4e139](https://console.firebase.google.com/project/gym-log-4e139):
+
+1. **Authentication** → Sign-in method → enable **Google**.
+2. **Firestore Database** → create the database if it doesn't exist yet (production mode — `firestore.rules` in this repo locks it down).
+3. **Android Google Sign-In** needs your signing certificate's SHA-1 registered on the Firebase Android app:
    ```
    cd android && ./gradlew signingReport
    ```
-   Add the SHA-1 (and SHA-256) under Project settings → your Android app in the Firebase console.
-5. Deploy the Firestore security rules in `firestore.rules` (restricts every user to their own data):
+   Add the SHA-1 (and SHA-256) under Project settings → your Android app in the Firebase console. Do this again with your release keystore once you have one.
+4. Deploy the Firestore security rules:
    ```
    firebase deploy --only firestore:rules
    ```
-6. `flutter run` — you should land on the Google sign-in screen, and your first sign-in copies over anything already logged locally on that device.
+5. `flutter run` — you should land on the Google sign-in screen, and your first sign-in copies over anything already logged locally on that device.
+
+**Other platforms (iOS, macOS, Windows, web)** aren't configured yet — only Android's `google-services.json`/`firebase_options.dart` entry exists. Re-run `flutterfire configure` from `mobile/` and pick the platform(s) you want to add; it'll extend `firebase_options.dart` and drop in the matching platform config file without touching the Android entry.
 
 ## Building
 

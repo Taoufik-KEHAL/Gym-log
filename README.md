@@ -19,7 +19,7 @@ flutter test              # unit + widget tests
 flutter build apk --debug # APK output: mobile/build/app/outputs/flutter-apk/app-debug.apk
 ```
 
-The app needs a Firebase project connected before sign-in/sync will work — see `mobile/README.md` for the one-time setup (`flutterfire configure`, enabling Google sign-in, deploying `mobile/firestore.rules`). Without that, it builds and runs fine but stops at a "Firebase isn't configured" screen.
+Android is already wired up to the `gym-log-4e139` Firebase project; see `mobile/README.md` for what's left to finish in the Firebase console (enabling Google sign-in, deploying `mobile/firestore.rules`) and for adding other platforms.
 
 `.github/workflows/build-flutter-android.yml` builds a debug APK and publishes it to the `flutter-android-latest` GitHub Release on every push to `main` that touches `mobile/`.
 
