@@ -574,12 +574,28 @@
     { input: "moodEveningInput", value: "moodEveningValue", entry: "moodEvening" }
   ];
 
+  function nativeStepsAvailable() {
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() &&
+      window.Capacitor.Plugins && window.Capacitor.Plugins.Steps);
+  }
+
+  function syncStepsFromDevice(silent) {
+    if (!nativeStepsAvailable()) return;
+    window.Capacitor.Plugins.Steps.getTodaySteps().then(function (result) {
+      document.getElementById("stepsInput").value = result.steps;
+      if (!silent) toast("Synced " + result.steps + " steps from phone");
+    }).catch(function () {
+      if (!silent) toast("Couldn't read steps from phone");
+    });
+  }
+
   function fillFormFromDate(iso) {
     var daily = loadDaily();
     var entry = daily[iso] || {};
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
+    if (entry.steps == null && iso === todayISO()) syncStepsFromDevice(true);
     document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
@@ -2054,6 +2070,8 @@
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
 
+    document.getElementById("syncStepsBtn").style.display = nativeStepsAvailable() ? "block" : "none";
+
     fillFormFromDate(todayISO());
 
     document.querySelectorAll(".tab-btn").forEach(function (btn) {
@@ -2061,6 +2079,7 @@
     });
 
     document.getElementById("dailyForm").addEventListener("submit", handleDailySubmit);
+    document.getElementById("syncStepsBtn").addEventListener("click", function () { syncStepsFromDevice(false); });
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
     });

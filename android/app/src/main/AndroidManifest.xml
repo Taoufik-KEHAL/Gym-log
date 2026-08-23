@@ -35,7 +35,10 @@
         </provider>
     </application>
 
+    <uses-feature android:name="android.hardware.sensor.stepcounter" android:required="false" />
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 </manifest>
