@@ -36,6 +36,13 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- Google's official AdMob *test* App ID (see lib/services/ads_service.dart).
+             Replace with your real App ID from admob.google.com before shipping to the
+             Play Store -- Google suspends accounts caught shipping test IDs in production. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713" />
+
         <receiver android:name=".MidnightStepsAlarmReceiver" android:exported="false" />
 
         <receiver android:name=".BootReceiver" android:exported="true">

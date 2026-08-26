@@ -6,6 +6,7 @@ import '../data/exercise_library.dart';
 import '../models/enums.dart';
 import '../models/workout.dart';
 import '../models/workout_template.dart';
+import '../services/ads_service.dart';
 import '../services/app_state.dart';
 import '../services/nav_controller.dart';
 import '../theme.dart';
@@ -146,6 +147,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       SnackBar(content: Text(wasEditing ? 'Workout updated' : 'Workout saved')),
     );
     context.read<NavController>().goTo(AppTab.history);
+    AdsService.instance.showInterstitialIfReady();
   }
 
   void _cancelEdit() {

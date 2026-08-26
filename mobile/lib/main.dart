@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/root_shell.dart';
 import 'screens/sign_in_screen.dart';
 import 'services/account_info.dart';
+import 'services/ads_service.dart';
 import 'services/app_state.dart';
 import 'services/auth_service.dart';
 import 'services/firestore_storage_service.dart';
@@ -24,6 +27,7 @@ void main() async {
   } catch (_) {
     firebaseReady = false;
   }
+  unawaited(AdsService.instance.initialize());
   runApp(GymLogApp(firebaseReady: firebaseReady));
 }
 
