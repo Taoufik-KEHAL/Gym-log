@@ -45,7 +45,7 @@ public class MidnightStepsAlarmReceiver extends BroadcastReceiver {
         }).start();
     }
 
-    private static void captureBaseline(Context context) {
+    static void captureBaseline(Context context) {
         SensorManager sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         Sensor stepCounter = sensorManager != null ? sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) : null;
         if (stepCounter == null) return;

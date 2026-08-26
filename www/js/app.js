@@ -519,9 +519,6 @@
     var parts = [];
     workouts.forEach(function (wk) {
       wk.exercises.forEach(function (ex) {
-        // A logged "Walking" cardio entry is already reflected in the day's step count,
-        // so counting it again here would double-count the same steps.
-        if (steps && ex.type === "cardio" && (ex.name || "").toLowerCase() === "walking") return;
         var kcal = Math.round(estimateExerciseCalories(ex, w));
         if (kcal <= 0) return;
         var detail = ex.type === "cardio"
