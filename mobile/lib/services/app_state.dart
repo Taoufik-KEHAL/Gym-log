@@ -11,6 +11,8 @@ import '../models/settings.dart';
 import '../models/workout.dart';
 import '../models/workout_template.dart';
 import '../utils/calc.dart' as calc;
+import '../utils/dates.dart';
+import 'steps_service.dart';
 import 'storage_backend.dart';
 
 const _uuid = Uuid();
@@ -94,6 +96,10 @@ class AppState extends ChangeNotifier {
       daily[date] = entry;
     }
     await _storage.saveDaily(daily);
+    // A manually-entered steps count for today is the user's authoritative "steps so
+    // far" figure -- recalibrate the native baseline so it's the new reference point
+    // instead of being silently overwritten by the next sync/auto-fill.
+    if (date == todayISO() && entry.steps != null) StepsService.setTodaySteps(entry.steps!);
     _syncMaintenanceTargets();
     notifyListeners();
   }
@@ -248,6 +254,11 @@ class AppState extends ChangeNotifier {
         (k, v) => MapEntry(k, DailyEntry.fromJson(v as Map<String, dynamic>)),
       );
       await _storage.saveDaily(daily);
+      // If the imported backup includes today's step count, treat it as the accurate
+      // "steps so far" reference point and recalibrate the native baseline the same way
+      // a manual save does.
+      final todaySteps = daily[todayISO()]?.steps;
+      if (todaySteps != null) StepsService.setTodaySteps(todaySteps);
     }
     if (payload['workouts'] is List) {
       workouts = (payload['workouts'] as List)

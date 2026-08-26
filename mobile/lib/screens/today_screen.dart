@@ -6,6 +6,7 @@ import '../models/enums.dart';
 import '../models/settings.dart';
 import '../models/workout.dart';
 import '../services/app_state.dart';
+import '../services/steps_service.dart';
 import '../theme.dart';
 import '../utils/calc.dart' as calc;
 import '../utils/dates.dart';
@@ -38,9 +39,11 @@ class _TodayScreenState extends State<TodayScreen> {
   void initState() {
     super.initState();
     final app = context.read<AppState>();
-    _fillForm(app.entryFor(_date));
+    final entry = app.entryFor(_date);
+    _fillForm(entry);
     final earliest = calc.getEarliestLoggedWeightDate(app.daily);
     if (earliest != null) _trendStart = earliest;
+    if (entry.steps == null && _date == todayISO()) _syncStepsFromDevice(silent: true);
   }
 
   @override
@@ -62,6 +65,26 @@ class _TodayScreenState extends State<TodayScreen> {
     _dayType = entry.dayType;
   }
 
+  Future<void> _syncStepsFromDevice({bool silent = false}) async {
+    if (!StepsService.isAvailable) return;
+    final steps = await StepsService.getTodaySteps();
+    if (!mounted) return;
+    if (steps == null) {
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't read steps from phone"), duration: Duration(seconds: 2)),
+        );
+      }
+      return;
+    }
+    setState(() => _stepsCtrl.text = steps.toString());
+    if (!silent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Synced $steps steps from phone'), duration: const Duration(seconds: 2)),
+      );
+    }
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -70,10 +93,13 @@ class _TodayScreenState extends State<TodayScreen> {
       lastDate: DateTime(2100),
     );
     if (picked == null) return;
+    if (!mounted) return;
+    final entry = context.read<AppState>().entryFor(toISO(picked));
     setState(() {
       _date = toISO(picked);
-      _fillForm(context.read<AppState>().entryFor(_date));
+      _fillForm(entry);
     });
+    if (entry.steps == null && _date == todayISO()) _syncStepsFromDevice(silent: true);
   }
 
   Future<void> _save() async {
@@ -146,7 +172,16 @@ class _TodayScreenState extends State<TodayScreen> {
                     child: TextField(
                       controller: _stepsCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Steps'),
+                      decoration: InputDecoration(
+                        labelText: 'Steps',
+                        suffixIcon: StepsService.isAvailable && _date == todayISO()
+                            ? IconButton(
+                                icon: const Icon(Icons.sync),
+                                tooltip: 'Sync from phone',
+                                onPressed: () => _syncStepsFromDevice(),
+                              )
+                            : null,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
