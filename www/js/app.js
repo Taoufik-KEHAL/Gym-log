@@ -586,16 +586,21 @@
     });
   }
 
-  // If the imported backup includes today's step count, treat it as the accurate
-  // "steps so far" reference point: recalibrate the native baseline so future sensor
-  // reads (auto-fill, the sync button, the periodic background check) report this
-  // imported number plus whatever new steps happen from now on, instead of the
-  // device's own possibly-stale baseline overwriting it.
-  function recalibrateStepsFromImport(daily) {
+  // Recalibrates the native baseline so future sensor reads (auto-fill, the sync
+  // button, the periodic background check) report the given "steps so far today"
+  // value plus whatever new steps happen from now on, instead of the device's own
+  // possibly-stale baseline overwriting it.
+  function recalibrateNativeSteps(stepsValue) {
     if (!nativeStepsAvailable()) return;
+    window.Capacitor.Plugins.Steps.setTodaySteps({ steps: stepsValue }).catch(function () {});
+  }
+
+  // If the imported backup includes today's step count, treat it as the accurate
+  // "steps so far" reference point.
+  function recalibrateStepsFromImport(daily) {
     var entry = daily[todayISO()];
     if (!entry || entry.steps == null) return;
-    window.Capacitor.Plugins.Steps.setTodaySteps({ steps: entry.steps }).catch(function () {});
+    recalibrateNativeSteps(entry.steps);
   }
 
   function fillFormFromDate(iso) {
@@ -658,6 +663,10 @@
       daily[date] = entry;
     }
     saveDaily(daily);
+    // A manually-entered steps count for today is the user's authoritative "steps so
+    // far" figure -- recalibrate the native baseline so it's the new reference point
+    // instead of being silently overwritten by the next sync/auto-fill.
+    if (date === todayISO() && entry.steps != null) recalibrateNativeSteps(entry.steps);
     toast("Saved " + formatDateLong(date));
     fillFormFromDate(date);
     renderToday();
