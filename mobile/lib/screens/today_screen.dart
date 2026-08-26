@@ -93,6 +93,7 @@ class _TodayScreenState extends State<TodayScreen> {
       lastDate: DateTime(2100),
     );
     if (picked == null) return;
+    if (!mounted) return;
     final entry = context.read<AppState>().entryFor(toISO(picked));
     setState(() {
       _date = toISO(picked);
