@@ -6,5 +6,9 @@ class AccountInfo {
   final String? email;
   final Future<void> Function()? signOut;
 
-  const AccountInfo({this.email, this.signOut});
+  /// When this account first signed in -- the free-trial clock (see
+  /// lib/utils/trial.dart) starts here.
+  final DateTime? createdAt;
+
+  const AccountInfo({this.email, this.signOut, this.createdAt});
 }

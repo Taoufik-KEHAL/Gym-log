@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../services/nav_controller.dart';
 import '../widgets/banner_ad_widget.dart';
+import '../widgets/paywall_gate.dart';
 import 'data_screen.dart';
 import 'food_screen.dart';
 import 'history_screen.dart';
@@ -33,8 +34,8 @@ class _RootShellState extends State<RootShell> {
           TodayScreen(),
           WorkoutScreen(),
           FoodScreen(),
-          HistoryScreen(),
-          TrendsScreen(),
+          PaywallGate(child: HistoryScreen()),
+          PaywallGate(child: TrendsScreen()),
           DataScreen(),
         ],
       ),
