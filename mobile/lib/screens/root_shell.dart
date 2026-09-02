@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/nav_controller.dart';
+import '../widgets/banner_ad_widget.dart';
+import '../widgets/paywall_gate.dart';
 import 'data_screen.dart';
 import 'food_screen.dart';
 import 'history_screen.dart';
@@ -32,21 +34,27 @@ class _RootShellState extends State<RootShell> {
           TodayScreen(),
           WorkoutScreen(),
           FoodScreen(),
-          HistoryScreen(),
-          TrendsScreen(),
+          PaywallGate(child: HistoryScreen()),
+          PaywallGate(child: TrendsScreen()),
           DataScreen(),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: nav.tabIndex,
-        onTap: nav.goTo,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.today_outlined), label: 'Today'),
-          BottomNavigationBarItem(icon: Icon(Icons.fitness_center_outlined), label: 'Workout'),
-          BottomNavigationBarItem(icon: Icon(Icons.restaurant_outlined), label: 'Food'),
-          BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: 'History'),
-          BottomNavigationBarItem(icon: Icon(Icons.show_chart_outlined), label: 'Trends'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Data'),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const BannerAdWidget(),
+          BottomNavigationBar(
+            currentIndex: nav.tabIndex,
+            onTap: nav.goTo,
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.today_outlined), label: 'Today'),
+              BottomNavigationBarItem(icon: Icon(Icons.fitness_center_outlined), label: 'Workout'),
+              BottomNavigationBarItem(icon: Icon(Icons.restaurant_outlined), label: 'Food'),
+              BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: 'History'),
+              BottomNavigationBarItem(icon: Icon(Icons.show_chart_outlined), label: 'Trends'),
+              BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Data'),
+            ],
+          ),
         ],
       ),
     );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -8,12 +10,14 @@ import 'screens/onboarding_screen.dart';
 import 'screens/root_shell.dart';
 import 'screens/sign_in_screen.dart';
 import 'services/account_info.dart';
+import 'services/ads_service.dart';
 import 'services/app_state.dart';
 import 'services/auth_service.dart';
 import 'services/firestore_storage_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/nav_controller.dart';
 import 'services/storage_backend.dart';
+import 'services/subscription_service.dart';
 import 'theme.dart';
 
 void main() async {
@@ -24,6 +28,8 @@ void main() async {
   } catch (_) {
     firebaseReady = false;
   }
+  unawaited(AdsService.instance.initialize());
+  unawaited(SubscriptionService.instance.initialize());
   runApp(GymLogApp(firebaseReady: firebaseReady));
 }
 
@@ -71,7 +77,11 @@ class GymLogApp extends StatelessWidget {
             }
             return GymLogHome(
               storage: storageSnapshot.data!,
-              account: AccountInfo(email: user.email, signOut: AuthService.instance.signOut),
+              account: AccountInfo(
+                email: user.email,
+                signOut: AuthService.instance.signOut,
+                createdAt: user.metadata.creationTime,
+              ),
             );
           },
         );
@@ -107,6 +117,7 @@ class GymLogHome extends StatelessWidget {
           providers: [
             ChangeNotifierProvider.value(value: snapshot.data!),
             ChangeNotifierProvider(create: (_) => NavController()),
+            ChangeNotifierProvider.value(value: SubscriptionService.instance),
             Provider<AccountInfo>.value(value: account),
           ],
           child: MaterialApp(

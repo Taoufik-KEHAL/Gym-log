@@ -9,11 +9,11 @@ import 'package:gymlog/services/local_storage_service.dart';
 // has nothing to do with what these tests check, and Firebase isn't
 // initialized in the test environment.
 //
-// A profile (sex/dateOfBirth/heightCm) is seeded in most tests below so the
-// onboarding gate (see AppSettings.needsOnboarding) doesn't intercept them —
-// that gate has its own test further down.
+// A profile (sex/dateOfBirth/heightCm/isSmoker) is seeded in most tests below
+// so the onboarding gate (see AppSettings.needsOnboarding) doesn't intercept
+// them — that gate has its own test further down.
 const _profileSettings =
-    '{"dateOfBirth":"1994-01-01","heightCm":180,"activityLevel":"moderate","sex":"male"}';
+    '{"dateOfBirth":"1994-01-01","heightCm":180,"activityLevel":"moderate","sex":"male","isSmoker":false}';
 
 void main() {
   testWidgets('App launches and shows the bottom tab bar', (WidgetTester tester) async {

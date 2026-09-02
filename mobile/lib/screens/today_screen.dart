@@ -194,12 +194,14 @@ class _TodayScreenState extends State<TodayScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _cigarettesCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Cigarettes'),
-              ),
+              if (app.settings.isSmoker == true) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _cigarettesCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Cigarettes'),
+                ),
+              ],
               const SizedBox(height: 12),
               SegmentedToggle<DayType?>(
                 values: const [DayType.rest, DayType.workout, DayType.cardio],
