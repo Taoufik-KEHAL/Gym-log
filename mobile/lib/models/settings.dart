@@ -18,6 +18,12 @@ class AppSettings {
   int? heightCm;
   ActivityLevel activityLevel;
   Sex sex;
+
+  /// Whether this account smokes — collected once during onboarding. Gates
+  /// whether the daily Cigarettes field shows up on the Today form; already
+  /// logged cigarette data is never hidden retroactively based on this.
+  bool? isSmoker;
+
   int? maintenanceTdeeForTargets;
   String? calorieTargetPolicy;
 
@@ -30,6 +36,7 @@ class AppSettings {
     this.heightCm,
     this.activityLevel = ActivityLevel.moderate,
     this.sex = Sex.male,
+    this.isSmoker,
     this.maintenanceTdeeForTargets,
     this.calorieTargetPolicy,
   });
@@ -49,9 +56,9 @@ class AppSettings {
     return years;
   }
 
-  /// True until sex, date of birth, and height have all been entered once —
-  /// gates the one-time onboarding flow.
-  bool get needsOnboarding => dateOfBirth == null || heightCm == null;
+  /// True until sex, date of birth, height, and smoker status have all been
+  /// entered once — gates the one-time onboarding flow.
+  bool get needsOnboarding => dateOfBirth == null || heightCm == null || isSmoker == null;
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
     restCalories: (json['restCalories'] as num?)?.round(),
@@ -62,6 +69,7 @@ class AppSettings {
     heightCm: (json['heightCm'] as num?)?.round(),
     activityLevel: activityLevelFromJson(json['activityLevel'] as String?),
     sex: sexFromJson(json['sex'] as String?),
+    isSmoker: json['isSmoker'] as bool?,
     maintenanceTdeeForTargets: (json['maintenanceTdeeForTargets'] as num?)
         ?.round(),
     calorieTargetPolicy: json['calorieTargetPolicy'] as String?,
@@ -76,6 +84,7 @@ class AppSettings {
     if (heightCm != null) 'heightCm': heightCm,
     'activityLevel': activityLevelToJson(activityLevel),
     'sex': sexToJson(sex),
+    if (isSmoker != null) 'isSmoker': isSmoker,
     if (maintenanceTdeeForTargets != null)
       'maintenanceTdeeForTargets': maintenanceTdeeForTargets,
     if (calorieTargetPolicy != null)

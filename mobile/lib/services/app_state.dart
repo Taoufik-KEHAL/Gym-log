@@ -223,11 +223,13 @@ class AppState extends ChangeNotifier {
     bool clearHeight = false,
     ActivityLevel? activityLevel,
     Sex? sex,
+    bool? isSmoker,
   }) async {
     settings.dateOfBirth = clearDateOfBirth ? null : (dateOfBirth ?? settings.dateOfBirth);
     settings.heightCm = clearHeight ? null : (heightCm ?? settings.heightCm);
     if (activityLevel != null) settings.activityLevel = activityLevel;
     if (sex != null) settings.sex = sex;
+    if (isSmoker != null) settings.isSmoker = isSmoker;
     await _storage.saveSettings(settings);
     _syncMaintenanceTargets();
     notifyListeners();
