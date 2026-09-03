@@ -1359,9 +1359,11 @@
 
   // ---------- fasting ----------
   //
-  // A fast starts when the user taps "Woke up" and runs until they log any food,
+  // A fast starts when the user taps "Start Fast" and runs until they log any food,
   // which is what actually breaks it -- it can span multiple calendar days (e.g.
   // an extended fast), so it's tracked as its own timer rather than a per-day field.
+  // No "cancel" escape hatch is offered once started: the only way out is logging
+  // food, matching a fast being a real commitment rather than a toggle.
 
   var fastingTimerInterval = null;
 
@@ -1381,14 +1383,6 @@
   function startFast() {
     var fasting = loadFasting();
     fasting.current = { start: new Date().toISOString() };
-    saveFasting(fasting);
-    renderFastingStatus();
-  }
-
-  function cancelFast() {
-    if (!confirm("Cancel the current fast? It won't be recorded.")) return;
-    var fasting = loadFasting();
-    fasting.current = null;
     saveFasting(fasting);
     renderFastingStatus();
   }
@@ -1426,16 +1420,16 @@
     var fasting = loadFasting();
     var timerEl = document.getElementById("fastingTimer");
     var labelEl = document.getElementById("fastingLabel");
-    var wakeBtn = document.getElementById("wakeUpBtn");
-    var cancelBtn = document.getElementById("cancelFastBtn");
+    var startBtn = document.getElementById("startFastBtn");
     if (!timerEl) return;
 
     clearInterval(fastingTimerInterval);
     fastingTimerInterval = null;
 
     if (fasting.current) {
-      wakeBtn.style.display = "none";
-      cancelBtn.style.display = "inline-block";
+      // No button shown at all while a fast is active -- the only way out is
+      // logging food, which breaks it automatically.
+      startBtn.style.display = "none";
       labelEl.textContent = "Fasting since " + formatClockTime(fasting.current.start);
       var update = function () {
         var hours = (Date.now() - new Date(fasting.current.start).getTime()) / 3600000;
@@ -1444,8 +1438,7 @@
       update();
       fastingTimerInterval = setInterval(update, 60000);
     } else {
-      wakeBtn.style.display = "inline-block";
-      cancelBtn.style.display = "none";
+      startBtn.style.display = "inline-block";
       var lastFast = fasting.log[fasting.log.length - 1];
       timerEl.textContent = lastFast ? formatFastingDuration(lastFast.hours) : "—";
       labelEl.textContent = lastFast ? "Last fast" : "Not fasting";
@@ -2349,8 +2342,7 @@
 
     document.getElementById("dailyForm").addEventListener("submit", handleDailySubmit);
     document.getElementById("syncStepsBtn").addEventListener("click", function () { syncStepsFromDevice(false); });
-    document.getElementById("wakeUpBtn").addEventListener("click", startFast);
-    document.getElementById("cancelFastBtn").addEventListener("click", cancelFast);
+    document.getElementById("startFastBtn").addEventListener("click", startFast);
     renderFastingStatus();
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
