@@ -8,7 +8,8 @@
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    customWorkoutTemplates: "gymlog.customWorkoutTemplates" // [ { id, name, exercises: [{name, type}] } ]
+    customWorkoutTemplates: "gymlog.customWorkoutTemplates", // [ { id, name, exercises: [{name, type}] } ]
+    fasting: "gymlog.fasting" // { current: {start: ISOString} | null, log: [{id, start, end, hours}] }
   };
 
   var WORKOUT_TEMPLATE_SEED = [
@@ -369,10 +370,14 @@
 
   // ---------- date helpers ----------
 
-  function todayISO() {
-    var d = new Date();
+  // Local (not UTC) calendar date, "yyyy-MM-dd", for an arbitrary Date instance.
+  function localDateISO(d) {
     var tz = d.getTimezoneOffset() * 60000;
     return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+  }
+
+  function todayISO() {
+    return localDateISO(new Date());
   }
 
   function formatDateLong(iso) {
@@ -445,7 +450,6 @@
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
-    document.getElementById("sumFasted").textContent = entry.fastedHours != null ? entry.fastedHours : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
@@ -618,7 +622,6 @@
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
     if (entry.steps == null && iso === todayISO()) syncStepsFromDevice(true);
     document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
-    document.getElementById("fastedHoursInput").value = entry.fastedHours != null ? entry.fastedHours : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
     MOOD_FIELDS.forEach(function (f) {
@@ -641,7 +644,6 @@
     var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
     var water = document.getElementById("waterInput").value;
-    var fastedHours = document.getElementById("fastedHoursInput").value;
     var cigarettes = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
@@ -656,7 +658,6 @@
     if (existing.fat != null) entry.fat = existing.fat;
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
     if (water !== "") entry.water = parseFloat(water);
-    if (fastedHours !== "") entry.fastedHours = parseFloat(fastedHours);
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
     MOOD_FIELDS.forEach(function (f) {
@@ -1380,6 +1381,101 @@
     toast("Workout deleted");
   }
 
+  // ---------- fasting ----------
+  //
+  // A fast starts when the user taps "Woke up" and runs until they log any food,
+  // which is what actually breaks it -- it can span multiple calendar days (e.g.
+  // an extended fast), so it's tracked as its own timer rather than a per-day field.
+
+  var fastingTimerInterval = null;
+
+  function loadFasting() {
+    try {
+      var data = JSON.parse(localStorage.getItem(STORAGE.fasting) || "{}");
+      return { current: data.current || null, log: data.log || [] };
+    } catch (e) {
+      return { current: null, log: [] };
+    }
+  }
+
+  function saveFasting(data) {
+    localStorage.setItem(STORAGE.fasting, JSON.stringify(data));
+  }
+
+  function startFast() {
+    var fasting = loadFasting();
+    fasting.current = { start: new Date().toISOString() };
+    saveFasting(fasting);
+    renderFastingStatus();
+  }
+
+  function cancelFast() {
+    if (!confirm("Cancel the current fast? It won't be recorded.")) return;
+    var fasting = loadFasting();
+    fasting.current = null;
+    saveFasting(fasting);
+    renderFastingStatus();
+  }
+
+  // Ends the active fast (if any) right now and logs its duration -- called
+  // whenever real food gets logged, since eating is what breaks a fast.
+  function breakFastNow() {
+    var fasting = loadFasting();
+    if (!fasting.current) return;
+    var startMs = new Date(fasting.current.start).getTime();
+    var end = new Date();
+    var hours = Math.round(((end.getTime() - startMs) / 3600000) * 10) / 10;
+    fasting.log.push({ id: makeId(), start: fasting.current.start, end: end.toISOString(), hours: hours });
+    fasting.current = null;
+    saveFasting(fasting);
+    renderFastingStatus();
+    renderHistory();
+  }
+
+  function formatFastingDuration(hours) {
+    var h = Math.floor(hours);
+    var m = Math.round((hours - h) * 60);
+    if (m === 60) { h += 1; m = 0; }
+    return h + "h " + m + "m";
+  }
+
+  function formatClockTime(iso) {
+    var d = new Date(iso);
+    var h = d.getHours();
+    var m = d.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+
+  function renderFastingStatus() {
+    var fasting = loadFasting();
+    var timerEl = document.getElementById("fastingTimer");
+    var labelEl = document.getElementById("fastingLabel");
+    var wakeBtn = document.getElementById("wakeUpBtn");
+    var cancelBtn = document.getElementById("cancelFastBtn");
+    if (!timerEl) return;
+
+    clearInterval(fastingTimerInterval);
+    fastingTimerInterval = null;
+
+    if (fasting.current) {
+      wakeBtn.style.display = "none";
+      cancelBtn.style.display = "inline-block";
+      labelEl.textContent = "Fasting since " + formatClockTime(fasting.current.start);
+      var update = function () {
+        var hours = (Date.now() - new Date(fasting.current.start).getTime()) / 3600000;
+        timerEl.textContent = formatFastingDuration(hours);
+      };
+      update();
+      fastingTimerInterval = setInterval(update, 60000);
+    } else {
+      wakeBtn.style.display = "inline-block";
+      cancelBtn.style.display = "none";
+      var lastFast = fasting.log[fasting.log.length - 1];
+      timerEl.textContent = lastFast ? formatFastingDuration(lastFast.hours) : "—";
+      labelEl.textContent = lastFast ? "Last fast" : "Not fasting";
+    }
+  }
+
   // ---------- food log ----------
 
   function clearFoodSearchState() {
@@ -1636,6 +1732,7 @@
       updated.id = makeId();
       updated.name = selectedFoodProduct.name;
       addFoodEntry(date, updated);
+      breakFastNow();
     }
 
     selectedFoodProduct = null;
@@ -1880,9 +1977,18 @@
     var workouts = loadWorkouts();
     var list = document.getElementById("historyList");
 
+    // Completed fasts are attributed to the date they ended on -- the day the
+    // fast was actually broken, which is when its duration became known.
+    var fastsByDate = {};
+    loadFasting().log.forEach(function (f) {
+      var d = localDateISO(new Date(f.end));
+      (fastsByDate[d] = fastsByDate[d] || []).push(f);
+    });
+
     var dates = {};
     Object.keys(daily).forEach(function (d) { dates[d] = true; });
     workouts.forEach(function (w) { dates[w.date] = true; });
+    Object.keys(fastsByDate).forEach(function (d) { dates[d] = true; });
 
     var sorted = Object.keys(dates).sort().reverse();
 
@@ -1936,11 +2042,18 @@
         if (entry.fat != null) parts.push(entry.fat + " g fat");
         if (entry.steps != null) parts.push(entry.steps + " steps");
         if (entry.water != null) parts.push(entry.water + " L water");
-        if (entry.fastedHours != null) parts.push(entry.fastedHours + " h fasted");
         if (entry.cigarettes != null) parts.push(entry.cigarettes + " cigarettes");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
       }
+
+      (fastsByDate[date] || []).forEach(function (f) {
+        var fastLine = document.createElement("div");
+        fastLine.className = "h-line";
+        fastLine.innerHTML = "<span>⏱️ Fasted " + formatFastingDuration(f.hours) + " (" +
+          formatClockTime(f.start) + " → " + formatClockTime(f.end) + ")</span>";
+        wrap.appendChild(fastLine);
+      });
 
       var dayWeight = entry ? entry.weight : null;
       workouts.filter(function (w) { return w.date === date; }).forEach(function (w) {
@@ -2034,7 +2147,8 @@
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
       customExercises: loadCustomExercises(),
-      customWorkoutTemplates: loadWorkoutTemplates()
+      customWorkoutTemplates: loadWorkoutTemplates(),
+      fasting: loadFasting()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -2104,6 +2218,7 @@
     if (payload.customFoods) saveCustomFoods(payload.customFoods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
+    if (payload.fasting) { saveFasting(payload.fasting); renderFastingStatus(); }
     toast("Import complete");
     fillProfileForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
@@ -2128,6 +2243,7 @@
     localStorage.removeItem(STORAGE.customFoods);
     localStorage.removeItem(STORAGE.customExercises);
     localStorage.removeItem(STORAGE.customWorkoutTemplates);
+    localStorage.removeItem(STORAGE.fasting);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
@@ -2137,6 +2253,7 @@
     renderToday();
     renderHistory();
     renderTrends();
+    renderFastingStatus();
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
@@ -2256,6 +2373,9 @@
 
     document.getElementById("dailyForm").addEventListener("submit", handleDailySubmit);
     document.getElementById("syncStepsBtn").addEventListener("click", function () { syncStepsFromDevice(false); });
+    document.getElementById("wakeUpBtn").addEventListener("click", startFast);
+    document.getElementById("cancelFastBtn").addEventListener("click", cancelFast);
+    renderFastingStatus();
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
     });
@@ -2358,6 +2478,11 @@
     });
 
     window.addEventListener("resize", function () { renderToday(); renderTrends(); });
+    // Refresh the fasting timer's display immediately on foregrounding, so it
+    // doesn't look stale for up to a minute after the app was backgrounded.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) renderFastingStatus();
+    });
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {

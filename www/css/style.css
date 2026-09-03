@@ -144,6 +144,26 @@ canvas {
   margin-top: 2px;
 }
 
+.fasting-status {
+  text-align: center;
+  padding: 6px 0 14px;
+}
+
+.fasting-status .value {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.fasting-status .label {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+#wakeUpBtn, #cancelFastBtn {
+  width: 100%;
+}
+
 .stat-sub {
   font-size: 0.68rem;
   font-weight: 600;
