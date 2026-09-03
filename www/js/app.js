@@ -445,6 +445,7 @@
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
+    document.getElementById("sumFasted").textContent = entry.fastedHours != null ? entry.fastedHours : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
@@ -617,6 +618,7 @@
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
     if (entry.steps == null && iso === todayISO()) syncStepsFromDevice(true);
     document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
+    document.getElementById("fastedHoursInput").value = entry.fastedHours != null ? entry.fastedHours : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
     MOOD_FIELDS.forEach(function (f) {
@@ -639,6 +641,7 @@
     var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
     var water = document.getElementById("waterInput").value;
+    var fastedHours = document.getElementById("fastedHoursInput").value;
     var cigarettes = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
@@ -653,6 +656,7 @@
     if (existing.fat != null) entry.fat = existing.fat;
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
     if (water !== "") entry.water = parseFloat(water);
+    if (fastedHours !== "") entry.fastedHours = parseFloat(fastedHours);
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
     MOOD_FIELDS.forEach(function (f) {
@@ -1932,6 +1936,7 @@
         if (entry.fat != null) parts.push(entry.fat + " g fat");
         if (entry.steps != null) parts.push(entry.steps + " steps");
         if (entry.water != null) parts.push(entry.water + " L water");
+        if (entry.fastedHours != null) parts.push(entry.fastedHours + " h fasted");
         if (entry.cigarettes != null) parts.push(entry.cigarettes + " cigarettes");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
