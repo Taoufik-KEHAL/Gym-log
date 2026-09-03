@@ -31,9 +31,7 @@
         <div class="value" id="fastingTimer">—</div>
         <div class="label" id="fastingLabel">Not fasting</div>
       </div>
-      <button type="button" class="secondary" id="wakeUpBtn">Woke up</button>
-      <button type="button" class="secondary" id="cancelFastBtn" style="display:none;">Cancel fast</button>
-      <p class="hint hint--tight">Tap "Woke up" to start the clock. Logging any food breaks the fast and records it.</p>
+      <button type="button" class="secondary" id="startFastBtn">Start Fast</button>
     </div>
 
     <div class="card">
@@ -78,10 +76,8 @@
         </div>
         <div class="field">
           <label for="stepsInput">Steps</label>
-          <div class="row">
-            <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
-            <button type="button" class="secondary" id="syncStepsBtn" style="display:none;">Sync from phone</button>
-          </div>
+          <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
+          <p class="hint hint--tight" id="stepsAutoHint" style="display:none;">Synced automatically from your phone.</p>
         </div>
         <div class="field">
           <label for="waterInput">Water (L)</label>
@@ -90,18 +86,6 @@
         <div class="field">
           <label for="cigarettesInput">Cigarettes</label>
           <input type="number" id="cigarettesInput" step="1" min="0" placeholder="e.g. 5" inputmode="numeric" />
-        </div>
-        <div class="field mood-field">
-          <label for="moodMorningInput">Morning mood: <span id="moodMorningValue">—</span></label>
-          <input type="range" id="moodMorningInput" min="1" max="10" step="1" />
-        </div>
-        <div class="field mood-field">
-          <label for="moodMiddayInput">Midday mood: <span id="moodMiddayValue">—</span></label>
-          <input type="range" id="moodMiddayInput" min="1" max="10" step="1" />
-        </div>
-        <div class="field mood-field">
-          <label for="moodEveningInput">Evening mood: <span id="moodEveningValue">—</span></label>
-          <input type="range" id="moodEveningInput" min="1" max="10" step="1" />
         </div>
         <button type="submit" class="primary">Save Day</button>
       </form>

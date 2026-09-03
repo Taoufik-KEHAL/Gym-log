@@ -576,31 +576,45 @@
     });
   }
 
-  var MOOD_FIELDS = [
-    { input: "moodMorningInput", value: "moodMorningValue", entry: "moodMorning" },
-    { input: "moodMiddayInput", value: "moodMiddayValue", entry: "moodMidday" },
-    { input: "moodEveningInput", value: "moodEveningValue", entry: "moodEvening" }
-  ];
-
   function nativeStepsAvailable() {
     return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() &&
       window.Capacitor.Plugins && window.Capacitor.Plugins.Steps);
   }
 
-  function syncStepsFromDevice(silent) {
-    if (!nativeStepsAvailable()) return;
-    window.Capacitor.Plugins.Steps.getTodaySteps().then(function (result) {
-      document.getElementById("stepsInput").value = result.steps;
-      if (!silent) toast("Synced " + result.steps + " steps from phone");
-    }).catch(function () {
-      if (!silent) toast("Couldn't read steps from phone");
-    });
+  // Persists a freshly-read step count into today's entry and, if the Today form is
+  // currently showing today's date, reflects it in the UI immediately. Called both from
+  // the initial getTodaySteps() read and from every live "stepsUpdate" push event, so the
+  // step count stays in sync automatically without any manual sync action.
+  function applyStepsUpdate(steps) {
+    var today = todayISO();
+    var daily = loadDaily();
+    var entry = daily[today] || {};
+    entry.steps = steps;
+    daily[today] = entry;
+    saveDaily(daily);
+
+    var shownDate = document.getElementById("logDate").value || today;
+    if (shownDate === today) {
+      document.getElementById("stepsInput").value = steps;
+      document.getElementById("sumSteps").textContent = steps;
+    }
   }
 
-  // Recalibrates the native baseline so future sensor reads (auto-fill, the sync
-  // button, the periodic background check) report the given "steps so far today"
-  // value plus whatever new steps happen from now on, instead of the device's own
-  // possibly-stale baseline overwriting it.
+  function startStepsSync() {
+    if (!nativeStepsAvailable()) return;
+    var Steps = window.Capacitor.Plugins.Steps;
+    Steps.addListener("stepsUpdate", function (data) {
+      applyStepsUpdate(data.steps);
+    });
+    Steps.getTodaySteps().then(function (result) {
+      applyStepsUpdate(result.steps);
+    }).catch(function () {});
+  }
+
+  // Recalibrates the native baseline so future sensor reads (auto-fill, the periodic
+  // background updates) report the given "steps so far today" value plus whatever new
+  // steps happen from now on, instead of the device's own possibly-stale baseline
+  // overwriting it.
   function recalibrateNativeSteps(stepsValue) {
     if (!nativeStepsAvailable()) return;
     window.Capacitor.Plugins.Steps.setTodaySteps({ steps: stepsValue }).catch(function () {});
@@ -620,21 +634,9 @@
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
-    if (entry.steps == null && iso === todayISO()) syncStepsFromDevice(true);
     document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
-    MOOD_FIELDS.forEach(function (f) {
-      var input = document.getElementById(f.input);
-      var valueEl = document.getElementById(f.value);
-      var stored = entry[f.entry];
-      input.value = stored != null ? stored : 5;
-      input.dataset.touched = stored != null ? "1" : "0";
-      // Once a mood is logged for a given day it's locked in permanently -- it's a
-      // record of how you felt at that moment, not something to revise in hindsight.
-      input.disabled = stored != null;
-      valueEl.textContent = stored != null ? stored + " 🔒" : "—";
-    });
   }
 
   function handleDailySubmit(e) {
@@ -660,13 +662,6 @@
     if (water !== "") entry.water = parseFloat(water);
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
-    MOOD_FIELDS.forEach(function (f) {
-      // Already logged for this day -- keep it exactly as first recorded, even if the
-      // disabled slider were somehow bypassed.
-      if (existing[f.entry] != null) { entry[f.entry] = existing[f.entry]; return; }
-      var input = document.getElementById(f.input);
-      if (input.dataset.touched === "1") entry[f.entry] = parseInt(input.value, 10);
-    });
 
     if (Object.keys(entry).length === 0) {
       delete daily[date];
@@ -1383,9 +1378,11 @@
 
   // ---------- fasting ----------
   //
-  // A fast starts when the user taps "Woke up" and runs until they log any food,
+  // A fast starts when the user taps "Start Fast" and runs until they log any food,
   // which is what actually breaks it -- it can span multiple calendar days (e.g.
   // an extended fast), so it's tracked as its own timer rather than a per-day field.
+  // No "cancel" escape hatch is offered once started: the only way out is logging
+  // food, matching a fast being a real commitment rather than a toggle.
 
   var fastingTimerInterval = null;
 
@@ -1402,17 +1399,38 @@
     localStorage.setItem(STORAGE.fasting, JSON.stringify(data));
   }
 
+  // If a fast is still running and has already crossed one or more midnights,
+  // retroactively saves "hours fasted" for each full calendar day it's fully spanned
+  // into that day's daily entry -- so History shows fasting progress for every day of a
+  // multi-day fast, not just the day it's eventually broken. There's no way to run this
+  // exactly at midnight while the app is closed, so it runs on app open/foreground and
+  // catches up on any days that elapsed in the meantime.
+  function snapshotFastingDays() {
+    var fasting = loadFasting();
+    if (!fasting.current) return;
+    var startMs = new Date(fasting.current.start).getTime();
+    var startDate = localDateISO(new Date(startMs));
+    var today = todayISO();
+    if (startDate >= today) return;
+
+    var daily = loadDaily();
+    var d = startDate;
+    while (d < today) {
+      var dayEndMs = new Date(addDaysISO(d, 1) + "T00:00:00").getTime();
+      var dayStartMs = new Date(d + "T00:00:00").getTime();
+      var segmentStart = Math.max(startMs, dayStartMs);
+      var hours = Math.round(((dayEndMs - segmentStart) / 3600000) * 10) / 10;
+      var entry = daily[d] || {};
+      entry.fastedHours = hours;
+      daily[d] = entry;
+      d = addDaysISO(d, 1);
+    }
+    saveDaily(daily);
+  }
+
   function startFast() {
     var fasting = loadFasting();
     fasting.current = { start: new Date().toISOString() };
-    saveFasting(fasting);
-    renderFastingStatus();
-  }
-
-  function cancelFast() {
-    if (!confirm("Cancel the current fast? It won't be recorded.")) return;
-    var fasting = loadFasting();
-    fasting.current = null;
     saveFasting(fasting);
     renderFastingStatus();
   }
@@ -1447,19 +1465,20 @@
   }
 
   function renderFastingStatus() {
+    snapshotFastingDays();
     var fasting = loadFasting();
     var timerEl = document.getElementById("fastingTimer");
     var labelEl = document.getElementById("fastingLabel");
-    var wakeBtn = document.getElementById("wakeUpBtn");
-    var cancelBtn = document.getElementById("cancelFastBtn");
+    var startBtn = document.getElementById("startFastBtn");
     if (!timerEl) return;
 
     clearInterval(fastingTimerInterval);
     fastingTimerInterval = null;
 
     if (fasting.current) {
-      wakeBtn.style.display = "none";
-      cancelBtn.style.display = "inline-block";
+      // No button shown at all while a fast is active -- the only way out is
+      // logging food, which breaks it automatically.
+      startBtn.style.display = "none";
       labelEl.textContent = "Fasting since " + formatClockTime(fasting.current.start);
       var update = function () {
         var hours = (Date.now() - new Date(fasting.current.start).getTime()) / 3600000;
@@ -1468,8 +1487,7 @@
       update();
       fastingTimerInterval = setInterval(update, 60000);
     } else {
-      wakeBtn.style.display = "inline-block";
-      cancelBtn.style.display = "none";
+      startBtn.style.display = "inline-block";
       var lastFast = fasting.log[fasting.log.length - 1];
       timerEl.textContent = lastFast ? formatFastingDuration(lastFast.hours) : "—";
       labelEl.textContent = lastFast ? "Last fast" : "Not fasting";
@@ -2055,6 +2073,13 @@
         wrap.appendChild(fastLine);
       });
 
+      if (entry && entry.fastedHours != null) {
+        var fastSnapshotLine = document.createElement("div");
+        fastSnapshotLine.className = "h-line";
+        fastSnapshotLine.innerHTML = "<span>⏱️ Fasted " + formatFastingDuration(entry.fastedHours) + " (fast continued past midnight)</span>";
+        wrap.appendChild(fastSnapshotLine);
+      }
+
       var dayWeight = entry ? entry.weight : null;
       workouts.filter(function (w) { return w.date === date; }).forEach(function (w) {
         var wDiv = document.createElement("div");
@@ -2363,7 +2388,8 @@
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
 
-    document.getElementById("syncStepsBtn").style.display = nativeStepsAvailable() ? "block" : "none";
+    document.getElementById("stepsAutoHint").style.display = nativeStepsAvailable() ? "block" : "none";
+    startStepsSync();
 
     fillFormFromDate(todayISO());
 
@@ -2372,20 +2398,10 @@
     });
 
     document.getElementById("dailyForm").addEventListener("submit", handleDailySubmit);
-    document.getElementById("syncStepsBtn").addEventListener("click", function () { syncStepsFromDevice(false); });
-    document.getElementById("wakeUpBtn").addEventListener("click", startFast);
-    document.getElementById("cancelFastBtn").addEventListener("click", cancelFast);
+    document.getElementById("startFastBtn").addEventListener("click", startFast);
     renderFastingStatus();
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
-    });
-    MOOD_FIELDS.forEach(function (f) {
-      var input = document.getElementById(f.input);
-      var valueEl = document.getElementById(f.value);
-      input.addEventListener("input", function () {
-        input.dataset.touched = "1";
-        valueEl.textContent = input.value;
-      });
     });
 
     document.querySelectorAll("#dayTypeToggle .segment").forEach(function (btn) {

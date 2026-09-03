@@ -160,7 +160,7 @@ canvas {
   margin-top: 4px;
 }
 
-#wakeUpBtn, #cancelFastBtn {
+#startFastBtn {
   width: 100%;
 }
 
@@ -263,31 +263,6 @@ canvas {
 .field .row {
   display: flex;
   gap: 8px;
-}
-
-.mood-field label {
-  display: flex;
-  justify-content: space-between;
-}
-
-.mood-field label span {
-  color: var(--text);
-  font-weight: 700;
-}
-
-.mood-field input[type="range"] {
-  width: 100%;
-  height: 6px;
-  padding: 0;
-  border: none;
-  border-radius: 3px;
-  background: var(--bg-elev-2);
-  accent-color: var(--accent);
-}
-
-.mood-field input[type="range"]:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 input, select, textarea {
