@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Gym Log</string>
-    <string name="title_activity_main">Gym Log</string>
-    <string name="package_name">com.taoufikkehal.gymlog</string>
-    <string name="custom_url_scheme">com.taoufikkehal.gymlog</string>
+    <string name="app_name">Gym Log Lite</string>
+    <string name="title_activity_main">Gym Log Lite</string>
+    <string name="package_name">com.taoufikkehal.gymlog.lite</string>
+    <string name="custom_url_scheme">com.taoufikkehal.gymlog.lite</string>
 </resources>

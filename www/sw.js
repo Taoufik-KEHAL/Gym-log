@@ -1,4 +1,4 @@
-var CACHE_NAME = "gymlog-cache-v2";
+var CACHE_NAME = "gymlog-lite-cache-v1";
 var ASSETS = [
   "./",
   "./index.html",

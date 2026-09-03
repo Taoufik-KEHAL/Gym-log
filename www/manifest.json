@@ -1,7 +1,7 @@
 {
-  "name": "Gym Log",
-  "short_name": "Gym Log",
-  "description": "Track daily weight, workouts, calories and protein.",
+  "name": "Gym Log Lite",
+  "short_name": "Gym Log Lite",
+  "description": "Track daily weight, steps, sleep, water, cigarettes, fasting, four staple foods and workout type.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -1,6 +1,6 @@
 {
-  "appId": "com.taoufikkehal.gymlog",
-  "appName": "Gym Log",
+  "appId": "com.taoufikkehal.gymlog.lite",
+  "appName": "Gym Log Lite",
   "webDir": "www",
   "backgroundColor": "#0f1115"
 }

@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK (Lite)
 
 on:
   push:
@@ -48,7 +48,7 @@ jobs:
       - name: Upload APK as build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gym-log-debug-apk
+          name: gym-log-lite-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Read app version
@@ -59,15 +59,16 @@ jobs:
 
       - name: Rename APK with version
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk "Gym-Log-v${{ steps.version.outputs.name }}-debug.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "Gym-Log-Lite-v${{ steps.version.outputs.name }}-debug.apk"
 
       - name: Publish APK to a GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-latest
-          name: Gym Log Android v${{ steps.version.outputs.name }} (latest)
+          tag_name: android-lite-latest
+          name: Gym Log Lite Android v${{ steps.version.outputs.name }} (latest)
           body: |
             Auto-built debug APK from commit ${{ github.sha }}.
-            Download `Gym-Log-v${{ steps.version.outputs.name }}-debug.apk` below and open it on your phone to install (allow "install from this source" if prompted).
-          make_latest: true
-          files: Gym-Log-v${{ steps.version.outputs.name }}-debug.apk
+            This is the separate "Lite" app (com.taoufikkehal.gymlog.lite) -- installs side-by-side with the full Gym Log app.
+            Download `Gym-Log-Lite-v${{ steps.version.outputs.name }}-debug.apk` below and open it on your phone to install (allow "install from this source" if prompted).
+          make_latest: false
+          files: Gym-Log-Lite-v${{ steps.version.outputs.name }}-debug.apk

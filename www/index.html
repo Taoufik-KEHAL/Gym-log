@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-<title>Gym Log</title>
+<title>Gym Log Lite</title>
 <meta name="theme-color" content="#0f1115" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Gym Log" />
+<meta name="apple-mobile-web-app-title" content="Gym Log Lite" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 <link rel="icon" href="icons/icon-192.png" />
@@ -17,7 +17,7 @@
 <body>
 
 <header class="app-header">
-  <h1>Gym Log</h1>
+  <h1>Gym Log Lite</h1>
   <span class="today-date" id="headerDate"></span>
 </header>
 
@@ -41,20 +41,15 @@
       <div class="summary-grid">
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
         <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
-        <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div><div class="stat-sub" id="sumCaloriesGoal"></div><div class="stat-sub" id="sumCaloriesTarget"></div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
         <div class="stat"><div class="value" id="sumWater">—</div><div class="label">Water (L)</div></div>
         <div class="stat"><div class="value" id="sumCigarettes">—</div><div class="label">Cigarettes</div></div>
-        <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
-        <div class="stat"><div class="value" id="sumCarbs">—</div><div class="label">Carbs (g)</div></div>
-        <div class="stat"><div class="value" id="sumFat">—</div><div class="label">Fat (g)</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
 
     <div class="card">
       <h2>Log Today</h2>
-      <p class="hint hint--tight">Calories, protein, carbs, and fat come from what you log on the Food tab.</p>
       <form id="dailyForm">
         <div class="field">
           <label for="logDate">Date</label>
@@ -64,8 +59,8 @@
           <label>Day type</label>
           <div class="segmented" id="dayTypeToggle">
             <button type="button" class="segment" data-day-type="rest">😴 Rest day</button>
-            <button type="button" class="segment" data-day-type="workout">🏋️ Workout day</button>
-            <button type="button" class="segment" data-day-type="cardio">🏃 Cardio day</button>
+            <button type="button" class="segment" data-day-type="workout">🏋️ Musculation</button>
+            <button type="button" class="segment" data-day-type="cardio">🏃 Cardio</button>
           </div>
         </div>
         <div class="field">
@@ -78,10 +73,8 @@
         </div>
         <div class="field">
           <label for="stepsInput">Steps</label>
-          <div class="row">
-            <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
-            <button type="button" class="secondary" id="syncStepsBtn" style="display:none;">Sync from phone</button>
-          </div>
+          <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
+          <p class="hint hint--tight" id="stepsAutoHint" style="display:none;">Synced automatically from your phone.</p>
         </div>
         <div class="field">
           <label for="waterInput">Water (L)</label>
@@ -126,104 +119,12 @@
         <label for="foodDate">Date</label>
         <input type="date" id="foodDate" />
       </div>
-
-      <div class="field">
-        <label for="foodSearchInput">Search foods</label>
-        <input type="text" id="foodSearchInput" placeholder="e.g. chicken breast" autocomplete="off" />
-        <div id="foodSearchStatus" class="empty-state" style="display:none; padding:10px 0;"></div>
-        <ul id="foodSearchResults" class="food-results"></ul>
-      </div>
-
-      <div class="card food-quantity-card" id="foodQuantityCard" style="display:none;">
-        <div class="ex-title" id="foodQuantityName"></div>
-        <div class="segmented" id="quantityModeToggle" style="margin-top:10px;">
-          <button type="button" class="segment active" data-qty-mode="grams">By weight (g)</button>
-          <button type="button" class="segment" data-qty-mode="units">By count (units)</button>
-        </div>
-        <div class="field" id="gramsField">
-          <label for="foodGramsInput">Quantity (g)</label>
-          <input type="number" id="foodGramsInput" step="1" min="1" value="100" inputmode="numeric" />
-        </div>
-        <div class="add-set-row" id="unitsField" style="grid-template-columns: 1fr 1fr; display:none;">
-          <div class="mini-field"><label>Number of units</label><input type="number" id="foodUnitsInput" step="1" min="1" value="1" inputmode="numeric" /></div>
-          <div class="mini-field"><label>Weight per unit (g)</label><input type="number" id="foodUnitGramsInput" step="1" min="1" value="50" inputmode="numeric" /></div>
-        </div>
-        <div class="food-preview" id="foodPreview"></div>
-        <button type="button" class="primary" id="addFoodBtn">Add to log</button>
-        <button type="button" class="secondary" id="cancelEditFoodLogBtn" style="display:none; margin-top:8px;">Cancel edit</button>
-      </div>
-
-      <button type="button" class="secondary" id="showNewFoodBtn" style="margin-top:6px;">Add a new food</button>
-
-      <div class="card food-quantity-card" id="newFoodCard" style="display:none;">
-        <div class="field">
-          <label for="newFoodName">Food name</label>
-          <input type="text" id="newFoodName" placeholder="e.g. Homemade lasagna" />
-        </div>
-        <div class="add-set-row" style="grid-template-columns: 1fr 1fr;">
-          <div class="mini-field"><label>Calories / 100g</label><input type="number" id="newFoodCalories" min="0" step="0.1" inputmode="decimal" /></div>
-          <div class="mini-field"><label>Protein / 100g</label><input type="number" id="newFoodProtein" min="0" step="0.1" inputmode="decimal" /></div>
-        </div>
-        <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
-          <div class="mini-field"><label>Carbs / 100g</label><input type="number" id="newFoodCarbs" min="0" step="0.1" inputmode="decimal" /></div>
-          <div class="mini-field"><label>Fat / 100g</label><input type="number" id="newFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
-        </div>
-        <button type="button" class="primary" id="saveNewFoodBtn" style="margin-top:10px;">Save &amp; Log</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Logged Today</h2>
-      <div id="foodLogList"></div>
-      <div class="day-status" id="foodLogTotals" style="display:none;"></div>
-    </div>
-
-  </section>
-
-  <!-- WORKOUT VIEW -->
-  <section class="view" id="view-workout">
-    <div class="card">
-      <h2>New Workout</h2>
-      <div class="field">
-        <label for="workoutDate">Date</label>
-        <input type="date" id="workoutDate" />
-      </div>
-      <div class="field">
-        <label for="workoutName">Session name</label>
-        <input type="text" id="workoutName" placeholder="e.g. Push Day" />
-      </div>
-      <div class="field">
-        <label for="workoutTemplateSelect">Load a template</label>
-        <div class="row">
-          <select id="workoutTemplateSelect"></select>
-          <button type="button" class="secondary" id="loadTemplateBtn">Load</button>
-        </div>
-      </div>
-
-      <div id="exerciseList"></div>
-
-      <div class="field">
-        <label for="exerciseSelect">Add exercise</label>
-        <div class="row">
-          <select id="exerciseSelect"></select>
-          <button type="button" class="secondary" id="addExerciseBtn">Add</button>
-        </div>
-        <input type="text" id="exerciseCustomInput" placeholder="Exercise name" style="display:none; margin-top:8px;" />
-        <div class="segmented" id="exerciseTypeToggle" style="margin-top:8px;">
-          <button type="button" class="segment active" data-ex-type="strength">🏋️ Strength (sets &amp; reps)</button>
-          <button type="button" class="segment" data-ex-type="cardio">🏃 Cardio (duration &amp; pace)</button>
-        </div>
-      </div>
-
-      <button type="button" class="primary" id="saveWorkoutBtn">Save Workout</button>
-      <button type="button" class="secondary" id="cancelEditWorkoutBtn" style="display:none; margin-top:8px;">Cancel edit</button>
-
-      <div class="field" style="margin-top:14px;">
-        <label for="templateNameInput">Save current exercise list as a template</label>
-        <div class="row">
-          <input type="text" id="templateNameInput" placeholder="Template name (optional)" />
-          <button type="button" class="secondary" id="saveAsTemplateBtn">Save</button>
-        </div>
+      <p class="hint hint--tight">Just track whether you had each of these today — no quantities, no nutrients.</p>
+      <div class="food-checklist" id="foodChecklist">
+        <label class="food-check-row"><input type="checkbox" data-food="rice" /> Rice</label>
+        <label class="food-check-row"><input type="checkbox" data-food="potatoes" /> Potatoes</label>
+        <label class="food-check-row"><input type="checkbox" data-food="oliveOil" /> Olive oil</label>
+        <label class="food-check-row"><input type="checkbox" data-food="dates" /> Dates</label>
       </div>
     </div>
   </section>
@@ -244,19 +145,6 @@
         <div class="mini-field"><label for="trendsStartInput">From</label><input type="date" id="trendsStartInput" /></div>
         <div class="mini-field"><label for="trendsEndInput">To</label><input type="date" id="trendsEndInput" /></div>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>Calories — Intake vs Burned</h2>
-      <div class="trend-legend">
-        <span class="legend-item"><span class="legend-dot legend-dot--a"></span><span id="trendsCaloriesIntakeLegendLabel">Intake</span></span>
-        <span class="legend-item"><span class="legend-dot legend-dot--b"></span><span id="trendsCaloriesBurnedLegendLabel">Burned</span></span>
-        <span class="legend-item" id="trendsCaloriesBmrLegend" style="display:none;"><span class="legend-dot legend-dot--c"></span><span id="trendsCaloriesBmrLegendLabel">BMR</span></span>
-        <span class="legend-item" id="trendsCaloriesMaintenanceLegend" style="display:none;"><span class="legend-dot legend-dot--d"></span><span id="trendsCaloriesMaintenanceLegendLabel">Maintenance</span></span>
-      </div>
-      <canvas id="trendsCaloriesChart"></canvas>
-      <div class="empty-state" id="trendsCaloriesEmpty" style="display:none;">Log calories, workouts, or steps on a few days to see a trend.</div>
-      <div class="day-status" id="trendsCaloriesAlignment" style="display:none;"></div>
     </div>
 
     <div class="card">
@@ -282,78 +170,10 @@
       <canvas id="trendsCigarettesChart"></canvas>
       <div class="empty-state" id="trendsCigarettesEmpty" style="display:none;">Log cigarettes on a few days to see a trend.</div>
     </div>
-
-    <div class="card">
-      <h2>Protein</h2>
-      <canvas id="trendsProteinChart"></canvas>
-      <div class="empty-state" id="trendsProteinEmpty" style="display:none;">Log protein on a few days to see a trend.</div>
-    </div>
-
-    <div class="card">
-      <h2>Carbs</h2>
-      <canvas id="trendsCarbsChart"></canvas>
-      <div class="empty-state" id="trendsCarbsEmpty" style="display:none;">Log carbs on a few days to see a trend.</div>
-    </div>
-
-    <div class="card">
-      <h2>Fat</h2>
-      <canvas id="trendsFatChart"></canvas>
-      <div class="empty-state" id="trendsFatEmpty" style="display:none;">Log fat on a few days to see a trend.</div>
-    </div>
   </section>
 
   <!-- DATA VIEW -->
   <section class="view" id="view-data">
-
-    <div class="card">
-      <h2>Profile</h2>
-      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:0;">
-        <div class="mini-field"><label for="ageInput">Age</label><input type="number" id="ageInput" step="1" min="0" inputmode="numeric" /></div>
-        <div class="mini-field"><label for="heightInput">Height (cm)</label><input type="number" id="heightInput" step="1" min="0" inputmode="numeric" /></div>
-      </div>
-      <div class="field" style="margin-top:10px;">
-        <label>Sex</label>
-        <div class="segmented" id="sexToggle">
-          <button type="button" class="segment" data-sex="male">Male</button>
-          <button type="button" class="segment" data-sex="female">Female</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Food Search Sources</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        Open Food Facts (no signup) is used by default, and is strongest for branded/packaged products. Add a free USDA FoodData Central API key to also search generic whole foods (chicken breast, banana, rice, etc.) &mdash; get one at fdc.nal.usda.gov/api-key-signup.html. Stored only on this device.
-      </p>
-      <div class="field">
-        <label for="usdaApiKeyInput">USDA FoodData Central API key (optional)</label>
-        <input type="text" id="usdaApiKeyInput" placeholder="e.g. abCdEfGhIjKlMnOpQrStUvWxYz" autocomplete="off" />
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>My Foods</h2>
-      <div id="customFoodList"></div>
-      <div class="field" style="margin-top:10px;">
-        <label for="myFoodName">Food name</label>
-        <input type="text" id="myFoodName" placeholder="e.g. Tajine (home-style)" />
-      </div>
-      <div class="add-set-row" style="grid-template-columns: 1fr 1fr;">
-        <div class="mini-field"><label>Calories / 100g</label><input type="number" id="myFoodCalories" min="0" step="0.1" inputmode="decimal" /></div>
-        <div class="mini-field"><label>Protein / 100g</label><input type="number" id="myFoodProtein" min="0" step="0.1" inputmode="decimal" /></div>
-      </div>
-      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
-        <div class="mini-field"><label>Carbs / 100g</label><input type="number" id="myFoodCarbs" min="0" step="0.1" inputmode="decimal" /></div>
-        <div class="mini-field"><label>Fat / 100g</label><input type="number" id="myFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
-      </div>
-      <button type="button" class="secondary" id="addMyFoodBtn" style="margin-top:10px;">Add to My Foods</button>
-      <button type="button" class="secondary" id="cancelEditMyFoodBtn" style="display:none; margin-top:8px;">Cancel edit</button>
-    </div>
-
-    <div class="card">
-      <h2>Workout Templates</h2>
-      <div id="workoutTemplateList"></div>
-    </div>
 
     <div class="card">
       <h2>Backup &amp; Restore</h2>
@@ -374,7 +194,6 @@
 <nav class="tabbar">
   <button class="tab-btn active" data-view="today"><span class="tab-icon">📅</span>Today</button>
   <button class="tab-btn" data-view="food"><span class="tab-icon">🍎</span>Food</button>
-  <button class="tab-btn" data-view="workout"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" data-view="history"><span class="tab-icon">📈</span>History</button>
   <button class="tab-btn" data-view="trends"><span class="tab-icon">📊</span>Trends</button>
   <button class="tab-btn" data-view="data"><span class="tab-icon">💾</span>Data</button>

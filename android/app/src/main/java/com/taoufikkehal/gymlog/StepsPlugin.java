@@ -22,16 +22,22 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-// Reads today's step count from the phone's built-in step counter sensor.
+// Reads today's step count from the phone's built-in step counter sensor, and keeps it
+// live: once activity-recognition permission is granted, the sensor listener stays
+// registered for as long as the app is running (not just for one-shot reads), pushing a
+// "stepsUpdate" event to JS on every step so the UI stays in sync automatically -- no
+// manual sync action needed. Uses SENSOR_DELAY_FASTEST since TYPE_STEP_COUNTER is a
+// low-power, hardware-batched sensor: the delay only affects notification latency, not
+// how much power the step-counting hardware itself draws.
+//
 // TYPE_STEP_COUNTER reports a cumulative total since the device's last boot, so "today's
 // steps" is tracked as (current total - a baseline captured at the start of today). The
-// baseline is normally (re)captured by MidnightStepsAlarmReceiver, an exact alarm that
-// fires right at midnight (like Google Fit resetting at midnight) rather than whenever the
-// app happens to be opened. If no baseline has been captured yet for today (e.g. right
-// after install, before the first midnight alarm has fired), this plugin falls back to
-// setting one lazily on its own first read of the day.
+// baseline is (re)captured by MidnightStepsAlarmReceiver at midnight, by BootReceiver right
+// after a reboot, and self-heals on every sensor read whenever the stored baseline's date
+// doesn't match today (covers the rare case both of those miss a day boundary).
 // Known limitation: if the phone reboots, the sensor's cumulative total resets too, so
-// steps taken before the reboot are not recovered for that day.
+// steps taken before the reboot are not recovered for that day until the next baseline
+// recapture above.
 @CapacitorPlugin(
     name = "Steps",
     permissions = { @Permission(strings = { Manifest.permission.ACTIVITY_RECOGNITION }, alias = "activity") }
@@ -40,6 +46,7 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
     static final String PREFS = "gymlog_steps";
     private SensorManager sensorManager;
     private Sensor stepCounterSensor;
+    private boolean listening = false;
     private PluginCall pendingCall;
     // Non-null while a setTodaySteps() call is waiting on a sensor read: holds the
     // authoritative "steps so far today" value to splice in as the new baseline.
@@ -50,6 +57,13 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
         sensorManager = (SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
         stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
         MidnightStepsAlarmReceiver.scheduleNext(getContext());
+        // If permission was already granted in a previous session, start listening
+        // immediately so live updates begin as soon as the app opens, with no explicit
+        // getTodaySteps() call needed first.
+        if (stepCounterSensor != null &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || getPermissionState("activity") == PermissionState.GRANTED)) {
+            startListening();
+        }
     }
 
     @PluginMethod
@@ -63,7 +77,8 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
             requestPermissionForAlias("activity", call, "permissionCallback");
             return;
         }
-        readSteps(call);
+        pendingCall = call;
+        startListening();
     }
 
     // Recalibrates today's baseline so future reads report the given "steps so far"
@@ -85,29 +100,33 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
             requestPermissionForAlias("activity", call, "permissionCallback");
             return;
         }
-        readSteps(call);
+        pendingCall = call;
+        startListening();
     }
 
     @PermissionCallback
     private void permissionCallback(PluginCall call) {
         if (getPermissionState("activity") == PermissionState.GRANTED) {
-            readSteps(call);
+            pendingCall = call;
+            startListening();
         } else {
             recalibrateTargetSteps = null;
             call.reject("Activity recognition permission denied");
         }
     }
 
-    private void readSteps(PluginCall call) {
-        pendingCall = call;
-        sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_NORMAL);
+    // Registers the sensor listener if it isn't already -- shared by one-shot
+    // getTodaySteps()/setTodaySteps() calls and by load(), and left registered
+    // afterwards so every subsequent step keeps pushing "stepsUpdate" events on its own.
+    private void startListening() {
+        if (listening) return;
+        listening = true;
+        sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_FASTEST);
     }
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if (pendingCall == null) return;
         float totalSinceBoot = event.values[0];
-        sensorManager.unregisterListener(this);
 
         SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
@@ -131,10 +150,22 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
 
         JSObject ret = new JSObject();
         ret.put("steps", todaySteps);
-        pendingCall.resolve(ret);
-        pendingCall = null;
+
+        if (pendingCall != null) {
+            pendingCall.resolve(ret);
+            pendingCall = null;
+        }
+        notifyListeners("stepsUpdate", ret);
     }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+
+    @Override
+    protected void handleOnDestroy() {
+        if (listening) {
+            sensorManager.unregisterListener(this);
+            listening = false;
+        }
+    }
 }
