@@ -2,7 +2,7 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",     // { "2026-07-27": { weight, sleepHours, steps, water, cigarettes, dayType, moodMorning, moodMidday, moodEvening } }
+    daily: "gymlog.daily",     // { "2026-07-27": { weight, steps, cigarettes, dayType, moodMorning, moodMidday, moodEvening } }
     foods: "gymlog.foods",     // { "2026-07-27": { rice: true, potatoes: false, oliveOil: true, dates: false } }
     fasting: "gymlog.fasting"  // { current: {start: ISOString} | null, log: [{id, start, end, hours}] }
   };
@@ -14,10 +14,33 @@
   };
 
   var FOOD_ITEMS = [
-    { key: "rice", label: "Rice" },
+    { key: "corn", label: "Corn (all forms)" },
     { key: "potatoes", label: "Potatoes" },
     { key: "oliveOil", label: "Olive oil" },
-    { key: "dates", label: "Dates" }
+    { key: "butter", label: "Butter" },
+    { key: "ghee", label: "Traditional ghee (smen)" },
+    { key: "vegetableOils", label: "Vegetable oils (some)" },
+    { key: "cheddar", label: "Cheddar" },
+    { key: "gouda", label: "Gouda" },
+    { key: "edam", label: "Edam / Flamenco-style" },
+    { key: "mozzarella", label: "Mozzarella" },
+    { key: "parmesan", label: "Parmesan" },
+    { key: "roquefort", label: "Roquefort" },
+    { key: "processedCheese", label: "Processed cheese" },
+    { key: "dates", label: "Dates" },
+    { key: "grapes", label: "Grapes" },
+    { key: "figs", label: "Figs" },
+    { key: "banana", label: "Banana" },
+    { key: "apple", label: "Apple" },
+    { key: "pear", label: "Pear" },
+    { key: "guava", label: "Seedless guava" },
+    { key: "lamb", label: "Lamb" },
+    { key: "goat", label: "Goat" },
+    { key: "camel", label: "Camel" },
+    { key: "seaFish", label: "Sea fish (some)" },
+    { key: "pigeon", label: "Pigeon" },
+    { key: "quail", label: "Quail" },
+    { key: "rabbit", label: "Rabbit" }
   ];
 
   var currentDayType = null; // 'rest' | 'workout' | 'cardio' | null, for the Today form
@@ -118,9 +141,7 @@
     var today = document.getElementById("logDate").value || todayISO();
     var entry = daily[today] || {};
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
-    document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
-    document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     renderDayStatus(entry);
     renderWeightTrend(daily);
@@ -206,9 +227,7 @@
     var daily = loadDaily();
     var entry = daily[iso] || {};
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
-    document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
-    document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
     MOOD_FIELDS.forEach(function (f) {
@@ -228,18 +247,14 @@
     e.preventDefault();
     var date = document.getElementById("logDate").value || todayISO();
     var weight = document.getElementById("weightInput").value;
-    var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
-    var water = document.getElementById("waterInput").value;
     var cigarettes = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
     var existing = daily[date] || {};
     var entry = {};
     if (weight !== "") entry.weight = parseFloat(weight);
-    if (sleepHours !== "") entry.sleepHours = parseFloat(sleepHours);
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
-    if (water !== "") entry.water = parseFloat(water);
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
     MOOD_FIELDS.forEach(function (f) {
@@ -462,8 +477,6 @@
 
   var TREND_METRICS = [
     { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty" },
-    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" },
-    { key: "water", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty" },
     { key: "cigarettes", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty" }
   ];
 
@@ -659,9 +672,7 @@
           }
           parts.push(weightPart);
         }
-        if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
         if (entry.steps != null) parts.push(entry.steps + " steps");
-        if (entry.water != null) parts.push(entry.water + " L water");
         if (entry.cigarettes != null) parts.push(entry.cigarettes + " cigarettes");
         if (parts.length) {
           line.innerHTML = "<span>" + parts.join(" · ") + "</span>";

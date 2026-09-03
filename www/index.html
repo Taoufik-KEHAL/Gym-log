@@ -40,9 +40,7 @@
       <h2>Today's Summary</h2>
       <div class="summary-grid">
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
-        <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
-        <div class="stat"><div class="value" id="sumWater">—</div><div class="label">Water (L)</div></div>
         <div class="stat"><div class="value" id="sumCigarettes">—</div><div class="label">Cigarettes</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
@@ -68,17 +66,9 @@
           <input type="number" id="weightInput" step="0.1" min="0" placeholder="e.g. 82.4" inputmode="decimal" />
         </div>
         <div class="field">
-          <label for="sleepInput">Sleep (hours)</label>
-          <input type="number" id="sleepInput" step="0.25" min="0" max="24" placeholder="e.g. 7.5" inputmode="decimal" />
-        </div>
-        <div class="field">
           <label for="stepsInput">Steps</label>
           <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
           <p class="hint hint--tight" id="stepsAutoHint" style="display:none;">Synced automatically from your phone.</p>
-        </div>
-        <div class="field">
-          <label for="waterInput">Water (L)</label>
-          <input type="number" id="waterInput" step="0.1" min="0" placeholder="e.g. 2.5" inputmode="decimal" />
         </div>
         <div class="field">
           <label for="cigarettesInput">Cigarettes</label>
@@ -120,11 +110,59 @@
         <input type="date" id="foodDate" />
       </div>
       <p class="hint hint--tight">Just track whether you had each of these today — no quantities, no nutrients.</p>
-      <div class="food-checklist" id="foodChecklist">
-        <label class="food-check-row"><input type="checkbox" data-food="rice" /> Rice</label>
-        <label class="food-check-row"><input type="checkbox" data-food="potatoes" /> Potatoes</label>
-        <label class="food-check-row"><input type="checkbox" data-food="oliveOil" /> Olive oil</label>
-        <label class="food-check-row"><input type="checkbox" data-food="dates" /> Dates</label>
+      <div id="foodChecklist">
+        <div class="food-group">
+          <h3 class="food-group-title">Starches</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="corn" /> Corn (all forms)</label>
+            <label class="food-check-row"><input type="checkbox" data-food="potatoes" /> Potatoes</label>
+          </div>
+        </div>
+        <div class="food-group">
+          <h3 class="food-group-title">Fats</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="oliveOil" /> Olive oil</label>
+            <label class="food-check-row"><input type="checkbox" data-food="butter" /> Butter</label>
+            <label class="food-check-row"><input type="checkbox" data-food="ghee" /> Traditional ghee (smen)</label>
+            <label class="food-check-row"><input type="checkbox" data-food="vegetableOils" /> Vegetable oils (some)</label>
+          </div>
+        </div>
+        <div class="food-group">
+          <h3 class="food-group-title">Cheeses</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="cheddar" /> Cheddar</label>
+            <label class="food-check-row"><input type="checkbox" data-food="gouda" /> Gouda</label>
+            <label class="food-check-row"><input type="checkbox" data-food="edam" /> Edam / Flamenco-style</label>
+            <label class="food-check-row"><input type="checkbox" data-food="mozzarella" /> Mozzarella</label>
+            <label class="food-check-row"><input type="checkbox" data-food="parmesan" /> Parmesan</label>
+            <label class="food-check-row"><input type="checkbox" data-food="roquefort" /> Roquefort</label>
+            <label class="food-check-row"><input type="checkbox" data-food="processedCheese" /> Processed cheese</label>
+          </div>
+        </div>
+        <div class="food-group">
+          <h3 class="food-group-title">Fruits</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="dates" /> Dates</label>
+            <label class="food-check-row"><input type="checkbox" data-food="grapes" /> Grapes</label>
+            <label class="food-check-row"><input type="checkbox" data-food="figs" /> Figs</label>
+            <label class="food-check-row"><input type="checkbox" data-food="banana" /> Banana</label>
+            <label class="food-check-row"><input type="checkbox" data-food="apple" /> Apple</label>
+            <label class="food-check-row"><input type="checkbox" data-food="pear" /> Pear</label>
+            <label class="food-check-row"><input type="checkbox" data-food="guava" /> Seedless guava</label>
+          </div>
+        </div>
+        <div class="food-group">
+          <h3 class="food-group-title">Proteins</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="lamb" /> Lamb</label>
+            <label class="food-check-row"><input type="checkbox" data-food="goat" /> Goat</label>
+            <label class="food-check-row"><input type="checkbox" data-food="camel" /> Camel</label>
+            <label class="food-check-row"><input type="checkbox" data-food="seaFish" /> Sea fish (some)</label>
+            <label class="food-check-row"><input type="checkbox" data-food="pigeon" /> Pigeon</label>
+            <label class="food-check-row"><input type="checkbox" data-food="quail" /> Quail</label>
+            <label class="food-check-row"><input type="checkbox" data-food="rabbit" /> Rabbit</label>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -151,18 +189,6 @@
       <h2>Steps</h2>
       <canvas id="trendsStepsChart"></canvas>
       <div class="empty-state" id="trendsStepsEmpty" style="display:none;">Log steps on a few days to see a trend.</div>
-    </div>
-
-    <div class="card">
-      <h2>Sleep</h2>
-      <canvas id="trendsSleepChart"></canvas>
-      <div class="empty-state" id="trendsSleepEmpty" style="display:none;">Log sleep on a few days to see a trend.</div>
-    </div>
-
-    <div class="card">
-      <h2>Water</h2>
-      <canvas id="trendsWaterChart"></canvas>
-      <div class="empty-state" id="trendsWaterEmpty" style="display:none;">Log water on a few days to see a trend.</div>
     </div>
 
     <div class="card">

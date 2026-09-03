@@ -249,6 +249,22 @@ canvas {
   height: 20px;
 }
 
+.food-group {
+  margin-bottom: 16px;
+}
+.food-group:last-child {
+  margin-bottom: 0;
+}
+
+.food-group-title {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
 .mood-field label {
   display: flex;
   justify-content: space-between;
