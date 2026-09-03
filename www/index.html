@@ -26,6 +26,17 @@
   <!-- TODAY VIEW -->
   <section class="view active" id="view-today">
     <div class="card">
+      <h2>Fasting</h2>
+      <div class="fasting-status">
+        <div class="value" id="fastingTimer">—</div>
+        <div class="label" id="fastingLabel">Not fasting</div>
+      </div>
+      <button type="button" class="secondary" id="wakeUpBtn">Woke up</button>
+      <button type="button" class="secondary" id="cancelFastBtn" style="display:none;">Cancel fast</button>
+      <p class="hint hint--tight">Tap "Woke up" to start the clock. Logging any food breaks the fast and records it.</p>
+    </div>
+
+    <div class="card">
       <h2>Today's Summary</h2>
       <div class="summary-grid">
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
