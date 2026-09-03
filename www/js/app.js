@@ -576,12 +576,6 @@
     });
   }
 
-  var MOOD_FIELDS = [
-    { input: "moodMorningInput", value: "moodMorningValue", entry: "moodMorning" },
-    { input: "moodMiddayInput", value: "moodMiddayValue", entry: "moodMidday" },
-    { input: "moodEveningInput", value: "moodEveningValue", entry: "moodEvening" }
-  ];
-
   function nativeStepsAvailable() {
     return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() &&
       window.Capacitor.Plugins && window.Capacitor.Plugins.Steps);
@@ -624,17 +618,6 @@
     document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
     document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
-    MOOD_FIELDS.forEach(function (f) {
-      var input = document.getElementById(f.input);
-      var valueEl = document.getElementById(f.value);
-      var stored = entry[f.entry];
-      input.value = stored != null ? stored : 5;
-      input.dataset.touched = stored != null ? "1" : "0";
-      // Once a mood is logged for a given day it's locked in permanently -- it's a
-      // record of how you felt at that moment, not something to revise in hindsight.
-      input.disabled = stored != null;
-      valueEl.textContent = stored != null ? stored + " 🔒" : "—";
-    });
   }
 
   function handleDailySubmit(e) {
@@ -660,13 +643,6 @@
     if (water !== "") entry.water = parseFloat(water);
     if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
-    MOOD_FIELDS.forEach(function (f) {
-      // Already logged for this day -- keep it exactly as first recorded, even if the
-      // disabled slider were somehow bypassed.
-      if (existing[f.entry] != null) { entry[f.entry] = existing[f.entry]; return; }
-      var input = document.getElementById(f.input);
-      if (input.dataset.touched === "1") entry[f.entry] = parseInt(input.value, 10);
-    });
 
     if (Object.keys(entry).length === 0) {
       delete daily[date];
@@ -2378,14 +2354,6 @@
     renderFastingStatus();
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
-    });
-    MOOD_FIELDS.forEach(function (f) {
-      var input = document.getElementById(f.input);
-      var valueEl = document.getElementById(f.value);
-      input.addEventListener("input", function () {
-        input.dataset.touched = "1";
-        valueEl.textContent = input.value;
-      });
     });
 
     document.querySelectorAll("#dayTypeToggle .segment").forEach(function (btn) {
