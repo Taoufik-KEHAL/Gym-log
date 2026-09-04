@@ -39,20 +39,15 @@
       <div class="summary-grid">
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
         <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
-        <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div><div class="stat-sub" id="sumCaloriesGoal"></div><div class="stat-sub" id="sumCaloriesTarget"></div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
         <div class="stat"><div class="value" id="sumWater">—</div><div class="label">Water (L)</div></div>
         <div class="stat"><div class="value" id="sumCigarettes">—</div><div class="label">Cigarettes</div></div>
-        <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
-        <div class="stat"><div class="value" id="sumCarbs">—</div><div class="label">Carbs (g)</div></div>
-        <div class="stat"><div class="value" id="sumFat">—</div><div class="label">Fat (g)</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
 
     <div class="card">
       <h2>Log Today</h2>
-      <p class="hint hint--tight">Calories, protein, carbs, and fat come from what you log on the Food tab.</p>
       <form id="dailyForm">
         <div class="field">
           <label for="logDate">Date</label>
@@ -77,7 +72,6 @@
         <div class="field">
           <label for="stepsInput">Steps</label>
           <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
-          <p class="hint hint--tight" id="stepsAutoHint" style="display:none;">Synced automatically from your phone.</p>
         </div>
         <div class="field">
           <label for="waterInput">Water (L)</label>
@@ -110,58 +104,69 @@
         <label for="foodDate">Date</label>
         <input type="date" id="foodDate" />
       </div>
-
-      <div class="field">
-        <label for="foodSearchInput">Search foods</label>
-        <input type="text" id="foodSearchInput" placeholder="e.g. chicken breast" autocomplete="off" />
-        <div id="foodSearchStatus" class="empty-state" style="display:none; padding:10px 0;"></div>
-        <ul id="foodSearchResults" class="food-results"></ul>
-      </div>
-
-      <div class="card food-quantity-card" id="foodQuantityCard" style="display:none;">
-        <div class="ex-title" id="foodQuantityName"></div>
-        <div class="segmented" id="quantityModeToggle" style="margin-top:10px;">
-          <button type="button" class="segment active" data-qty-mode="grams">By weight (g)</button>
-          <button type="button" class="segment" data-qty-mode="units">By count (units)</button>
+      <p class="hint hint--tight">Just track whether you had each of these today — no quantities, no nutrients.</p>
+      <div id="foodChecklist">
+        <div class="food-group">
+          <h3 class="food-group-title">Drinks</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="water" /> Water</label>
+            <label class="food-check-row"><input type="checkbox" data-food="blackCoffee" /> Black coffee</label>
+          </div>
         </div>
-        <div class="field" id="gramsField">
-          <label for="foodGramsInput">Quantity (g)</label>
-          <input type="number" id="foodGramsInput" step="1" min="1" value="100" inputmode="numeric" />
+        <div class="food-group">
+          <h3 class="food-group-title">Starches</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="corn" /> Corn (all forms)</label>
+            <label class="food-check-row"><input type="checkbox" data-food="potatoes" /> Potatoes</label>
+          </div>
         </div>
-        <div class="add-set-row" id="unitsField" style="grid-template-columns: 1fr 1fr; display:none;">
-          <div class="mini-field"><label>Number of units</label><input type="number" id="foodUnitsInput" step="1" min="1" value="1" inputmode="numeric" /></div>
-          <div class="mini-field"><label>Weight per unit (g)</label><input type="number" id="foodUnitGramsInput" step="1" min="1" value="50" inputmode="numeric" /></div>
+        <div class="food-group">
+          <h3 class="food-group-title">Fats</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="oliveOil" /> Olive oil</label>
+            <label class="food-check-row"><input type="checkbox" data-food="butter" /> Butter</label>
+            <label class="food-check-row"><input type="checkbox" data-food="ghee" /> Traditional ghee (smen)</label>
+            <label class="food-check-row"><input type="checkbox" data-food="vegetableOils" /> Vegetable oils (some)</label>
+          </div>
         </div>
-        <div class="food-preview" id="foodPreview"></div>
-        <button type="button" class="primary" id="addFoodBtn">Add to log</button>
-        <button type="button" class="secondary" id="cancelEditFoodLogBtn" style="display:none; margin-top:8px;">Cancel edit</button>
-      </div>
-
-      <button type="button" class="secondary" id="showNewFoodBtn" style="margin-top:6px;">Add a new food</button>
-
-      <div class="card food-quantity-card" id="newFoodCard" style="display:none;">
-        <div class="field">
-          <label for="newFoodName">Food name</label>
-          <input type="text" id="newFoodName" placeholder="e.g. Homemade lasagna" />
+        <div class="food-group">
+          <h3 class="food-group-title">Cheeses</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="cheddar" /> Cheddar</label>
+            <label class="food-check-row"><input type="checkbox" data-food="gouda" /> Gouda</label>
+            <label class="food-check-row"><input type="checkbox" data-food="edam" /> Edam / Flamenco-style</label>
+            <label class="food-check-row"><input type="checkbox" data-food="mozzarella" /> Mozzarella</label>
+            <label class="food-check-row"><input type="checkbox" data-food="parmesan" /> Parmesan</label>
+            <label class="food-check-row"><input type="checkbox" data-food="roquefort" /> Roquefort</label>
+            <label class="food-check-row"><input type="checkbox" data-food="processedCheese" /> Processed cheese</label>
+          </div>
         </div>
-        <div class="add-set-row" style="grid-template-columns: 1fr 1fr;">
-          <div class="mini-field"><label>Calories / 100g</label><input type="number" id="newFoodCalories" min="0" step="0.1" inputmode="decimal" /></div>
-          <div class="mini-field"><label>Protein / 100g</label><input type="number" id="newFoodProtein" min="0" step="0.1" inputmode="decimal" /></div>
+        <div class="food-group">
+          <h3 class="food-group-title">Fruits</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="dates" /> Dates</label>
+            <label class="food-check-row"><input type="checkbox" data-food="grapes" /> Grapes</label>
+            <label class="food-check-row"><input type="checkbox" data-food="figs" /> Figs</label>
+            <label class="food-check-row"><input type="checkbox" data-food="banana" /> Banana</label>
+            <label class="food-check-row"><input type="checkbox" data-food="apple" /> Apple</label>
+            <label class="food-check-row"><input type="checkbox" data-food="pear" /> Pear</label>
+            <label class="food-check-row"><input type="checkbox" data-food="guava" /> Seedless guava</label>
+          </div>
         </div>
-        <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
-          <div class="mini-field"><label>Carbs / 100g</label><input type="number" id="newFoodCarbs" min="0" step="0.1" inputmode="decimal" /></div>
-          <div class="mini-field"><label>Fat / 100g</label><input type="number" id="newFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
+        <div class="food-group">
+          <h3 class="food-group-title">Proteins</h3>
+          <div class="food-checklist">
+            <label class="food-check-row"><input type="checkbox" data-food="lamb" /> Lamb</label>
+            <label class="food-check-row"><input type="checkbox" data-food="goat" /> Goat</label>
+            <label class="food-check-row"><input type="checkbox" data-food="camel" /> Camel</label>
+            <label class="food-check-row"><input type="checkbox" data-food="seaFish" /> Sea fish (some)</label>
+            <label class="food-check-row"><input type="checkbox" data-food="pigeon" /> Pigeon</label>
+            <label class="food-check-row"><input type="checkbox" data-food="quail" /> Quail</label>
+            <label class="food-check-row"><input type="checkbox" data-food="rabbit" /> Rabbit</label>
+          </div>
         </div>
-        <button type="button" class="primary" id="saveNewFoodBtn" style="margin-top:10px;">Save &amp; Log</button>
       </div>
     </div>
-
-    <div class="card">
-      <h2>Logged Today</h2>
-      <div id="foodLogList"></div>
-      <div class="day-status" id="foodLogTotals" style="display:none;"></div>
-    </div>
-
   </section>
 
   <!-- WORKOUT VIEW -->
@@ -231,19 +236,6 @@
     </div>
 
     <div class="card">
-      <h2>Calories — Intake vs Burned</h2>
-      <div class="trend-legend">
-        <span class="legend-item"><span class="legend-dot legend-dot--a"></span><span id="trendsCaloriesIntakeLegendLabel">Intake</span></span>
-        <span class="legend-item"><span class="legend-dot legend-dot--b"></span><span id="trendsCaloriesBurnedLegendLabel">Burned</span></span>
-        <span class="legend-item" id="trendsCaloriesBmrLegend" style="display:none;"><span class="legend-dot legend-dot--c"></span><span id="trendsCaloriesBmrLegendLabel">BMR</span></span>
-        <span class="legend-item" id="trendsCaloriesMaintenanceLegend" style="display:none;"><span class="legend-dot legend-dot--d"></span><span id="trendsCaloriesMaintenanceLegendLabel">Maintenance</span></span>
-      </div>
-      <canvas id="trendsCaloriesChart"></canvas>
-      <div class="empty-state" id="trendsCaloriesEmpty" style="display:none;">Log calories, workouts, or steps on a few days to see a trend.</div>
-      <div class="day-status" id="trendsCaloriesAlignment" style="display:none;"></div>
-    </div>
-
-    <div class="card">
       <h2>Steps</h2>
       <canvas id="trendsStepsChart"></canvas>
       <div class="empty-state" id="trendsStepsEmpty" style="display:none;">Log steps on a few days to see a trend.</div>
@@ -266,73 +258,10 @@
       <canvas id="trendsCigarettesChart"></canvas>
       <div class="empty-state" id="trendsCigarettesEmpty" style="display:none;">Log cigarettes on a few days to see a trend.</div>
     </div>
-
-    <div class="card">
-      <h2>Protein</h2>
-      <canvas id="trendsProteinChart"></canvas>
-      <div class="empty-state" id="trendsProteinEmpty" style="display:none;">Log protein on a few days to see a trend.</div>
-    </div>
-
-    <div class="card">
-      <h2>Carbs</h2>
-      <canvas id="trendsCarbsChart"></canvas>
-      <div class="empty-state" id="trendsCarbsEmpty" style="display:none;">Log carbs on a few days to see a trend.</div>
-    </div>
-
-    <div class="card">
-      <h2>Fat</h2>
-      <canvas id="trendsFatChart"></canvas>
-      <div class="empty-state" id="trendsFatEmpty" style="display:none;">Log fat on a few days to see a trend.</div>
-    </div>
   </section>
 
   <!-- DATA VIEW -->
   <section class="view" id="view-data">
-
-    <div class="card">
-      <h2>Profile</h2>
-      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:0;">
-        <div class="mini-field"><label for="ageInput">Age</label><input type="number" id="ageInput" step="1" min="0" inputmode="numeric" /></div>
-        <div class="mini-field"><label for="heightInput">Height (cm)</label><input type="number" id="heightInput" step="1" min="0" inputmode="numeric" /></div>
-      </div>
-      <div class="field" style="margin-top:10px;">
-        <label>Sex</label>
-        <div class="segmented" id="sexToggle">
-          <button type="button" class="segment" data-sex="male">Male</button>
-          <button type="button" class="segment" data-sex="female">Female</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Food Search Sources</h2>
-      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0;">
-        Open Food Facts (no signup) is used by default, and is strongest for branded/packaged products. Add a free USDA FoodData Central API key to also search generic whole foods (chicken breast, banana, rice, etc.) &mdash; get one at fdc.nal.usda.gov/api-key-signup.html. Stored only on this device.
-      </p>
-      <div class="field">
-        <label for="usdaApiKeyInput">USDA FoodData Central API key (optional)</label>
-        <input type="text" id="usdaApiKeyInput" placeholder="e.g. abCdEfGhIjKlMnOpQrStUvWxYz" autocomplete="off" />
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>My Foods</h2>
-      <div id="customFoodList"></div>
-      <div class="field" style="margin-top:10px;">
-        <label for="myFoodName">Food name</label>
-        <input type="text" id="myFoodName" placeholder="e.g. Tajine (home-style)" />
-      </div>
-      <div class="add-set-row" style="grid-template-columns: 1fr 1fr;">
-        <div class="mini-field"><label>Calories / 100g</label><input type="number" id="myFoodCalories" min="0" step="0.1" inputmode="decimal" /></div>
-        <div class="mini-field"><label>Protein / 100g</label><input type="number" id="myFoodProtein" min="0" step="0.1" inputmode="decimal" /></div>
-      </div>
-      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
-        <div class="mini-field"><label>Carbs / 100g</label><input type="number" id="myFoodCarbs" min="0" step="0.1" inputmode="decimal" /></div>
-        <div class="mini-field"><label>Fat / 100g</label><input type="number" id="myFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
-      </div>
-      <button type="button" class="secondary" id="addMyFoodBtn" style="margin-top:10px;">Add to My Foods</button>
-      <button type="button" class="secondary" id="cancelEditMyFoodBtn" style="display:none; margin-top:8px;">Cancel edit</button>
-    </div>
 
     <div class="card">
       <h2>Workout Templates</h2>
