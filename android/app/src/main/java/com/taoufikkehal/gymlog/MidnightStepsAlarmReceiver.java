@@ -10,9 +10,6 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.net.Uri;
-import android.os.Build;
-import android.provider.Settings;
 
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -21,10 +18,10 @@ import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-// Fires once exactly at midnight to capture a fresh step-count baseline right at the day
-// boundary, matching how Google Fit resets at midnight, then reschedules itself for the
-// next midnight. Also (re)armed on boot (see BootReceiver), since AlarmManager alarms do
-// not survive a reboot on their own.
+// Fires at (or shortly after) midnight to capture a fresh step-count baseline right at the
+// day boundary, matching how Google Fit resets at midnight, then reschedules itself for
+// the next midnight. Also (re)armed on boot (see BootReceiver), since AlarmManager alarms
+// do not survive a reboot on their own.
 public class MidnightStepsAlarmReceiver extends BroadcastReceiver {
     private static final int REQUEST_CODE = 4821;
 
@@ -80,25 +77,20 @@ public class MidnightStepsAlarmReceiver extends BroadcastReceiver {
         }
     }
 
-    // Schedules the next midnight alarm. On Android 12+ this requires the user to have
-    // granted the "Alarms & reminders" special access; if it hasn't been granted yet, this
-    // opens that settings screen instead of scheduling (and will be retried next app open).
+    // Schedules the next midnight alarm using setAndAllowWhileIdle rather than an exact
+    // alarm: exact alarms need the user to manually grant the "Alarms & reminders" special
+    // access on Android 12+ (there's no in-app prompt for it, just a settings screen), and
+    // in practice that almost never gets granted -- which silently means this alarm never
+    // fires at all, so the baseline is never recaptured at midnight and the plugin's lazy
+    // self-heal (see StepsPlugin.onSensorChanged) resets the count to 0 at whatever time
+    // the app is first opened each day, discarding everything counted since actual
+    // midnight. A day-boundary reset doesn't need millisecond precision -- being off by a
+    // few minutes around midnight is irrelevant here -- so setAndAllowWhileIdle (Doze/App
+    // Standby-tolerant, no special permission required on any Android version) is the
+    // right tool for this, not an exact alarm.
     static void scheduleNext(Context context) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) return;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
-            Intent settingsIntent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
-            settingsIntent.setData(Uri.parse("package:" + context.getPackageName()));
-            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                context.startActivity(settingsIntent);
-            } catch (Exception ignored) {
-                // No such settings screen on this device/OEM; the plugin's own lazy
-                // fallback baseline still works, just without a precise midnight reset.
-            }
-            return;
-        }
 
         Calendar next = Calendar.getInstance();
         next.add(Calendar.DAY_OF_YEAR, 1);
@@ -113,9 +105,10 @@ public class MidnightStepsAlarmReceiver extends BroadcastReceiver {
         );
 
         try {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.getTimeInMillis(), pendingIntent);
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.getTimeInMillis(), pendingIntent);
         } catch (SecurityException ignored) {
-            // Permission revoked between the check above and this call; skip for now.
+            // Shouldn't happen -- setAndAllowWhileIdle needs no special permission -- but
+            // don't crash the app over a missed baseline reset if some OEM disagrees.
         }
     }
 }
