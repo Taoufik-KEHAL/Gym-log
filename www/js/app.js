@@ -2,7 +2,7 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, steps, water, cigarettes, dayType } }
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
     foods: "gymlog.foods",       // { "2026-07-27": { corn: true, potatoes: false, water: true, ... } }
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
@@ -305,8 +305,6 @@
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
-    document.getElementById("sumWater").textContent = entry.water != null ? entry.water : "—";
-    document.getElementById("sumCigarettes").textContent = entry.cigarettes != null ? entry.cigarettes : "—";
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
   }
@@ -452,8 +450,6 @@
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
-    document.getElementById("waterInput").value = entry.water != null ? entry.water : "";
-    document.getElementById("cigarettesInput").value = entry.cigarettes != null ? entry.cigarettes : "";
     setDayTypeToggle(entry.dayType || null);
   }
 
@@ -463,8 +459,6 @@
     var weight = document.getElementById("weightInput").value;
     var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
-    var water = document.getElementById("waterInput").value;
-    var cigarettes = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
     var existing = daily[date] || {};
@@ -478,8 +472,6 @@
     if (existing.carbs != null) entry.carbs = existing.carbs;
     if (existing.fat != null) entry.fat = existing.fat;
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
-    if (water !== "") entry.water = parseFloat(water);
-    if (cigarettes !== "") entry.cigarettes = Math.round(parseFloat(cigarettes));
     if (currentDayType) entry.dayType = currentDayType;
 
     if (Object.keys(entry).length === 0) {
@@ -693,9 +685,7 @@
 
   var TREND_METRICS = [
     { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty" },
-    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" },
-    { key: "water", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty" },
-    { key: "cigarettes", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty" }
+    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" }
   ];
 
   function renderMetricTrend(cfg, daily, range) {
@@ -1315,8 +1305,6 @@
         }
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
         if (entry.steps != null) parts.push(entry.steps + " steps");
-        if (entry.water != null) parts.push(entry.water + " L water");
-        if (entry.cigarettes != null) parts.push(entry.cigarettes + " cigarettes");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
       }

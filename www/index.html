@@ -40,8 +40,6 @@
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
         <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
-        <div class="stat"><div class="value" id="sumWater">—</div><div class="label">Water (L)</div></div>
-        <div class="stat"><div class="value" id="sumCigarettes">—</div><div class="label">Cigarettes</div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
@@ -72,14 +70,6 @@
         <div class="field">
           <label for="stepsInput">Steps</label>
           <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
-        </div>
-        <div class="field">
-          <label for="waterInput">Water (L)</label>
-          <input type="number" id="waterInput" step="0.1" min="0" placeholder="e.g. 2.5" inputmode="decimal" />
-        </div>
-        <div class="field">
-          <label for="cigarettesInput">Cigarettes</label>
-          <input type="number" id="cigarettesInput" step="1" min="0" placeholder="e.g. 5" inputmode="numeric" />
         </div>
         <button type="submit" class="primary">Save Day</button>
       </form>
@@ -247,17 +237,6 @@
       <div class="empty-state" id="trendsSleepEmpty" style="display:none;">Log sleep on a few days to see a trend.</div>
     </div>
 
-    <div class="card">
-      <h2>Water</h2>
-      <canvas id="trendsWaterChart"></canvas>
-      <div class="empty-state" id="trendsWaterEmpty" style="display:none;">Log water on a few days to see a trend.</div>
-    </div>
-
-    <div class="card">
-      <h2>Cigarettes</h2>
-      <canvas id="trendsCigarettesChart"></canvas>
-      <div class="empty-state" id="trendsCigarettesEmpty" style="display:none;">Log cigarettes on a few days to see a trend.</div>
-    </div>
   </section>
 
   <!-- DATA VIEW -->
