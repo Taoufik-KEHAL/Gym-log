@@ -1202,7 +1202,11 @@
       // No button shown at all while a fast is active -- the only way out is
       // logging food, which breaks it automatically.
       startBtn.style.display = "none";
-      labelEl.textContent = "Fasting since " + formatClockTime(fasting.current.start);
+      // Always include the date, not just the clock time -- a fast can run past
+      // midnight (even several days), so "since 07:04" alone would be ambiguous
+      // about which day it actually started.
+      labelEl.textContent = "Fasting since " + formatDateShort(localDateISO(new Date(fasting.current.start))) +
+        ", " + formatClockTime(fasting.current.start);
       var update = function () {
         var hours = (Date.now() - new Date(fasting.current.start).getTime()) / 3600000;
         timerEl.textContent = formatFastingDuration(hours);
