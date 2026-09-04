@@ -24,20 +24,27 @@ import java.util.Locale;
 
 // Reads today's step count from the phone's built-in step counter sensor, and keeps it
 // live: once activity-recognition permission is granted, the sensor listener stays
-// registered for as long as the app is running (not just for one-shot reads), pushing a
-// "stepsUpdate" event to JS on every step so the UI stays in sync automatically -- no
-// manual sync action needed. Uses SENSOR_DELAY_FASTEST since TYPE_STEP_COUNTER is a
-// low-power, hardware-batched sensor: the delay only affects notification latency, not
-// how much power the step-counting hardware itself draws.
+// registered for as long as the app process is alive -- including while backgrounded,
+// not just for one-shot reads or while the app is in the foreground -- pushing a
+// "stepsUpdate" event to JS on every step so the UI and storage stay in sync
+// automatically with no manual sync action. Registered with a small maxReportLatency
+// batching window (see startListening) so Android can still deliver samples reliably
+// during Doze/App Standby without waking the device for every single step.
 //
 // TYPE_STEP_COUNTER reports a cumulative total since the device's last boot, so "today's
 // steps" is tracked as (current total - a baseline captured at the start of today). The
 // baseline is (re)captured by MidnightStepsAlarmReceiver at midnight, by BootReceiver right
 // after a reboot, and self-heals on every sensor read whenever the stored baseline's date
 // doesn't match today (covers the rare case both of those miss a day boundary).
-// Known limitation: if the phone reboots, the sensor's cumulative total resets too, so
+// The listener is also defensively re-registered on every app resume (handleOnResume),
+// since some OEM battery managers (e.g. MIUI) can silently drop a background sensor
+// registration -- re-registering is a cheap no-op if it's already active.
+// Known limitations: if the phone reboots, the sensor's cumulative total resets too, so
 // steps taken before the reboot are not recovered for that day until the next baseline
-// recapture above.
+// recapture above; and if the OS kills the app's process entirely (rather than just
+// backgrounding it), no listener can run until the app is reopened -- at which point the
+// hardware's own cumulative total is read fresh, so no steps are lost, just not reflected
+// in the app until then.
 @CapacitorPlugin(
     name = "Steps",
     permissions = { @Permission(strings = { Manifest.permission.ACTIVITY_RECOGNITION }, alias = "activity") }
@@ -115,13 +122,21 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
         }
     }
 
-    // Registers the sensor listener if it isn't already -- shared by one-shot
-    // getTodaySteps()/setTodaySteps() calls and by load(), and left registered
-    // afterwards so every subsequent step keeps pushing "stepsUpdate" events on its own.
+    // 30s batching window: lets Android deliver step events in efficient batches during
+    // Doze/App Standby instead of needing to wake the device for every single step, while
+    // still being frequent enough that the UI never looks stale for long.
+    private static final int MAX_REPORT_LATENCY_US = 30_000_000;
+
+    // Registers the sensor listener -- shared by one-shot getTodaySteps()/setTodaySteps()
+    // calls, by load(), and by handleOnResume(), and left registered afterwards so every
+    // subsequent step keeps pushing "stepsUpdate" events on its own. Safe to call again
+    // even while already listening: SensorManager treats re-registering the same
+    // listener+sensor as a no-op refresh rather than a duplicate registration, which is
+    // exactly what handleOnResume() relies on to recover from a registration an OEM
+    // battery manager silently dropped while backgrounded.
     private void startListening() {
-        if (listening) return;
         listening = true;
-        sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_FASTEST);
+        sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_FASTEST, MAX_REPORT_LATENCY_US);
     }
 
     @Override
@@ -160,6 +175,17 @@ public class StepsPlugin extends Plugin implements SensorEventListener {
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+
+    @Override
+    protected void handleOnResume() {
+        // Defensive re-registration: some OEM battery managers silently drop a
+        // background sensor listener rather than just delaying delivery. This is a
+        // cheap no-op refresh when the registration is still intact.
+        if (stepCounterSensor != null &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || getPermissionState("activity") == PermissionState.GRANTED)) {
+            startListening();
+        }
+    }
 
     @Override
     protected void handleOnDestroy() {
