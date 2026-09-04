@@ -1,7 +1,7 @@
 {
   "name": "Gym Log Tayibat",
   "short_name": "Gym Log Tayibat",
-  "description": "Weight, workouts, fasting, and an exhaustive allowed-foods checklist for the Tayibat system.",
+  "description": "Weight, daily walking, fasting, and an exhaustive allowed-foods checklist, following the Tayibat system's own guidance.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

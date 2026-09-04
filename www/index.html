@@ -41,23 +41,15 @@
         <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
       </div>
-      <div class="day-status" id="dayStatus" style="display:none;"></div>
     </div>
 
     <div class="card">
       <h2>Log Today</h2>
+      <p class="hint hint--tight">Tayibat's own guidance on activity: consistent daily movement — walking — not structured gym workouts. There's no workout tracker here on purpose; just log your steps below.</p>
       <form id="dailyForm">
         <div class="field">
           <label for="logDate">Date</label>
           <input type="date" id="logDate" required />
-        </div>
-        <div class="field">
-          <label>Day type</label>
-          <div class="segmented" id="dayTypeToggle">
-            <button type="button" class="segment" data-day-type="rest">😴 Rest day</button>
-            <button type="button" class="segment" data-day-type="workout">🏋️ Workout day</button>
-            <button type="button" class="segment" data-day-type="cardio">🏃 Cardio day</button>
-          </div>
         </div>
         <div class="field">
           <label for="weightInput">Body weight (kg)</label>
@@ -68,7 +60,7 @@
           <input type="number" id="sleepInput" step="0.25" min="0" max="24" placeholder="e.g. 7.5" inputmode="decimal" />
         </div>
         <div class="field">
-          <label for="stepsInput">Steps</label>
+          <label for="stepsInput">Steps (daily walking)</label>
           <input type="number" id="stepsInput" step="1" min="0" placeholder="e.g. 8000" inputmode="numeric" />
         </div>
         <button type="submit" class="primary">Save Day</button>
@@ -172,54 +164,6 @@
     </div>
   </section>
 
-  <!-- WORKOUT VIEW -->
-  <section class="view" id="view-workout">
-    <div class="card">
-      <h2>New Workout</h2>
-      <div class="field">
-        <label for="workoutDate">Date</label>
-        <input type="date" id="workoutDate" />
-      </div>
-      <div class="field">
-        <label for="workoutName">Session name</label>
-        <input type="text" id="workoutName" placeholder="e.g. Push Day" />
-      </div>
-      <div class="field">
-        <label for="workoutTemplateSelect">Load a template</label>
-        <div class="row">
-          <select id="workoutTemplateSelect"></select>
-          <button type="button" class="secondary" id="loadTemplateBtn">Load</button>
-        </div>
-      </div>
-
-      <div id="exerciseList"></div>
-
-      <div class="field">
-        <label for="exerciseSelect">Add exercise</label>
-        <div class="row">
-          <select id="exerciseSelect"></select>
-          <button type="button" class="secondary" id="addExerciseBtn">Add</button>
-        </div>
-        <input type="text" id="exerciseCustomInput" placeholder="Exercise name" style="display:none; margin-top:8px;" />
-        <div class="segmented" id="exerciseTypeToggle" style="margin-top:8px;">
-          <button type="button" class="segment active" data-ex-type="strength">🏋️ Strength (sets &amp; reps)</button>
-          <button type="button" class="segment" data-ex-type="cardio">🏃 Cardio (duration &amp; pace)</button>
-        </div>
-      </div>
-
-      <button type="button" class="primary" id="saveWorkoutBtn">Save Workout</button>
-      <button type="button" class="secondary" id="cancelEditWorkoutBtn" style="display:none; margin-top:8px;">Cancel edit</button>
-
-      <div class="field" style="margin-top:14px;">
-        <label for="templateNameInput">Save current exercise list as a template</label>
-        <div class="row">
-          <input type="text" id="templateNameInput" placeholder="Template name (optional)" />
-          <button type="button" class="secondary" id="saveAsTemplateBtn">Save</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- HISTORY VIEW -->
   <section class="view" id="view-history">
     <div class="card">
@@ -256,11 +200,6 @@
   <section class="view" id="view-data">
 
     <div class="card">
-      <h2>Workout Templates</h2>
-      <div id="workoutTemplateList"></div>
-    </div>
-
-    <div class="card">
       <h2>Backup &amp; Restore</h2>
       <div class="btn-row fill">
         <button type="button" class="secondary" id="exportBtn">Export JSON</button>
@@ -279,7 +218,6 @@
 <nav class="tabbar">
   <button class="tab-btn active" data-view="today"><span class="tab-icon">📅</span>Today</button>
   <button class="tab-btn" data-view="food"><span class="tab-icon">🍎</span>Food</button>
-  <button class="tab-btn" data-view="workout"><span class="tab-icon">🏋️</span>Workout</button>
   <button class="tab-btn" data-view="history"><span class="tab-icon">📈</span>History</button>
   <button class="tab-btn" data-view="trends"><span class="tab-icon">📊</span>Trends</button>
   <button class="tab-btn" data-view="data"><span class="tab-icon">💾</span>Data</button>
