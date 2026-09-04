@@ -2,12 +2,9 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
-    settings: "gymlog.settings", // reserved for future use; currently unused
-    foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
-    customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
-    foods: "gymlog.foods",       // { "2026-07-27": { corn: true, potatoes: false, water: true, ... } } -- the allowed-foods checklist, separate from the searchable food log above
+    foods: "gymlog.foods",       // { "2026-07-27": { corn: true, potatoes: false, water: true, ... } }
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
     customWorkoutTemplates: "gymlog.customWorkoutTemplates", // [ { id, name, exercises: [{name, type}] } ]
     fasting: "gymlog.fasting" // { current: {start: ISOString} | null, log: [{id, start, end, hours}] }
@@ -33,64 +30,44 @@
     }
   ];
 
-  var CUSTOM_FOOD_SEED = [
-    { name: "Perly nature (Jaouda fromage frais)", per100: { calories: 101, protein: 7.6, carbs: 0, fat: 0 } },
-    { name: "Joly thon au naturel (canned tuna in water)", per100: { calories: 108.8, protein: 24.8, carbs: 0.6, fat: 0.8 } },
-    { name: "Horse minced meat", per100: { calories: 133, protein: 21.4, carbs: 0, fat: 4.8 } },
-    { name: "Beef minced meat (5-10% fat)", per100: { calories: 176, protein: 20.0, carbs: 0, fat: 10.0 } },
-    { name: "Chicken breast (skinless)", per100: { calories: 165, protein: 31.0, carbs: 0, fat: 3.6 } },
-    { name: "Eggs (whole, boiled)", per100: { calories: 155, protein: 13.0, carbs: 1.1, fat: 11.0 } },
-    { name: "Rice (white, cooked)", per100: { calories: 130, protein: 2.7, carbs: 28.0, fat: 0.3 } },
-    { name: "Tajine (chicken/meat + veg, home-style)", per100: { calories: 130, protein: 12.0, carbs: 8.0, fat: 6.0 } },
-    { name: "Couscous (cooked, plain)", per100: { calories: 112, protein: 3.8, carbs: 23.2, fat: 0.2 } },
-    { name: "Msemen (Moroccan flatbread, plain)", per100: { calories: 330, protein: 7.0, carbs: 45.0, fat: 14.0 } },
-    { name: "Mille-feuille (pastry)", per100: { calories: 340, protein: 4.5, carbs: 32.0, fat: 22.0 } },
-    { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
-  ];
-
-  // A separate, simpler "did you have this today" checklist -- no quantities, no
-  // nutrients -- that coexists with the searchable/quantified food log above.
+  // The Tayibat system's allowed foods, as documented across multiple Tayibat reference
+  // sites (mytayibat.com, altayebaat.com, palsawa.com, and others) for Dr. Dhia Al-Awadi's
+  // نظام الطيبات. "Daily Basics" are the five staples the system treats as unrestricted
+  // daily foods; everything else is allowed but not unlimited.
   var FOOD_ITEMS = [
-    { key: "water", label: "Water" },
-    { key: "blackCoffee", label: "Black coffee" },
-    { key: "corn", label: "Corn (all forms)" },
+    { key: "rice", label: "Basmati rice" },
     { key: "potatoes", label: "Potatoes" },
-    { key: "oliveOil", label: "Olive oil" },
-    { key: "butter", label: "Butter" },
-    { key: "ghee", label: "Traditional ghee (smen)" },
-    { key: "vegetableOils", label: "Vegetable oils (some)" },
+    { key: "dates", label: "Dates" },
+    { key: "butter", label: "Natural butter" },
+    { key: "sugar", label: "White sugar" },
+    { key: "branToast", label: "Bran/whole-wheat toast (only allowed bread)" },
+    { key: "lamb", label: "Lamb" },
+    { key: "beef", label: "Beef (local/pasture-raised)" },
+    { key: "buffalo", label: "Buffalo meat" },
+    { key: "camel", label: "Camel meat" },
+    { key: "liver", label: "Liver" },
+    { key: "pigeon", label: "Pigeon" },
+    { key: "seaFish", label: "Sea fish" },
     { key: "cheddar", label: "Cheddar" },
     { key: "gouda", label: "Gouda" },
-    { key: "edam", label: "Edam / Flamenco-style" },
-    { key: "mozzarella", label: "Mozzarella" },
+    { key: "edam", label: "Edam / Flamand-style" },
     { key: "parmesan", label: "Parmesan" },
     { key: "roquefort", label: "Roquefort" },
-    { key: "processedCheese", label: "Processed cheese" },
-    { key: "dates", label: "Dates" },
-    { key: "grapes", label: "Grapes" },
-    { key: "figs", label: "Figs" },
-    { key: "banana", label: "Banana" },
+    { key: "mozzarella", label: "Mozzarella" },
+    { key: "emmental", label: "Emmental" },
+    { key: "processedCheese", label: "Processed/cooked cheese" },
+    { key: "oliveOil", label: "Olive oil" },
+    { key: "olives", label: "Olives" },
+    { key: "freshDates", label: "Fresh dates (rutab)" },
     { key: "apple", label: "Apple" },
     { key: "pear", label: "Pear" },
-    { key: "guava", label: "Seedless guava" },
-    { key: "lamb", label: "Lamb" },
-    { key: "goat", label: "Goat" },
-    { key: "camel", label: "Camel" },
-    { key: "seaFish", label: "Sea fish (some)" },
-    { key: "pigeon", label: "Pigeon" },
-    { key: "quail", label: "Quail" },
-    { key: "rabbit", label: "Rabbit" }
+    { key: "honey", label: "Natural honey" },
+    { key: "jam", label: "Jam (apricot, fig, etc.)" },
+    { key: "nutella", label: "Nutella" },
+    { key: "tea", label: "Tea" },
+    { key: "coffee", label: "Coffee" },
+    { key: "herbalTea", label: "Herbal/mint tea" }
   ];
-
-  var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
-  var currentQtyMode = "grams"; // 'grams' | 'units', for the food-quantity form
-  var editingFoodLogEntry = null; // { date, id } while editing an already-logged entry's quantity
-
-  var OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
-  var USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search";
-  var USDA_NUTRIENT_IDS = { calories: 1008, protein: 1003, carbs: 1005, fat: 1004 };
-  var foodSearchDebounceTimer = null;
-  var foodSearchAbortControllers = [];
 
   var DEFAULT_BODYWEIGHT_KG = 75; // used to estimate calories burned when no weight is logged for the day
   // Evidence-based daily minimums for the Today stat-card good/bad coloring.
@@ -191,42 +168,6 @@
     localStorage.setItem(STORAGE.workouts, JSON.stringify(list));
   }
 
-  function loadSettings() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.settings) || "{}");
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function saveSettings(settings) {
-    localStorage.setItem(STORAGE.settings, JSON.stringify(settings));
-  }
-
-  function loadFoodLog() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.foodlog) || "{}");
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function saveFoodLog(log) {
-    localStorage.setItem(STORAGE.foodlog, JSON.stringify(log));
-  }
-
-  function loadCustomFoods() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE.customFoods) || "[]");
-    } catch (e) {
-      return [];
-    }
-  }
-
-  function saveCustomFoods(list) {
-    localStorage.setItem(STORAGE.customFoods, JSON.stringify(list));
-  }
-
   function loadFoods() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.foods) || "{}");
@@ -271,14 +212,6 @@
     saveCustomExercises(customExercises);
   }
 
-  function seedCustomFoodsIfNeeded() {
-    if (localStorage.getItem(STORAGE.customFoods) != null) return;
-    var seeded = CUSTOM_FOOD_SEED.map(function (f) {
-      return { id: makeId(), name: f.name, per100: f.per100 };
-    });
-    saveCustomFoods(seeded);
-  }
-
   function loadWorkoutTemplates() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.customWorkoutTemplates) || "[]");
@@ -297,117 +230,6 @@
       return { id: makeId(), name: t.name, exercises: t.exercises.map(function (ex) { return { name: ex.name, type: ex.type }; }) };
     });
     saveWorkoutTemplates(seeded);
-  }
-
-  var editingMyFoodId = null;
-
-  function renderCustomFoodList() {
-    var list = document.getElementById("customFoodList");
-    var foods = loadCustomFoods();
-    if (foods.length === 0) {
-      list.innerHTML = '<div class="empty-state">No foods saved yet.</div>';
-      return;
-    }
-    list.innerHTML = "";
-    foods.forEach(function (f) {
-      var item = document.createElement("div");
-      item.className = "food-log-item";
-
-      var info = document.createElement("div");
-      var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
-      nameEl.textContent = f.name;
-      var macrosEl = document.createElement("div");
-      macrosEl.className = "food-log-macros";
-      macrosEl.textContent = f.per100.calories + " kcal · " + f.per100.protein + " g protein · " +
-        f.per100.carbs + " g carbs · " + f.per100.fat + " g fat (per 100g)";
-      info.appendChild(nameEl);
-      info.appendChild(macrosEl);
-
-      var actions = document.createElement("div");
-      actions.className = "food-log-actions";
-
-      var editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "icon-btn";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", function () { handleEditMyFood(f.id); });
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "remove";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { handleRemoveMyFood(f.id); });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(removeBtn);
-
-      item.appendChild(info);
-      item.appendChild(actions);
-      list.appendChild(item);
-    });
-  }
-
-  function handleAddMyFood() {
-    var name = document.getElementById("myFoodName").value.trim();
-    if (!name) { toast("Enter a food name"); return; }
-    var per100 = {
-      calories: parseFloat(document.getElementById("myFoodCalories").value) || 0,
-      protein: parseFloat(document.getElementById("myFoodProtein").value) || 0,
-      carbs: parseFloat(document.getElementById("myFoodCarbs").value) || 0,
-      fat: parseFloat(document.getElementById("myFoodFat").value) || 0
-    };
-    var foods = loadCustomFoods();
-
-    if (editingMyFoodId) {
-      var idx = foods.findIndex(function (f) { return f.id === editingMyFoodId; });
-      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100 };
-      saveCustomFoods(foods);
-      handleCancelEditMyFood();
-      renderCustomFoodList();
-      toast("Updated " + name);
-      return;
-    }
-
-    foods.push({ id: makeId(), name: name, per100: per100 });
-    saveCustomFoods(foods);
-
-    ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
-      document.getElementById(id).value = "";
-    });
-    renderCustomFoodList();
-    toast("Added to My Foods");
-  }
-
-  function handleEditMyFood(id) {
-    var food = loadCustomFoods().find(function (f) { return f.id === id; });
-    if (!food) return;
-    editingMyFoodId = id;
-    document.getElementById("myFoodName").value = food.name;
-    document.getElementById("myFoodCalories").value = food.per100.calories;
-    document.getElementById("myFoodProtein").value = food.per100.protein;
-    document.getElementById("myFoodCarbs").value = food.per100.carbs;
-    document.getElementById("myFoodFat").value = food.per100.fat;
-    document.getElementById("addMyFoodBtn").textContent = "Update food";
-    document.getElementById("cancelEditMyFoodBtn").style.display = "inline-block";
-    document.getElementById("myFoodName").scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  function handleCancelEditMyFood() {
-    editingMyFoodId = null;
-    ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
-      document.getElementById(id).value = "";
-    });
-    document.getElementById("addMyFoodBtn").textContent = "Add to My Foods";
-    document.getElementById("cancelEditMyFoodBtn").style.display = "none";
-  }
-
-  function handleRemoveMyFood(id) {
-    var foods = loadCustomFoods().filter(function (f) { return f.id !== id; });
-    saveCustomFoods(foods);
-    if (editingMyFoodId === id) handleCancelEditMyFood();
-    renderCustomFoodList();
-    toast("Removed from My Foods");
   }
 
   function makeId() {
@@ -476,13 +298,9 @@
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
     if (name === "workout") { renderWorkoutBuilder(); populateWorkoutTemplateSelect(); }
-    if (name === "food") {
-      var foodDate = document.getElementById("foodDate").value || todayISO();
-      renderFoodLog(foodDate);
-      renderFoodChecklist(foodDate);
-    }
+    if (name === "food") renderFoodChecklist(document.getElementById("foodDate").value || todayISO());
     if (name === "trends") renderTrends();
-    if (name === "data") { renderCustomFoodList(); renderWorkoutTemplateList(); }
+    if (name === "data") renderWorkoutTemplateList();
   }
 
   // ---------- today view ----------
@@ -493,53 +311,9 @@
     var entry = daily[today] || {};
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
-    document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
-    renderCaloriesVsBurned(entry, today, daily);
-    renderCalorieTarget(today, entry, daily);
-    document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
-    document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
-    document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     renderDayStatus(entry, today);
     renderWeightTrend(daily);
-  }
-
-  function renderCaloriesVsBurned(entry, date, daily) {
-    var el = document.getElementById("sumCaloriesGoal");
-    var bmr = computeBMRForDate(date, entry, daily);
-    if (entry.calories == null || bmr == null) {
-      el.textContent = "";
-      el.className = "stat-sub";
-      return;
-    }
-    var diff = entry.calories - bmr;
-    el.textContent = (diff > 0 ? "+" : "") + diff + " vs BMR";
-    el.className = "stat-sub";
-  }
-
-  // Suggested intake for a day: Maintenance minus a 500-750 kcal deficit, never below BMR.
-  function computeSuggestedCalorieRange(date, entry, daily) {
-    var maintenance = getMaintenanceForDay(date, entry, daily);
-    var bmr = computeBMRForDate(date, entry, daily);
-    if (maintenance == null || bmr == null) return null;
-    var high = Math.round((maintenance - 500) / 10) * 10;
-    var low = Math.round((maintenance - 750) / 10) * 10;
-    high = Math.max(high, bmr);
-    low = Math.max(low, bmr);
-    if (low > high) low = high;
-    return { low: low, high: high };
-  }
-
-  function renderCalorieTarget(date, entry, daily) {
-    var el = document.getElementById("sumCaloriesTarget");
-    var range = computeSuggestedCalorieRange(date, entry, daily);
-    if (range == null) {
-      el.textContent = "";
-      return;
-    }
-    el.textContent = range.low === range.high
-      ? "Target " + range.low
-      : "Target " + range.low + "–" + range.high;
   }
 
   function getCardioMET(name, pace) {
@@ -698,7 +472,8 @@
     var entry = {};
     if (weight !== "") entry.weight = parseFloat(weight);
     if (sleepHours !== "") entry.sleepHours = parseFloat(sleepHours);
-    // Calories/protein/carbs/fat are maintained by the Food tab, not this form; carry them over untouched.
+    // Calories/protein/carbs/fat are no longer logged, but carry over any values a day
+    // already has from before nutrient tracking was dropped, rather than silently wiping them.
     if (existing.calories != null) entry.calories = existing.calories;
     if (existing.protein != null) entry.protein = existing.protein;
     if (existing.carbs != null) entry.carbs = existing.carbs;
@@ -916,11 +691,8 @@
   }
 
   var TREND_METRICS = [
-    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" },
-    { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty" },
-    { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty" },
-    { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty" },
-    { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty" }
+    { key: "steps", canvasId: "trendsStepsChart", emptyId: "trendsStepsEmpty" },
+    { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" }
   ];
 
   function renderMetricTrend(cfg, daily, range) {
@@ -931,102 +703,9 @@
     drawLineChart(cfg.canvasId, cfg.emptyId, points);
   }
 
-  function renderCaloriesTrend(daily, range) {
-    var dates = Object.keys(daily).filter(function (d) { return d >= range.start && d <= range.end; }).sort();
-    var intakePoints = [];
-    var burnedPoints = [];
-    var bmrPoints = [];
-    var maintenancePoints = [];
-    dates.forEach(function (d) {
-      var entry = daily[d];
-      if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
-      var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
-      if (burned > 0) burnedPoints.push({ date: d, value: burned });
-      var bmr = computeBMRForDate(d, entry, daily);
-      if (bmr != null) bmrPoints.push({ date: d, value: bmr });
-      var maintenance = getMaintenanceForDay(d, entry, daily);
-      if (maintenance != null) maintenancePoints.push({ date: d, value: maintenance });
-    });
-
-    var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
-    var accent2Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-2").trim() || "#f0a03c";
-    var accent3Color = getComputedStyle(document.documentElement).getPropertyValue("--accent-3").trim() || "#5b9bd5";
-    var textDimColor = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
-
-    var series = [
-      { points: intakePoints, color: accentColor },
-      { points: burnedPoints, color: accent2Color }
-    ];
-
-    var bmrLegend = document.getElementById("trendsCaloriesBmrLegend");
-    if (bmrPoints.length > 0) {
-      series.push({ points: bmrPoints, color: textDimColor, dashed: true });
-      bmrLegend.style.display = "flex";
-    } else {
-      bmrLegend.style.display = "none";
-    }
-
-    var maintenanceLegend = document.getElementById("trendsCaloriesMaintenanceLegend");
-    if (maintenancePoints.length > 0) {
-      series.push({ points: maintenancePoints, color: accent3Color, dashed: true });
-      maintenanceLegend.style.display = "flex";
-    } else {
-      maintenanceLegend.style.display = "none";
-    }
-
-    var today = todayISO();
-    var todayEntry = daily[today];
-    var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
-    var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
-    var todayBmr = computeBMRForDate(today, todayEntry, daily);
-    var todayMaintenance = getMaintenanceForDay(today, todayEntry, daily);
-
-    document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
-      todayIntake != null ? "Intake (" + todayIntake + ")" : "Intake";
-    document.getElementById("trendsCaloriesBurnedLegendLabel").textContent = "Burned (" + todayBurned + ")";
-    if (bmrPoints.length > 0) {
-      document.getElementById("trendsCaloriesBmrLegendLabel").textContent =
-        todayBmr != null ? "BMR (" + todayBmr + ")" : "BMR";
-    }
-    if (maintenancePoints.length > 0) {
-      document.getElementById("trendsCaloriesMaintenanceLegendLabel").textContent =
-        todayMaintenance != null ? "Maintenance (" + todayMaintenance + ")" : "Maintenance";
-    }
-
-    renderCalorieAlignment(todayIntake, todayBmr, todayMaintenance);
-    drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
-  }
-
-  function renderCalorieAlignment(todayIntake, bmr, todayMaintenance) {
-    var el = document.getElementById("trendsCaloriesAlignment");
-    if (todayIntake == null || todayMaintenance == null) {
-      el.style.display = "none";
-      el.innerHTML = "";
-      return;
-    }
-    var remaining = todayMaintenance - todayIntake;
-    var icon, label, cls;
-    var notes = [];
-    if (remaining >= 0) {
-      icon = "🟢"; label = "In deficit"; cls = "status-good";
-      notes.push(remaining + " kcal under maintenance");
-    } else {
-      icon = "🔴"; label = "Over maintenance"; cls = "status-bad";
-      notes.push(Math.abs(remaining) + " kcal over maintenance");
-    }
-    if (bmr != null && todayIntake < bmr) {
-      notes.push("⚠️ below BMR (" + bmr + ")");
-    }
-    el.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + label + "</span>" +
-      "<span>" + notes.join(" · ") + "</span>";
-    el.style.display = "flex";
-  }
-
   function renderTrends() {
     var daily = loadDaily();
     var range = getTrendsRange();
-    renderCaloriesTrend(daily, range);
     TREND_METRICS.forEach(function (cfg) { renderMetricTrend(cfg, daily, range); });
   }
 
@@ -1376,14 +1055,14 @@
     list.innerHTML = "";
     templates.forEach(function (t) {
       var item = document.createElement("div");
-      item.className = "food-log-item";
+      item.className = "list-item";
 
       var info = document.createElement("div");
       var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
+      nameEl.className = "list-item-title";
       nameEl.textContent = t.name;
       var detailEl = document.createElement("div");
-      detailEl.className = "food-log-macros";
+      detailEl.className = "list-item-detail";
       detailEl.textContent = t.exercises.map(function (ex) { return ex.name; }).join(", ");
       info.appendChild(nameEl);
       info.appendChild(detailEl);
@@ -1539,504 +1218,7 @@
     }
   }
 
-  // ---------- food log ----------
-
-  function clearFoodSearchState() {
-    clearTimeout(foodSearchDebounceTimer);
-    foodSearchAbortControllers.forEach(function (c) { c.abort(); });
-    foodSearchAbortControllers = [];
-    document.getElementById("foodSearchResults").innerHTML = "";
-    document.getElementById("foodSearchStatus").style.display = "none";
-  }
-
-  function handleFoodSearchInput() {
-    var query = document.getElementById("foodSearchInput").value.trim();
-    clearFoodSearchState();
-    if (query.length < 2) return;
-    foodSearchDebounceTimer = setTimeout(function () { runFoodSearch(query); }, 450);
-  }
-
-  function fetchWithRetry(url, options, retries) {
-    return fetch(url, options).catch(function (err) {
-      if (retries <= 0 || (err && err.name === "AbortError")) throw err;
-      return new Promise(function (resolve) { setTimeout(resolve, 700); })
-        .then(function () { return fetchWithRetry(url, options, retries - 1); });
-    });
-  }
-
-  function parseServingGrams(text) {
-    if (!text) return null;
-    var match = String(text).match(/([\d.]+)\s*g\b/i);
-    return match ? parseFloat(match[1]) : null;
-  }
-
-  function searchOpenFoodFacts(query, signal) {
-    var url = OFF_SEARCH_URL + "?json=1&action=process&page_size=8" +
-      "&search_terms=" + encodeURIComponent(query) +
-      "&fields=product_name,brands,nutriments,serving_size";
-
-    return fetchWithRetry(url, signal ? { signal: signal } : {}, 1)
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        return (data.products || [])
-          .filter(function (p) { return p.product_name && p.nutriments && p.nutriments["energy-kcal_100g"] != null; })
-          .map(function (p) {
-            return {
-              name: p.product_name,
-              brand: p.brands || "",
-              source: "Open Food Facts",
-              servingGrams: parseServingGrams(p.serving_size),
-              per100: {
-                calories: p.nutriments["energy-kcal_100g"] || 0,
-                protein: p.nutriments["proteins_100g"] || 0,
-                carbs: p.nutriments["carbohydrates_100g"] || 0,
-                fat: p.nutriments["fat_100g"] || 0
-              }
-            };
-          });
-      });
-  }
-
-  function searchUsdaFdc(query, apiKey, signal) {
-    var url = USDA_SEARCH_URL + "?api_key=" + encodeURIComponent(apiKey) +
-      "&query=" + encodeURIComponent(query) + "&pageSize=8";
-
-    return fetchWithRetry(url, signal ? { signal: signal } : {}, 1)
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        return (data.foods || [])
-          .map(function (f) {
-            var nutrients = f.foodNutrients || [];
-            function nutrientValue(id) {
-              var found = nutrients.filter(function (n) { return n.nutrientId === id; })[0];
-              return found ? found.value : 0;
-            }
-            var servingGrams = (f.servingSize != null && /^g/i.test(f.servingSizeUnit || "")) ? f.servingSize : null;
-            return {
-              name: f.description,
-              brand: f.brandOwner || f.dataType || "",
-              source: "USDA FoodData Central",
-              servingGrams: servingGrams,
-              per100: {
-                calories: nutrientValue(USDA_NUTRIENT_IDS.calories),
-                protein: nutrientValue(USDA_NUTRIENT_IDS.protein),
-                carbs: nutrientValue(USDA_NUTRIENT_IDS.carbs),
-                fat: nutrientValue(USDA_NUTRIENT_IDS.fat)
-              }
-            };
-          })
-          .filter(function (p) { return p.name && p.per100.calories > 0; });
-      });
-  }
-
-  function searchMyFoods(query) {
-    var q = query.toLowerCase();
-    var matches = loadCustomFoods()
-      .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
-      .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100 };
-      });
-    return Promise.resolve(matches);
-  }
-
-  function sourceRank(source) {
-    if (source === "My Foods") return 0;
-    if (source === "USDA FoodData Central") return 1;
-    return 2;
-  }
-
-  function sortFoodResults(products) {
-    return products.slice().sort(function (a, b) {
-      var rankDiff = sourceRank(a.source) - sourceRank(b.source);
-      if (rankDiff !== 0) return rankDiff;
-      var aBranded = a.brand ? 1 : 0;
-      var bBranded = b.brand ? 1 : 0;
-      return aBranded - bBranded;
-    });
-  }
-
-  function runFoodSearch(query) {
-    var statusEl = document.getElementById("foodSearchStatus");
-    var resultsEl = document.getElementById("foodSearchResults");
-
-    foodSearchAbortControllers.forEach(function (c) { c.abort(); });
-    foodSearchAbortControllers = [];
-
-    resultsEl.innerHTML = "";
-    statusEl.textContent = "Searching…";
-    statusEl.style.display = "block";
-
-    var settings = loadSettings();
-    var searches = [searchMyFoods(query)];
-
-    if (settings.usdaApiKey) {
-      var usdaController = (typeof AbortController !== "undefined") ? new AbortController() : null;
-      if (usdaController) foodSearchAbortControllers.push(usdaController);
-      searches.push(searchUsdaFdc(query, settings.usdaApiKey, usdaController && usdaController.signal));
-    }
-
-    var offController = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    if (offController) foodSearchAbortControllers.push(offController);
-    searches.push(searchOpenFoodFacts(query, offController && offController.signal));
-
-    Promise.allSettled(searches).then(function (results) {
-      var anyFailed = results.some(function (r) { return r.status === "rejected" && !(r.reason && r.reason.name === "AbortError"); });
-      var anyAborted = results.some(function (r) { return r.status === "rejected" && r.reason && r.reason.name === "AbortError"; });
-      if (anyAborted) return; // a newer search superseded this one
-
-      var products = [];
-      results.forEach(function (r) {
-        if (r.status === "fulfilled") products = products.concat(r.value);
-      });
-
-      if (products.length === 0) {
-        statusEl.textContent = anyFailed
-          ? "Open Food Facts couldn't be reached right now (their server is sometimes flaky) — try again in a moment, add a free USDA FoodData Central key in Data for a more reliable source, or add it below."
-          : "No results. Try another search or add it below.";
-        statusEl.style.display = "block";
-        return;
-      }
-      statusEl.style.display = "none";
-      renderFoodSearchResults(sortFoodResults(products));
-    });
-  }
-
-  function renderFoodSearchResults(products) {
-    var resultsEl = document.getElementById("foodSearchResults");
-    resultsEl.innerHTML = "";
-    products.forEach(function (p) {
-      var li = document.createElement("li");
-      var kcal = Math.round(p.per100.calories);
-      var sourceTag = p.source === "My Foods" ? "MINE" : (p.source === "USDA FoodData Central" ? "USDA" : "OFF");
-
-      var name = document.createElement("div");
-      name.className = "food-result-name";
-      name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>";
-      name.appendChild(document.createTextNode(p.name));
-
-      var meta = document.createElement("div");
-      meta.className = "food-result-meta";
-      meta.textContent = (p.brand ? p.brand + " · " : "") + kcal + " kcal / 100 g";
-
-      li.appendChild(name);
-      li.appendChild(meta);
-      li.addEventListener("click", function () { selectFoodProduct(p); });
-      resultsEl.appendChild(li);
-    });
-  }
-
-  function setQtyMode(mode) {
-    currentQtyMode = mode;
-    document.querySelectorAll("#quantityModeToggle .segment").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.qtyMode === mode);
-    });
-    document.getElementById("gramsField").style.display = mode === "grams" ? "block" : "none";
-    document.getElementById("unitsField").style.display = mode === "units" ? "grid" : "none";
-    updateFoodPreview();
-  }
-
-  function getEffectiveGrams() {
-    if (currentQtyMode === "units") {
-      var units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
-      var perUnit = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
-      return units * perUnit;
-    }
-    return parseFloat(document.getElementById("foodGramsInput").value) || 0;
-  }
-
-  function selectFoodProduct(p) {
-    selectedFoodProduct = p;
-    document.getElementById("foodQuantityName").textContent = p.name;
-    document.getElementById("foodGramsInput").value = 100;
-    document.getElementById("foodUnitsInput").value = 1;
-    document.getElementById("foodUnitGramsInput").value = 50;
-    document.getElementById("foodQuantityCard").style.display = "block";
-    clearFoodSearchState();
-    setQtyMode("grams");
-  }
-
-  function updateFoodPreview() {
-    if (!selectedFoodProduct) return;
-    var grams = getEffectiveGrams();
-    var factor = grams / 100;
-    var cal = Math.round(selectedFoodProduct.per100.calories * factor);
-    var protein = Math.round(selectedFoodProduct.per100.protein * factor);
-    var carbs = Math.round(selectedFoodProduct.per100.carbs * factor);
-    var fat = Math.round(selectedFoodProduct.per100.fat * factor);
-    document.getElementById("foodPreview").innerHTML =
-      "<span><strong>" + cal + "</strong> kcal</span>" +
-      "<span><strong>" + protein + "</strong> g protein</span>" +
-      "<span><strong>" + carbs + "</strong> g carbs</span>" +
-      "<span><strong>" + fat + "</strong> g fat</span>";
-  }
-
-  function handleAddFoodFromSearch() {
-    if (!selectedFoodProduct) return;
-    var grams = getEffectiveGrams();
-    if (grams <= 0) { toast("Enter a quantity"); return; }
-    var factor = grams / 100;
-    var updated = {
-      grams: Math.round(grams),
-      calories: Math.round(selectedFoodProduct.per100.calories * factor),
-      protein: Math.round(selectedFoodProduct.per100.protein * factor),
-      carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
-      fat: Math.round(selectedFoodProduct.per100.fat * factor)
-    };
-    if (currentQtyMode === "units") {
-      updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
-      updated.unitGrams = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
-    }
-
-    if (editingFoodLogEntry) {
-      updateFoodLogEntryQuantity(editingFoodLogEntry.date, editingFoodLogEntry.id, updated);
-      editingFoodLogEntry = null;
-    } else {
-      var date = document.getElementById("foodDate").value || todayISO();
-      updated.id = makeId();
-      updated.name = selectedFoodProduct.name;
-      addFoodEntry(date, updated);
-      breakFastNow();
-    }
-
-    selectedFoodProduct = null;
-    document.getElementById("foodQuantityCard").style.display = "none";
-    document.getElementById("addFoodBtn").textContent = "Add to log";
-    document.getElementById("cancelEditFoodLogBtn").style.display = "none";
-    document.getElementById("foodSearchInput").value = "";
-    clearFoodSearchState();
-  }
-
-  function startEditFoodLogEntry(date, id) {
-    var entries = loadFoodLog()[date] || [];
-    var entry = null;
-    entries.forEach(function (e) { if (e.id === id) entry = e; });
-    if (!entry) return;
-    editingFoodLogEntry = { date: date, id: id };
-
-    var per100Factor = entry.grams > 0 ? 100 / entry.grams : 0;
-    selectedFoodProduct = {
-      name: entry.name,
-      per100: {
-        calories: entry.calories * per100Factor,
-        protein: entry.protein * per100Factor,
-        carbs: entry.carbs * per100Factor,
-        fat: entry.fat * per100Factor
-      }
-    };
-
-    document.getElementById("foodQuantityName").textContent = "Edit: " + entry.name;
-    document.getElementById("foodQuantityCard").style.display = "block";
-    document.getElementById("addFoodBtn").textContent = "Update log entry";
-    document.getElementById("cancelEditFoodLogBtn").style.display = "inline-block";
-    document.getElementById("foodSearchInput").value = "";
-    clearFoodSearchState();
-
-    if (entry.units != null) {
-      document.getElementById("foodUnitsInput").value = entry.units;
-      document.getElementById("foodUnitGramsInput").value = entry.unitGrams;
-      setQtyMode("units");
-    } else {
-      document.getElementById("foodGramsInput").value = entry.grams;
-      setQtyMode("grams");
-    }
-    document.getElementById("foodQuantityCard").scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  function cancelEditFoodLogEntry() {
-    editingFoodLogEntry = null;
-    selectedFoodProduct = null;
-    document.getElementById("foodQuantityCard").style.display = "none";
-    document.getElementById("addFoodBtn").textContent = "Add to log";
-    document.getElementById("cancelEditFoodLogBtn").style.display = "none";
-  }
-
-  function updateFoodLogEntryQuantity(date, id, updated) {
-    var log = loadFoodLog();
-    var entries = log[date] || [];
-    var idx = -1;
-    entries.forEach(function (entry, i) { if (entry.id === id) idx = i; });
-    if (idx === -1) return;
-    var old = entries[idx];
-    var next = {
-      id: old.id,
-      name: old.name,
-      grams: updated.grams,
-      calories: updated.calories,
-      protein: updated.protein,
-      carbs: updated.carbs,
-      fat: updated.fat
-    };
-    if (updated.units != null) {
-      next.units = updated.units;
-      next.unitGrams = updated.unitGrams;
-    }
-    entries[idx] = next;
-    saveFoodLog(log);
-
-    var daily = loadDaily();
-    var d = daily[date];
-    if (d) {
-      d.calories = Math.max(0, (d.calories || 0) - old.calories + updated.calories);
-      d.protein = Math.max(0, (d.protein || 0) - old.protein + updated.protein);
-      d.carbs = Math.max(0, (d.carbs || 0) - old.carbs + updated.carbs);
-      d.fat = Math.max(0, (d.fat || 0) - old.fat + updated.fat);
-      saveDaily(daily);
-    }
-
-    toast("Updated food log");
-    renderFoodLog(date);
-    syncTodayIfSameDate(date);
-  }
-
-  function handleSaveNewFood() {
-    var name = document.getElementById("newFoodName").value.trim();
-    if (!name) { toast("Enter a food name"); return; }
-    var per100 = {
-      calories: Math.round(parseFloat(document.getElementById("newFoodCalories").value) || 0),
-      protein: Math.round(parseFloat(document.getElementById("newFoodProtein").value) || 0),
-      carbs: Math.round(parseFloat(document.getElementById("newFoodCarbs").value) || 0),
-      fat: Math.round(parseFloat(document.getElementById("newFoodFat").value) || 0)
-    };
-
-    var customFoods = loadCustomFoods();
-    customFoods.push({ id: makeId(), name: name, per100: per100 });
-    saveCustomFoods(customFoods);
-    renderCustomFoodList();
-
-    ["newFoodName", "newFoodCalories", "newFoodProtein", "newFoodCarbs", "newFoodFat"].forEach(function (id) {
-      document.getElementById(id).value = "";
-    });
-    document.getElementById("newFoodCard").style.display = "none";
-
-    toast("Saved to My Foods");
-    selectFoodProduct({ name: name, per100: per100 });
-  }
-
-  function addFoodEntry(date, entry) {
-    var log = loadFoodLog();
-    log[date] = log[date] || [];
-    log[date].push(entry);
-    saveFoodLog(log);
-
-    var daily = loadDaily();
-    var d = daily[date] || {};
-    d.calories = (d.calories || 0) + entry.calories;
-    d.protein = (d.protein || 0) + entry.protein;
-    d.carbs = (d.carbs || 0) + entry.carbs;
-    d.fat = (d.fat || 0) + entry.fat;
-    daily[date] = d;
-    saveDaily(daily);
-
-    toast("Added to food log");
-    renderFoodLog(date);
-    syncTodayIfSameDate(date);
-  }
-
-  function removeFoodEntry(date, id) {
-    var log = loadFoodLog();
-    var entries = log[date] || [];
-    var idx = -1;
-    entries.forEach(function (entry, i) { if (entry.id === id) idx = i; });
-    if (idx === -1) return;
-    var removed = entries.splice(idx, 1)[0];
-    saveFoodLog(log);
-
-    var daily = loadDaily();
-    var d = daily[date];
-    if (d) {
-      d.calories = Math.max(0, (d.calories || 0) - removed.calories);
-      d.protein = Math.max(0, (d.protein || 0) - removed.protein);
-      d.carbs = Math.max(0, (d.carbs || 0) - removed.carbs);
-      d.fat = Math.max(0, (d.fat || 0) - removed.fat);
-      saveDaily(daily);
-    }
-
-    if (editingFoodLogEntry && editingFoodLogEntry.date === date && editingFoodLogEntry.id === id) {
-      cancelEditFoodLogEntry();
-    }
-
-    toast("Removed from food log");
-    renderFoodLog(date);
-    syncTodayIfSameDate(date);
-  }
-
-  function syncTodayIfSameDate(date) {
-    if (date === (document.getElementById("logDate").value || todayISO())) {
-      fillFormFromDate(date);
-      renderToday();
-    }
-  }
-
-  function renderFoodLog(date) {
-    var list = document.getElementById("foodLogList");
-    var totalsEl = document.getElementById("foodLogTotals");
-    var entries = loadFoodLog()[date] || [];
-
-    if (entries.length === 0) {
-      list.innerHTML = '<div class="empty-state">No food logged for this day.</div>';
-      totalsEl.style.display = "none";
-      return;
-    }
-
-    list.innerHTML = "";
-    var totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-    entries.forEach(function (entry) {
-      totals.calories += entry.calories;
-      totals.protein += entry.protein;
-      totals.carbs += entry.carbs;
-      totals.fat += entry.fat;
-
-      var item = document.createElement("div");
-      item.className = "food-log-item";
-
-      var info = document.createElement("div");
-      var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
-      var qtyLabel = entry.units != null
-        ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
-        : (entry.grams != null ? " (" + entry.grams + " g)" : "");
-      nameEl.textContent = entry.name + qtyLabel;
-      var macrosEl = document.createElement("div");
-      macrosEl.className = "food-log-macros";
-      macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
-      info.appendChild(nameEl);
-      info.appendChild(macrosEl);
-
-      var actions = document.createElement("div");
-      actions.className = "food-log-actions";
-
-      var editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "icon-btn";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", function () { startEditFoodLogEntry(date, entry.id); });
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "remove";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { removeFoodEntry(date, entry.id); });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(removeBtn);
-
-      item.appendChild(info);
-      item.appendChild(actions);
-      list.appendChild(item);
-    });
-
-    totalsEl.innerHTML = '<span class="day-badge">Total</span>' +
-      "<span>" + totals.calories + " kcal</span>" +
-      "<span>" + totals.protein + " g protein</span>" +
-      "<span>" + totals.carbs + " g carbs</span>" +
-      "<span>" + totals.fat + " g fat</span>";
-    totalsEl.style.display = "flex";
-  }
-
   // ---------- food checklist ----------
-  //
-  // A separate, simpler yes/no checklist alongside the searchable/quantified food log
-  // above -- no quantities, no nutrients, just whether each item was had today.
 
   function renderFoodChecklist(date) {
     var foods = loadFoods()[date] || {};
@@ -2055,7 +1237,7 @@
     foods[date] = dayFoods;
     saveFoods(foods);
     // Checking anything off today -- including water or black coffee -- breaks an
-    // active fast, same as adding a food-log entry does.
+    // active fast, same as any other food or drink.
     if (checkbox.checked && date === todayISO()) breakFastNow();
   }
 
@@ -2129,10 +1311,6 @@
           parts.push(weightPart);
         }
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
-        if (entry.calories != null) parts.push(entry.calories + " kcal");
-        if (entry.protein != null) parts.push(entry.protein + " g protein");
-        if (entry.carbs != null) parts.push(entry.carbs + " g carbs");
-        if (entry.fat != null) parts.push(entry.fat + " g fat");
         if (entry.steps != null) parts.push(entry.steps + " steps");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
@@ -2156,10 +1334,10 @@
       var dayFoods = foods[date] || {};
       var eaten = FOOD_ITEMS.filter(function (f) { return dayFoods[f.key]; }).map(function (f) { return f.label; });
       if (eaten.length) {
-        var foodChecklistLine = document.createElement("div");
-        foodChecklistLine.className = "h-line";
-        foodChecklistLine.innerHTML = "<span>🍽️ " + eaten.join(", ") + "</span>";
-        wrap.appendChild(foodChecklistLine);
+        var foodLine = document.createElement("div");
+        foodLine.className = "h-line";
+        foodLine.innerHTML = "<span>🍽️ " + eaten.join(", ") + "</span>";
+        wrap.appendChild(foodLine);
       }
 
       var dayWeight = entry ? entry.weight : null;
@@ -2250,9 +1428,6 @@
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
       workouts: loadWorkouts(),
-      settings: loadSettings(),
-      foodlog: loadFoodLog(),
-      customFoods: loadCustomFoods(),
       foods: loadFoods(),
       customExercises: loadCustomExercises(),
       customWorkoutTemplates: loadWorkoutTemplates(),
@@ -2321,15 +1496,11 @@
     }
     if (payload.daily) { saveDaily(payload.daily); recalibrateStepsFromImport(payload.daily); }
     if (payload.workouts) saveWorkouts(payload.workouts);
-    if (payload.settings) saveSettings(payload.settings);
-    if (payload.foodlog) saveFoodLog(payload.foodlog);
-    if (payload.customFoods) saveCustomFoods(payload.customFoods);
     if (payload.foods) saveFoods(payload.foods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
     if (payload.fasting) { saveFasting(payload.fasting); renderFastingStatus(); }
     toast("Import complete");
-    fillProfileForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
@@ -2338,9 +1509,7 @@
     renderTrends();
     populateExerciseSelect(currentExerciseType);
     populateWorkoutTemplateSelect();
-    renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderFoodChecklist(document.getElementById("foodDate").value || todayISO());
-    renderCustomFoodList();
     renderWorkoutTemplateList();
   }
 
@@ -2348,17 +1517,12 @@
     if (!confirm("Erase all logged data on this device? This cannot be undone.")) return;
     localStorage.removeItem(STORAGE.daily);
     localStorage.removeItem(STORAGE.workouts);
-    localStorage.removeItem(STORAGE.settings);
-    localStorage.removeItem(STORAGE.foodlog);
-    localStorage.removeItem(STORAGE.customFoods);
     localStorage.removeItem(STORAGE.foods);
     localStorage.removeItem(STORAGE.customExercises);
     localStorage.removeItem(STORAGE.customWorkoutTemplates);
     localStorage.removeItem(STORAGE.fasting);
     currentExercises = [];
     editingWorkoutId = null;
-    handleCancelEditMyFood();
-    fillProfileForm();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
     renderToday();
@@ -2369,14 +1533,10 @@
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
     populateWorkoutTemplateSelect();
-    renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderFoodChecklist(document.getElementById("foodDate").value || todayISO());
-    renderCustomFoodList();
     renderWorkoutTemplateList();
     toast("All data erased");
   }
-
-  // ---------- settings ----------
 
   function getEarliestLoggedWeightDate() {
     var daily = loadDaily();
@@ -2384,87 +1544,9 @@
     return dates.length ? dates[0] : null;
   }
 
-  function getLatestLoggedWeight() {
-    var daily = loadDaily();
-    var dates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
-    if (dates.length === 0) return null;
-    var date = dates[dates.length - 1];
-    return { weight: daily[date].weight, date: date };
-  }
-
-  var currentSex = "male";
-
-  function setSexToggle(sex) {
-    currentSex = sex;
-    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.sex === sex);
-    });
-  }
-
-  function fillProfileForm() {
-    var settings = loadSettings();
-    document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
-    document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
-    setSexToggle(settings.sex || "male");
-    document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
-  }
-
-  function handleUsdaKeyChange() {
-    var key = document.getElementById("usdaApiKeyInput").value.trim();
-    var settings = loadSettings();
-    if (key !== "") settings.usdaApiKey = key; else delete settings.usdaApiKey;
-    saveSettings(settings);
-    toast(key !== "" ? "USDA API key saved" : "USDA API key removed");
-  }
-
-  function handleProfileChange() {
-    var age = document.getElementById("ageInput").value;
-    var height = document.getElementById("heightInput").value;
-    var settings = loadSettings();
-    if (age !== "") settings.age = Math.round(parseFloat(age)); else delete settings.age;
-    if (height !== "") settings.heightCm = Math.round(parseFloat(height)); else delete settings.heightCm;
-    settings.sex = currentSex;
-    saveSettings(settings);
-    renderToday();
-    renderTrends();
-  }
-
-  // That day's own logged weight, else the most recently logged weight before it, else the
-  // closest logged weight overall, else a default. Used so BMR reflects the body weight
-  // that was actually true on that day instead of always using today's latest weigh-in.
-  function resolveWeightForDate(date, entry, daily) {
-    if (entry && entry.weight != null) return entry.weight;
-    var priorDates = Object.keys(daily).filter(function (d) { return d < date && daily[d].weight != null; }).sort();
-    if (priorDates.length > 0) return daily[priorDates[priorDates.length - 1]].weight;
-    var latest = getLatestLoggedWeight();
-    return latest ? latest.weight : DEFAULT_BODYWEIGHT_KG;
-  }
-
-  // Mifflin-St Jeor: resting energy burn only (no activity), for a given body weight.
-  function computeBMRForWeight(weight) {
-    var settings = loadSettings();
-    if (settings.age == null || settings.heightCm == null || weight == null) return null;
-    var bmr = 10 * weight + 6.25 * settings.heightCm - 5 * settings.age + (settings.sex === "female" ? -161 : 5);
-    return Math.round(bmr / 10) * 10;
-  }
-
-  // BMR for a specific day, using that day's own weight where available.
-  function computeBMRForDate(date, entry, daily) {
-    return computeBMRForWeight(resolveWeightForDate(date, entry, daily));
-  }
-
-  // Total expenditure for a specific day: resting burn (BMR, using that day's weight) + that day's activity burn.
-  function getMaintenanceForDay(date, entry, daily) {
-    var bmr = computeBMRForDate(date, entry, daily);
-    if (bmr == null) return null;
-    var burned = Math.round(getCaloriesBurnedBreakdown(date, entry && entry.weight, entry && entry.steps).total);
-    return bmr + burned;
-  }
-
   // ---------- init ----------
 
   function init() {
-    seedCustomFoodsIfNeeded();
     seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
@@ -2501,20 +1583,6 @@
 
     document.getElementById("trendsStartInput").addEventListener("change", renderTrends);
     document.getElementById("trendsEndInput").addEventListener("change", renderTrends);
-
-    fillProfileForm();
-    document.querySelectorAll("#sexToggle .segment").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        setSexToggle(btn.dataset.sex);
-        handleProfileChange();
-      });
-    });
-    document.getElementById("ageInput").addEventListener("change", handleProfileChange);
-    document.getElementById("heightInput").addEventListener("change", handleProfileChange);
-    document.getElementById("usdaApiKeyInput").addEventListener("change", handleUsdaKeyChange);
-
-    renderCustomFoodList();
-    document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
 
     populateExerciseSelect(currentExerciseType);
     document.getElementById("exerciseSelect").addEventListener("change", handleExerciseSelectChange);
@@ -2559,24 +1627,7 @@
     });
     document.getElementById("clearBtn").addEventListener("click", handleClear);
 
-    document.getElementById("cancelEditMyFoodBtn").addEventListener("click", handleCancelEditMyFood);
-
-    document.getElementById("foodSearchInput").addEventListener("input", handleFoodSearchInput);
-    document.getElementById("foodGramsInput").addEventListener("input", updateFoodPreview);
-    document.getElementById("foodUnitsInput").addEventListener("input", updateFoodPreview);
-    document.getElementById("foodUnitGramsInput").addEventListener("input", updateFoodPreview);
-    document.querySelectorAll("#quantityModeToggle .segment").forEach(function (btn) {
-      btn.addEventListener("click", function () { setQtyMode(btn.dataset.qtyMode); });
-    });
-    document.getElementById("addFoodBtn").addEventListener("click", handleAddFoodFromSearch);
-    document.getElementById("cancelEditFoodLogBtn").addEventListener("click", cancelEditFoodLogEntry);
-    document.getElementById("showNewFoodBtn").addEventListener("click", function () {
-      var card = document.getElementById("newFoodCard");
-      card.style.display = card.style.display === "none" ? "block" : "none";
-    });
-    document.getElementById("saveNewFoodBtn").addEventListener("click", handleSaveNewFood);
     document.getElementById("foodDate").addEventListener("change", function (e) {
-      renderFoodLog(e.target.value);
       renderFoodChecklist(e.target.value);
     });
     document.querySelectorAll("#foodChecklist input[data-food]").forEach(function (input) {
@@ -2598,7 +1649,6 @@
 
     renderToday();
     renderHistory();
-    renderFoodLog(todayISO());
     renderFoodChecklist(todayISO());
     renderTrends();
   }
