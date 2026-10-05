@@ -64,10 +64,11 @@ jobs:
       - name: Publish APK to a GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-latest
-          name: Gym Log Android v${{ steps.version.outputs.name }} (latest)
+          tag_name: android-calorie-counter-only
+          name: Gym Log Android v${{ steps.version.outputs.name }} (calorie counter only)
           body: |
             Auto-built debug APK from commit ${{ github.sha }}.
+            Same features as your currently-installed app, plus the new calorie model (net burn, TEF, maintenance band, adaptive TDEE, fixed targets) -- no other changes (no fasting, etc.).
             Download `Gym-Log-v${{ steps.version.outputs.name }}-debug.apk` below and open it on your phone to install (allow "install from this source" if prompted).
-          make_latest: true
+          make_latest: false
           files: Gym-Log-v${{ steps.version.outputs.name }}-debug.apk
