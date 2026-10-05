@@ -370,6 +370,12 @@ button:active { transform: scale(0.98); }
   margin-bottom: 4px;
 }
 
+.field-warning {
+  font-size: 0.75rem;
+  color: var(--accent-2);
+  margin-top: 4px;
+}
+
 .food-results {
   list-style: none;
   margin: 8px 0 0;
