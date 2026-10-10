@@ -739,12 +739,33 @@
     return settings.treatBudget != null ? settings.treatBudget : TREAT_BUDGET_DEFAULT;
   }
 
-  // Treat calories logged on a date -- summed straight from that day's food log entries
-  // (each snapshots isTreat at the time it was logged), not from the live My Foods list,
-  // so changing a food's treat status later doesn't rewrite past days.
+  // Whether a logged food-log entry counts as a treat. Respects an explicit isTreat
+  // snapshot (true or false) as-is, so a deliberate flag never gets overridden by a
+  // later change to the food. Only entries with no snapshot at all -- logged before
+  // the treat flag existed -- fall back to matching the live My Foods list, by
+  // customFoodId first, then by name (case-insensitive), so old entries for a food
+  // that's since been marked a treat still count.
+  function resolveIsTreatForEntry(entry, customFoods) {
+    if (entry.isTreat != null) return !!entry.isTreat;
+    var match = null;
+    if (entry.customFoodId) {
+      match = customFoods.filter(function (f) { return f.id === entry.customFoodId; })[0] || null;
+    }
+    if (!match) {
+      var lname = (entry.name || "").toLowerCase();
+      match = customFoods.filter(function (f) { return f.name.toLowerCase() === lname; })[0] || null;
+    }
+    return !!(match && match.isTreat);
+  }
+
+  // Treat calories logged on a date -- summed from that day's food log entries, each
+  // resolved via resolveIsTreatForEntry (see above).
   function getTreatCaloriesForDate(date) {
     var entries = loadFoodLog()[date] || [];
-    return entries.reduce(function (sum, e) { return sum + (e.isTreat ? e.calories : 0); }, 0);
+    var customFoods = loadCustomFoods();
+    return entries.reduce(function (sum, e) {
+      return sum + (resolveIsTreatForEntry(e, customFoods) ? e.calories : 0);
+    }, 0);
   }
 
   function renderTreatBudget(date) {
@@ -2345,7 +2366,7 @@
     var matches = loadCustomFoods()
       .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
       .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat, basis: f.basis };
+        return { id: f.id, name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat, basis: f.basis };
       });
     return Promise.resolve(matches);
   }
@@ -2495,7 +2516,8 @@
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
       fat: Math.round(selectedFoodProduct.per100.fat * factor),
       isTreat: !!selectedFoodProduct.isTreat,
-      meal: document.getElementById("foodMealSelect").value
+      meal: document.getElementById("foodMealSelect").value,
+      customFoodId: selectedFoodProduct.source === "My Foods" ? selectedFoodProduct.id : null
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -2535,7 +2557,10 @@
         protein: entry.protein * per100Factor,
         carbs: entry.carbs * per100Factor,
         fat: entry.fat * per100Factor
-      }
+      },
+      isTreat: entry.isTreat,
+      source: entry.customFoodId ? "My Foods" : undefined,
+      id: entry.customFoodId
     };
 
     document.getElementById("foodQuantityName").textContent = "Edit: " + entry.name;
@@ -2580,7 +2605,9 @@
       protein: updated.protein,
       carbs: updated.carbs,
       fat: updated.fat,
-      meal: updated.meal != null ? updated.meal : old.meal
+      meal: updated.meal != null ? updated.meal : old.meal,
+      isTreat: updated.isTreat != null ? updated.isTreat : old.isTreat,
+      customFoodId: updated.customFoodId != null ? updated.customFoodId : old.customFoodId
     };
     if (updated.units != null) {
       next.units = updated.units;
@@ -3571,7 +3598,13 @@
       getProteinTarget: getProteinTarget,
       getTreatBudget: getTreatBudget,
       getCardioMinutesTarget: getCardioMinutesTarget,
-      getStepTarget: getStepTarget
+      getStepTarget: getStepTarget,
+      loadCustomFoods: loadCustomFoods,
+      saveCustomFoods: saveCustomFoods,
+      loadFoodLog: loadFoodLog,
+      saveFoodLog: saveFoodLog,
+      resolveIsTreatForEntry: resolveIsTreatForEntry,
+      getTreatCaloriesForDate: getTreatCaloriesForDate
     };
   }
 

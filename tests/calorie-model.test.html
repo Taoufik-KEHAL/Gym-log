@@ -600,6 +600,34 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(settings.treatBudget === 150, "expected the untouched treatBudget to still get its default");
   });
 
+  test("getTreatCaloriesForDate: counts a legacy entry (no isTreat snapshot) by matching the live custom food's name", function () {
+    clearStorage();
+    hooks.saveCustomFoods([{ id: "f1", name: "Dates", per100: { calories: 280, protein: 2, carbs: 75, fat: 0.4 }, isTreat: true }]);
+    hooks.saveFoodLog({
+      "2026-10-10": [
+        { id: "e1", name: "Dates", grams: 50, calories: 140, protein: 1, carbs: 37, fat: 0.2 }, // no isTreat at all -- pre-dates the flag
+        { id: "e2", name: "Maruja", grams: 30, calories: 160, protein: 2, carbs: 18, fat: 9, isTreat: true }
+      ]
+    });
+    assert(hooks.getTreatCaloriesForDate("2026-10-10") === 300, "expected both Dates (140) and Maruja (160) to count, got " + hooks.getTreatCaloriesForDate("2026-10-10"));
+  });
+
+  test("resolveIsTreatForEntry: matches by customFoodId first, falls back to name, and respects an explicit false", function () {
+    var customFoods = [
+      { id: "f1", name: "Dates", isTreat: true },
+      { id: "f2", name: "Chicken Breast", isTreat: false }
+    ];
+    assert(hooks.resolveIsTreatForEntry({ name: "anything", customFoodId: "f1" }, customFoods) === true, "expected a customFoodId match to win");
+    assert(hooks.resolveIsTreatForEntry({ name: "Dates" }, customFoods) === true, "expected a name-only match to fall back correctly");
+    assert(hooks.resolveIsTreatForEntry({ name: "Unknown Food" }, customFoods) === false, "expected no match to resolve false");
+    assert(hooks.resolveIsTreatForEntry({ name: "Dates", isTreat: false }, customFoods) === false, "expected an explicit false snapshot to never be overridden by a live match");
+  });
+
+  test("resolveIsTreatForEntry: an explicit true snapshot is respected even if the live food is no longer a treat", function () {
+    var customFoods = [{ id: "f1", name: "Dates", isTreat: false }];
+    assert(hooks.resolveIsTreatForEntry({ name: "Dates", isTreat: true }, customFoods) === true, "expected the historical snapshot to win over a later un-treat");
+  });
+
   clearStorage();
 
   // ---------- render ----------
