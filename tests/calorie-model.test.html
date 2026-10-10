@@ -284,6 +284,32 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.isGoalStalled("2026-10-31") === false, "expected not stalled on a steadily-declining series");
   });
 
+  // ---------- data quality: previous-best weight check ----------
+
+  test("getBestWeightSoFar: finds the max weight across saved workouts for that exercise", function () {
+    clearStorage();
+    hooks.saveWorkouts([
+      { id: "w1", date: "2026-09-01", name: "A", exercises: [{ name: "Concentration Curl", type: "strength", sets: [{ reps: 10, weight: 12 }, { reps: 8, weight: 14 }] }] },
+      { id: "w2", date: "2026-09-08", name: "B", exercises: [{ name: "concentration curl", type: "strength", sets: [{ reps: 6, weight: 16 }] }] },
+      { id: "w3", date: "2026-09-15", name: "C", exercises: [{ name: "Barbell Row", type: "strength", sets: [{ reps: 5, weight: 60 }] }] }
+    ]);
+    var best = hooks.getBestWeightSoFar("Concentration Curl", []);
+    assert(best === 16, "expected 16 (case-insensitive match across workouts), got " + best);
+  });
+
+  test("getBestWeightSoFar: also considers sets already added this session", function () {
+    clearStorage();
+    hooks.saveWorkouts([]);
+    var best = hooks.getBestWeightSoFar("Concentration Curl", [{ reps: 10, weight: 14 }, { reps: 8, weight: 18 }]);
+    assert(best === 18, "expected 18 from the in-progress session sets, got " + best);
+  });
+
+  test("getBestWeightSoFar: null when the exercise has never been logged", function () {
+    clearStorage();
+    hooks.saveWorkouts([]);
+    assert(hooks.getBestWeightSoFar("Deadlift", []) === null, "expected null for a never-logged exercise");
+  });
+
   clearStorage();
 
   // ---------- render ----------

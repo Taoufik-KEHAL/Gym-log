@@ -201,6 +201,23 @@
     localStorage.setItem(STORAGE.workouts, JSON.stringify(list));
   }
 
+  // Heaviest weight ever logged for a strength exercise (case-insensitive name match),
+  // across saved workouts plus any sets already added for it in the in-progress,
+  // not-yet-saved session (currentSessionSets) -- so a typo later in the same session
+  // still gets caught. Null if nothing's been logged for this exercise yet.
+  function getBestWeightSoFar(exerciseName, currentSessionSets) {
+    var lname = exerciseName.toLowerCase();
+    var best = null;
+    loadWorkouts().forEach(function (w) {
+      w.exercises.forEach(function (ex) {
+        if (ex.type !== "strength" || ex.name.toLowerCase() !== lname) return;
+        ex.sets.forEach(function (s) { if (best == null || s.weight > best) best = s.weight; });
+      });
+    });
+    (currentSessionSets || []).forEach(function (s) { if (best == null || s.weight > best) best = s.weight; });
+    return best;
+  }
+
   function loadSettings() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.settings) || "{}");
@@ -343,7 +360,7 @@
       var info = document.createElement("div");
       var nameEl = document.createElement("div");
       nameEl.className = "food-log-name";
-      nameEl.textContent = f.name;
+      nameEl.textContent = f.name + (f.basis ? " (" + f.basis + ")" : "");
       var macrosEl = document.createElement("div");
       macrosEl.className = "food-log-macros";
       macrosEl.textContent = f.per100.calories + " kcal · " + f.per100.protein + " g protein · " +
@@ -396,11 +413,12 @@
       fat: parseFloat(document.getElementById("myFoodFat").value) || 0
     };
     var isTreat = document.getElementById("myFoodIsTreat").checked;
+    var basis = document.getElementById("myFoodBasis").value || undefined;
     var foods = loadCustomFoods();
 
     if (editingMyFoodId) {
       var idx = foods.findIndex(function (f) { return f.id === editingMyFoodId; });
-      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100, isTreat: isTreat };
+      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100, isTreat: isTreat, basis: basis };
       saveCustomFoods(foods);
       handleCancelEditMyFood();
       renderCustomFoodList();
@@ -408,13 +426,14 @@
       return;
     }
 
-    foods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat });
+    foods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat, basis: basis });
     saveCustomFoods(foods);
 
     ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
     document.getElementById("myFoodIsTreat").checked = false;
+    document.getElementById("myFoodBasis").value = "";
     renderCustomFoodList();
     toast("Added to My Foods");
   }
@@ -437,6 +456,7 @@
     document.getElementById("myFoodCarbs").value = food.per100.carbs;
     document.getElementById("myFoodFat").value = food.per100.fat;
     document.getElementById("myFoodIsTreat").checked = !!food.isTreat;
+    document.getElementById("myFoodBasis").value = food.basis || "";
     document.getElementById("addMyFoodBtn").textContent = "Update food";
     document.getElementById("cancelEditMyFoodBtn").style.display = "inline-block";
     document.getElementById("myFoodName").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -448,6 +468,7 @@
       document.getElementById(id).value = "";
     });
     document.getElementById("myFoodIsTreat").checked = false;
+    document.getElementById("myFoodBasis").value = "";
     document.getElementById("addMyFoodBtn").textContent = "Add to My Foods";
     document.getElementById("cancelEditMyFoodBtn").style.display = "none";
   }
@@ -1508,7 +1529,14 @@
           var reps = parseFloat(repsInput.value);
           var weight = parseFloat(weightInput.value);
           if (!reps) { toast("Enter reps"); return; }
-          ex.sets.push({ reps: reps, weight: isNaN(weight) ? 0 : weight });
+          var w = isNaN(weight) ? 0 : weight;
+          var prevBest = getBestWeightSoFar(ex.name, ex.sets);
+          if (prevBest != null && prevBest > 0 && w > prevBest * 1.5) {
+            var ok = confirm(w + " kg for " + ex.name + " is more than 50% above your previous best of " +
+              prevBest + " kg. Save this set anyway?");
+            if (!ok) return;
+          }
+          ex.sets.push({ reps: reps, weight: w });
           renderWorkoutBuilder();
         });
         addSetRow.appendChild(repsInput);
@@ -2109,7 +2137,7 @@
     var matches = loadCustomFoods()
       .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
       .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat };
+        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat, basis: f.basis };
       });
     return Promise.resolve(matches);
   }
@@ -2187,7 +2215,7 @@
       var name = document.createElement("div");
       name.className = "food-result-name";
       name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>";
-      name.appendChild(document.createTextNode(p.name));
+      name.appendChild(document.createTextNode(p.name + (p.basis ? " (" + p.basis + ")" : "")));
 
       var meta = document.createElement("div");
       meta.className = "food-result-meta";
@@ -2375,8 +2403,9 @@
     };
 
     var isTreat = document.getElementById("newFoodIsTreat").checked;
+    var basis = document.getElementById("newFoodBasis").value || undefined;
     var customFoods = loadCustomFoods();
-    customFoods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat });
+    customFoods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat, basis: basis });
     saveCustomFoods(customFoods);
     renderCustomFoodList();
 
@@ -2384,10 +2413,11 @@
       document.getElementById(id).value = "";
     });
     document.getElementById("newFoodIsTreat").checked = false;
+    document.getElementById("newFoodBasis").value = "";
     document.getElementById("newFoodCard").style.display = "none";
 
     toast("Saved to My Foods");
-    selectFoodProduct({ name: name, per100: per100, isTreat: isTreat });
+    selectFoodProduct({ name: name, per100: per100, isTreat: isTreat, basis: basis });
   }
 
   function addFoodEntry(date, entry) {
@@ -3293,7 +3323,9 @@
       saveDaily: saveDaily,
       getGoalEndDate: getGoalEndDate,
       getGoalCheckpointStatuses: getGoalCheckpointStatuses,
-      isGoalStalled: isGoalStalled
+      isGoalStalled: isGoalStalled,
+      getBestWeightSoFar: getBestWeightSoFar,
+      saveWorkouts: saveWorkouts
     };
   }
 
