@@ -787,6 +787,28 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(series.length === 1 && series[0].value === 90, "expected only the in-range point, got " + JSON.stringify(series));
   });
 
+  test("getEntryDailyContribution: a planned entry contributes nothing, an eaten entry contributes its own macros", function () {
+    var planned = { calories: 300, protein: 20, carbs: 30, fat: 10, planned: true };
+    var eaten = { calories: 300, protein: 20, carbs: 30, fat: 10, planned: false };
+    var legacy = { calories: 300, protein: 20, carbs: 30, fat: 10 }; // no planned field at all -- always counts
+    assert(JSON.stringify(hooks.getEntryDailyContribution(planned)) === JSON.stringify({ calories: 0, protein: 0, carbs: 0, fat: 0 }),
+      "expected a planned entry to contribute zero");
+    assert(JSON.stringify(hooks.getEntryDailyContribution(eaten)) === JSON.stringify({ calories: 300, protein: 20, carbs: 30, fat: 10 }),
+      "expected an eaten entry to contribute its macros");
+    assert(JSON.stringify(hooks.getEntryDailyContribution(legacy)) === JSON.stringify({ calories: 300, protein: 20, carbs: 30, fat: 10 }),
+      "expected a legacy entry with no planned field to contribute its macros, same as always");
+  });
+
+  test("groupFoodLogByMeal: keeps planned entries in their meal group alongside eaten ones", function () {
+    var entries = [
+      { id: "1", name: "Planned Oats", protein: 10, meal: "breakfast", planned: true },
+      { id: "2", name: "Eggs", protein: 12, meal: "breakfast" }
+    ];
+    var groups = hooks.groupFoodLogByMeal(entries);
+    var breakfast = groups.filter(function (g) { return g.key === "breakfast"; })[0];
+    assert(breakfast.entries.length === 2, "expected both the planned and eaten entry in the same meal group");
+  });
+
   clearStorage();
 
   // ---------- render ----------

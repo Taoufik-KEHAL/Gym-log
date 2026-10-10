@@ -2638,6 +2638,7 @@
     document.getElementById("foodUnitGramsInput").value = 50;
     document.getElementById("foodQuantityCard").style.display = "block";
     document.getElementById("foodMealSelect").value = guessMealForTime(new Date().getHours());
+    document.getElementById("foodPlannedInput").checked = false;
     clearFoodSearchState();
     setQtyMode("grams");
   }
@@ -2670,7 +2671,8 @@
       fat: Math.round(selectedFoodProduct.per100.fat * factor),
       isTreat: !!selectedFoodProduct.isTreat,
       meal: document.getElementById("foodMealSelect").value,
-      customFoodId: selectedFoodProduct.source === "My Foods" ? selectedFoodProduct.id : null
+      customFoodId: selectedFoodProduct.source === "My Foods" ? selectedFoodProduct.id : null,
+      planned: document.getElementById("foodPlannedInput").checked
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -2719,6 +2721,7 @@
     document.getElementById("foodQuantityName").textContent = "Edit: " + entry.name;
     document.getElementById("foodQuantityCard").style.display = "block";
     document.getElementById("foodMealSelect").value = entry.meal || guessMealForTime(new Date().getHours());
+    document.getElementById("foodPlannedInput").checked = !!entry.planned;
     document.getElementById("addFoodBtn").textContent = "Update log entry";
     document.getElementById("cancelEditFoodLogBtn").style.display = "inline-block";
     document.getElementById("foodSearchInput").value = "";
@@ -2743,6 +2746,12 @@
     document.getElementById("cancelEditFoodLogBtn").style.display = "none";
   }
 
+  // A planned entry contributes nothing to the day's totals until it's marked eaten.
+  function getEntryDailyContribution(entry) {
+    if (entry.planned) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    return { calories: entry.calories, protein: entry.protein, carbs: entry.carbs, fat: entry.fat };
+  }
+
   function updateFoodLogEntryQuantity(date, id, updated) {
     var log = loadFoodLog();
     var entries = log[date] || [];
@@ -2760,7 +2769,8 @@
       fat: updated.fat,
       meal: updated.meal != null ? updated.meal : old.meal,
       isTreat: updated.isTreat != null ? updated.isTreat : old.isTreat,
-      customFoodId: updated.customFoodId != null ? updated.customFoodId : old.customFoodId
+      customFoodId: updated.customFoodId != null ? updated.customFoodId : old.customFoodId,
+      planned: updated.planned != null ? updated.planned : old.planned
     };
     if (updated.units != null) {
       next.units = updated.units;
@@ -2769,13 +2779,16 @@
     entries[idx] = next;
     saveFoodLog(log);
 
+    // Covers all four planned/eaten transitions, not just a same-state quantity edit.
     var daily = loadDaily();
     var d = daily[date];
     if (d) {
-      d.calories = Math.max(0, (d.calories || 0) - old.calories + updated.calories);
-      d.protein = Math.max(0, (d.protein || 0) - old.protein + updated.protein);
-      d.carbs = Math.max(0, (d.carbs || 0) - old.carbs + updated.carbs);
-      d.fat = Math.max(0, (d.fat || 0) - old.fat + updated.fat);
+      var oldContribution = getEntryDailyContribution(old);
+      var newContribution = getEntryDailyContribution(next.planned ? next : updated);
+      d.calories = Math.max(0, (d.calories || 0) - oldContribution.calories + newContribution.calories);
+      d.protein = Math.max(0, (d.protein || 0) - oldContribution.protein + newContribution.protein);
+      d.carbs = Math.max(0, (d.carbs || 0) - oldContribution.carbs + newContribution.carbs);
+      d.fat = Math.max(0, (d.fat || 0) - oldContribution.fat + newContribution.fat);
       saveDaily(daily);
     }
 
@@ -2818,6 +2831,33 @@
     log[date].push(entry);
     saveFoodLog(log);
 
+    // A planned entry doesn't count toward the day's totals until it's marked eaten.
+    if (!entry.planned) {
+      var daily = loadDaily();
+      var d = daily[date] || {};
+      d.calories = (d.calories || 0) + entry.calories;
+      d.protein = (d.protein || 0) + entry.protein;
+      d.carbs = (d.carbs || 0) + entry.carbs;
+      d.fat = (d.fat || 0) + entry.fat;
+      daily[date] = d;
+      saveDaily(daily);
+    }
+
+    toast(entry.planned ? "Added as planned" : "Added to food log");
+    renderFoodLog(date);
+    syncTodayIfSameDate(date);
+  }
+
+  // Marks a planned entry as eaten and adds its macros to the day's totals, which were
+  // excluded while it was planned.
+  function handleMarkFoodEntryEaten(date, id) {
+    var log = loadFoodLog();
+    var entries = log[date] || [];
+    var entry = entries.filter(function (e) { return e.id === id; })[0];
+    if (!entry || !entry.planned) return;
+    entry.planned = false;
+    saveFoodLog(log);
+
     var daily = loadDaily();
     var d = daily[date] || {};
     d.calories = (d.calories || 0) + entry.calories;
@@ -2827,7 +2867,7 @@
     daily[date] = d;
     saveDaily(daily);
 
-    toast("Added to food log");
+    toast("Marked as eaten");
     renderFoodLog(date);
     syncTodayIfSameDate(date);
   }
@@ -2841,9 +2881,11 @@
     var removed = entries.splice(idx, 1)[0];
     saveFoodLog(log);
 
+    // A planned entry was never added to the day's totals, so there's nothing to
+    // subtract back out.
     var daily = loadDaily();
     var d = daily[date];
-    if (d) {
+    if (d && !removed.planned) {
       d.calories = Math.max(0, (d.calories || 0) - removed.calories);
       d.protein = Math.max(0, (d.protein || 0) - removed.protein);
       d.carbs = Math.max(0, (d.carbs || 0) - removed.carbs);
@@ -2869,15 +2911,21 @@
 
   function renderFoodLogItem(list, date, entry) {
     var item = document.createElement("div");
-    item.className = "food-log-item";
+    item.className = "food-log-item" + (entry.planned ? " food-log-item--planned" : "");
 
     var info = document.createElement("div");
     var nameEl = document.createElement("div");
     nameEl.className = "food-log-name";
+    if (entry.planned) {
+      var plannedTag = document.createElement("span");
+      plannedTag.className = "food-planned-tag";
+      plannedTag.textContent = "🕓 PLANNED";
+      nameEl.appendChild(plannedTag);
+    }
     var qtyLabel = entry.units != null
       ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
       : (entry.grams != null ? " (" + entry.grams + " g)" : "");
-    nameEl.textContent = entry.name + qtyLabel;
+    nameEl.appendChild(document.createTextNode(entry.name + qtyLabel));
     var macrosEl = document.createElement("div");
     macrosEl.className = "food-log-macros";
     macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
@@ -2886,6 +2934,15 @@
 
     var actions = document.createElement("div");
     actions.className = "food-log-actions";
+
+    if (entry.planned) {
+      var eatenBtn = document.createElement("button");
+      eatenBtn.type = "button";
+      eatenBtn.className = "icon-btn";
+      eatenBtn.textContent = "Eaten";
+      eatenBtn.addEventListener("click", function () { handleMarkFoodEntryEaten(date, entry.id); });
+      actions.appendChild(eatenBtn);
+    }
 
     var editBtn = document.createElement("button");
     editBtn.type = "button";
@@ -2936,10 +2993,11 @@
       if (group.entries.length === 0) return;
       var header = document.createElement("div");
       header.className = "food-meal-header";
-      var groupProtein = group.entries.reduce(function (sum, e) { return sum + e.protein; }, 0);
+      var groupProtein = group.entries.reduce(function (sum, e) { return sum + (e.planned ? 0 : e.protein); }, 0);
       header.textContent = group.icon + " " + group.label + " · " + groupProtein + " g protein";
       list.appendChild(header);
       group.entries.forEach(function (entry) {
+        if (entry.planned) { renderFoodLogItem(list, date, entry); return; }
         totals.calories += entry.calories;
         totals.protein += entry.protein;
         totals.carbs += entry.carbs;
@@ -3751,6 +3809,7 @@
       computeUpdatedCheckpoints: computeUpdatedCheckpoints,
       getWeekStartISO: getWeekStartISO,
       computeWeeklyAverageSeries: computeWeeklyAverageSeries,
+      getEntryDailyContribution: getEntryDailyContribution,
       getGoalCheckpointStatuses: getGoalCheckpointStatuses,
       isGoalStalled: isGoalStalled,
       getBestWeightSoFar: getBestWeightSoFar,
