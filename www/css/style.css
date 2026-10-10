@@ -400,6 +400,18 @@ button:active { transform: scale(0.98); }
   vertical-align: middle;
 }
 
+.food-treat-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(224, 100, 90, 0.15);
+  color: var(--danger);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .food-group {
   margin-bottom: 16px;
 }

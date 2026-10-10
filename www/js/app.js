@@ -2091,7 +2091,8 @@
 
       var name = document.createElement("div");
       name.className = "food-result-name";
-      name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>";
+      name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>" +
+        (p.isTreat ? '<span class="food-treat-tag">🍬 TREAT</span>' : "");
       name.appendChild(document.createTextNode(p.name + (p.basis ? " (" + p.basis + ")" : "")));
 
       var meta = document.createElement("div");
