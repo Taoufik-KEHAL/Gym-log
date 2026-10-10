@@ -762,6 +762,31 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.computeUpdatedCheckpoints(checkpoints, 0, "date", "")[0].date === "2026-10-31", "expected an empty date to be ignored");
   });
 
+  test("getWeekStartISO: returns the Monday of the containing week", function () {
+    assert(hooks.getWeekStartISO("2026-10-14") === "2026-10-12", "expected Wed 2026-10-14's week to start Mon 2026-10-12, got " + hooks.getWeekStartISO("2026-10-14"));
+    assert(hooks.getWeekStartISO("2026-10-12") === "2026-10-12", "expected a Monday to be its own week start");
+    assert(hooks.getWeekStartISO("2026-10-18") === "2026-10-12", "expected Sunday to belong to the week that started the Monday before");
+  });
+
+  test("computeWeeklyAverageSeries: averages waist by Monday-starting week, skipping unlogged days", function () {
+    var daily = {
+      "2026-10-12": { waistCm: 90 },
+      "2026-10-14": { waistCm: 92 }, // same week as 10-12 -> average 91
+      "2026-10-13": { weight: 80 }, // no waistCm -- excluded
+      "2026-10-19": { waistCm: 88 } // next week, Monday 10-19
+    };
+    var series = hooks.computeWeeklyAverageSeries(daily, "waistCm", { start: "2026-10-01", end: "2026-10-31" });
+    assert(series.length === 2, "expected 2 weekly points, got " + series.length);
+    assert(series[0].date === "2026-10-12" && series[0].value === 91, "expected week 1 averaged to 91, got " + JSON.stringify(series[0]));
+    assert(series[1].date === "2026-10-19" && series[1].value === 88, "expected week 2 to be 88, got " + JSON.stringify(series[1]));
+  });
+
+  test("computeWeeklyAverageSeries: respects the date range", function () {
+    var daily = { "2026-10-05": { waistCm: 95 }, "2026-10-12": { waistCm: 90 } };
+    var series = hooks.computeWeeklyAverageSeries(daily, "waistCm", { start: "2026-10-10", end: "2026-10-31" });
+    assert(series.length === 1 && series[0].value === 90, "expected only the in-range point, got " + JSON.stringify(series));
+  });
+
   clearStorage();
 
   // ---------- render ----------

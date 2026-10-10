@@ -2,7 +2,7 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, waterLiters, cigarettesCount, calories, protein, carbs, fat, steps, dayType } }
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, waistCm, sleepHours, waterLiters, cigarettesCount, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
     settings: "gymlog.settings", // reserved for future use; currently unused
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
@@ -671,6 +671,7 @@
     var today = document.getElementById("logDate").value || todayISO();
     var entry = daily[today] || {};
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
+    document.getElementById("sumWaist").textContent = entry.waistCm != null ? entry.waistCm : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumWater").textContent = entry.waterLiters != null ? entry.waterLiters : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettesCount != null ? entry.cigarettesCount : "—";
@@ -1058,6 +1059,7 @@
     var daily = loadDaily();
     var entry = daily[iso] || {};
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
+    document.getElementById("waistInput").value = entry.waistCm != null ? entry.waistCm : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
     document.getElementById("waterInput").value = entry.waterLiters != null ? entry.waterLiters : "";
@@ -1069,6 +1071,7 @@
     e.preventDefault();
     var date = document.getElementById("logDate").value || todayISO();
     var weight = document.getElementById("weightInput").value;
+    var waistCm = document.getElementById("waistInput").value;
     var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
     var waterLiters = document.getElementById("waterInput").value;
@@ -1078,6 +1081,7 @@
     var existing = daily[date] || {};
     var entry = {};
     if (weight !== "") entry.weight = parseFloat(weight);
+    if (waistCm !== "") entry.waistCm = parseFloat(waistCm);
     if (sleepHours !== "") entry.sleepHours = parseFloat(sleepHours);
     // Calories/protein/carbs/fat are maintained by the Food tab, not this form; carry them over untouched.
     if (existing.calories != null) entry.calories = existing.calories;
@@ -1893,11 +1897,45 @@
     renderGoalChart();
   }
 
+  // The Monday that starts the calendar week containing a given date.
+  function getWeekStartISO(dateISO) {
+    var d = new Date(dateISO + "T00:00:00");
+    var day = d.getDay(); // 0 = Sunday .. 6 = Saturday
+    var diffToMonday = day === 0 ? 6 : day - 1;
+    d.setDate(d.getDate() - diffToMonday);
+    var tz = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+  }
+
+  // One point per Monday-starting week that has at least one logged value for `key`
+  // within range -- waist is noisy day to day, so it's averaged per week rather than
+  // charted daily like sleep/water/cigarettes.
+  function computeWeeklyAverageSeries(daily, key, range) {
+    var buckets = {}; // weekStart -> { sum, count }
+    Object.keys(daily)
+      .filter(function (d) { return d >= range.start && d <= range.end && daily[d][key] != null; })
+      .forEach(function (d) {
+        var weekStart = getWeekStartISO(d);
+        buckets[weekStart] = buckets[weekStart] || { sum: 0, count: 0 };
+        buckets[weekStart].sum += daily[d][key];
+        buckets[weekStart].count += 1;
+      });
+    return Object.keys(buckets).sort().map(function (weekStart) {
+      return { date: weekStart, value: roundN(buckets[weekStart].sum / buckets[weekStart].count, 1) };
+    });
+  }
+
+  function renderWaistTrend(daily, range) {
+    var points = computeWeeklyAverageSeries(daily, "waistCm", range);
+    drawLineChart("trendsWaistChart", "trendsWaistEmpty", points);
+  }
+
   function renderTrends() {
     var daily = loadDaily();
     var range = getTrendsRange();
     renderCaloriesTrend(daily, range);
     TREND_METRICS.forEach(function (cfg) { renderMetricTrend(cfg, daily, range); });
+    renderWaistTrend(daily, range);
     renderGoalChart();
   }
 
@@ -3001,6 +3039,7 @@
           }
           parts.push(weightPart);
         }
+        if (entry.waistCm != null) parts.push(entry.waistCm + " cm waist");
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
         if (entry.waterLiters != null) parts.push(entry.waterLiters + " L water");
         if (entry.cigarettesCount != null) parts.push(entry.cigarettesCount + " cigarettes");
@@ -3710,6 +3749,8 @@
       getGoal: getGoal,
       getGoalEndDate: getGoalEndDate,
       computeUpdatedCheckpoints: computeUpdatedCheckpoints,
+      getWeekStartISO: getWeekStartISO,
+      computeWeeklyAverageSeries: computeWeeklyAverageSeries,
       getGoalCheckpointStatuses: getGoalCheckpointStatuses,
       isGoalStalled: isGoalStalled,
       getBestWeightSoFar: getBestWeightSoFar,
