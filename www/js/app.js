@@ -552,6 +552,7 @@
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
+    renderCardioTarget(today, daily);
     renderDayStatus(entry, today, daily);
     renderWeightTrend(daily);
   }
@@ -752,6 +753,60 @@
     }
     var total = parts.reduce(function (sum, p) { return sum + p.kcal; }, 0);
     return { total: total, parts: parts };
+  }
+
+  var CARDIO_MINUTES_TARGET_DEFAULT = 60;
+  var STEP_TARGET_DEFAULT = 22000;
+
+  function getCardioMinutesTarget() {
+    var settings = loadSettings();
+    return settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : CARDIO_MINUTES_TARGET_DEFAULT;
+  }
+
+  function getStepTarget() {
+    var settings = loadSettings();
+    return settings.stepTarget != null ? settings.stepTarget : STEP_TARGET_DEFAULT;
+  }
+
+  // Minutes of logged cardio on a date, summed straight from that day's workouts'
+  // cardio exercises (actual logged duration, not the net-burn-minutes estimate used
+  // elsewhere for calorie math).
+  function getCardioMinutesForDate(date) {
+    var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
+    var minutes = 0;
+    workouts.forEach(function (wk) {
+      wk.exercises.forEach(function (ex) {
+        if (ex.type === "cardio") minutes += ex.duration || 0;
+      });
+    });
+    return minutes;
+  }
+
+  // A day counts as "cardio done" if either logged cardio minutes or steps clear their
+  // respective target -- doing one or the other is enough, not both.
+  function isCardioDoneForDate(date, daily) {
+    var entry = (daily || loadDaily())[date];
+    var minutes = getCardioMinutesForDate(date);
+    var steps = entry && entry.steps != null ? entry.steps : 0;
+    return minutes >= getCardioMinutesTarget() || steps >= getStepTarget();
+  }
+
+  // How many of the last 7 days (ending on date) had cardio done.
+  function getCardioAdherence7Day(date, daily) {
+    daily = daily || loadDaily();
+    var count = 0;
+    for (var i = 0; i < 7; i++) {
+      if (isCardioDoneForDate(addDaysISO(date, -i), daily)) count++;
+    }
+    return count;
+  }
+
+  function renderCardioTarget(date, daily) {
+    var el = document.getElementById("sumCardioTarget");
+    if (!el) return;
+    var done = isCardioDoneForDate(date, daily);
+    var adherence = getCardioAdherence7Day(date, daily);
+    el.textContent = (done ? "✅" : "⬜") + " Cardio done · " + adherence + "/7 this week";
   }
 
   function renderDayStatus(entry, date, daily) {
@@ -2689,6 +2744,8 @@
     document.getElementById("proteinTargetInput").value = settings.proteinTarget != null ? settings.proteinTarget : "";
     document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
     document.getElementById("treatBudgetInput").value = settings.treatBudget != null ? settings.treatBudget : "";
+    document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : "";
+    document.getElementById("stepTargetInput").value = settings.stepTarget != null ? settings.stepTarget : "";
   }
 
   function handleTargetModeChange(mode) {
@@ -2731,6 +2788,22 @@
     var value = document.getElementById("treatBudgetInput").value;
     var settings = loadSettings();
     settings.treatBudget = value !== "" ? Math.round(parseFloat(value)) : TREAT_BUDGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleCardioMinutesTargetChange() {
+    var value = document.getElementById("cardioMinutesTargetInput").value;
+    var settings = loadSettings();
+    settings.cardioMinutesTarget = value !== "" ? Math.round(parseFloat(value)) : CARDIO_MINUTES_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleStepTargetChange() {
+    var value = document.getElementById("stepTargetInput").value;
+    var settings = loadSettings();
+    settings.stepTarget = value !== "" ? Math.round(parseFloat(value)) : STEP_TARGET_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -2935,6 +3008,8 @@
     document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
     document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
     document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
+    document.getElementById("cardioMinutesTargetInput").addEventListener("change", handleCardioMinutesTargetChange);
+    document.getElementById("stepTargetInput").addEventListener("change", handleStepTargetChange);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
