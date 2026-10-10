@@ -1633,6 +1633,8 @@
   // tighter than usual when behind pace (floored at BMR), looser when comfortably
   // ahead, unchanged when on pace. Null wherever getGoalTodaySummary is (goal not
   // started yet, or nothing logged).
+  var GOAL_INTAKE_NEAR_KCAL = 100; // "on target today" band for logged intake vs. today's target
+
   function getGoalPaceGuidance(today) {
     var summary = getGoalTodaySummary(today);
     if (!summary) return null;
@@ -1640,20 +1642,40 @@
     var behind = summary.gapKg > GOAL_PACE_GAP_THRESHOLD_KG;
     var ahead = summary.gapKg < -GOAL_PACE_GAP_THRESHOLD_KG;
     var suggested = base;
-    var message;
+    var paceNote = "";
     if (behind) {
       var daily = loadDaily();
       var bmr = computeBMRForDate(today, daily[today] || {}, daily);
       suggested = Math.round((base - GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
       if (bmr != null) suggested = Math.max(suggested, bmr);
-      message = "Behind pace by " + roundN(summary.gapKg, 1) + " kg — aim for " + suggested +
-        " kcal today (or add extra cardio) to work back toward the line.";
+      paceNote = "Behind pace by " + roundN(summary.gapKg, 1) + " kg — ";
     } else if (ahead) {
       suggested = Math.round((base + GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
-      message = "Ahead of pace by " + roundN(Math.abs(summary.gapKg), 1) + " kg — " + suggested +
-        " kcal today is plenty, no need to push harder.";
+      paceNote = "Ahead of pace by " + roundN(Math.abs(summary.gapKg), 1) + " kg — ";
+    }
+
+    var intake = (loadDaily()[today] || {}).calories;
+    var message;
+    if (intake == null) {
+      // Nothing logged yet today -- there's no intake to compare, so just state the target.
+      if (behind) {
+        message = paceNote + "aim for " + suggested + " kcal today (or add extra cardio) to work back toward the line.";
+      } else if (ahead) {
+        message = paceNote + suggested + " kcal today is plenty, no need to push harder.";
+      } else {
+        message = "Right on pace — keep aiming for " + base + " kcal today.";
+      }
     } else {
-      message = "Right on pace — keep aiming for " + base + " kcal today.";
+      // Something's logged -- the message must reflect it, not just the weight trend,
+      // otherwise "on pace" can read as "fine" on a day that's actually way over target.
+      var diff = intake - suggested;
+      if (Math.abs(diff) <= GOAL_INTAKE_NEAR_KCAL) {
+        message = paceNote + "On target today — " + intake + " / " + suggested + " kcal logged.";
+      } else if (diff > 0) {
+        message = paceNote + intake + " kcal logged, " + diff + " kcal over today's " + suggested + " kcal target.";
+      } else {
+        message = paceNote + intake + " kcal logged, " + Math.abs(diff) + " kcal under today's " + suggested + " kcal target.";
+      }
     }
     return { baseTarget: base, suggestedTarget: suggested, message: message, behind: behind, ahead: ahead };
   }

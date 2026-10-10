@@ -628,6 +628,44 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.resolveIsTreatForEntry({ name: "Dates", isTreat: true }, customFoods) === true, "expected the historical snapshot to win over a later un-treat");
   });
 
+  test("getGoalPaceGuidance: on-pace weight-wise but today's intake is far over target does not say 'Right on pace'", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107, calories: 3000 } });
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance != null, "expected guidance once weight is logged on the goal's start date");
+    assert(guidance.behind === false && guidance.ahead === false, "expected on-pace (weight exactly on the target line)");
+    assert(guidance.message.indexOf("Right on pace") === -1, "expected the misleading 'Right on pace' wording to be gone, got: " + guidance.message);
+    assert(guidance.message.indexOf("3000") !== -1 && guidance.message.indexOf("over") !== -1,
+      "expected the message to call out today's logged 3000 kcal as over target, got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: intake near today's target reads as on target", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107, calories: 1950 } }); // base target is 1900 by default
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance.message.indexOf("On target today") === 0, "expected an on-target message, got: " + guidance.message);
+    assert(guidance.message.indexOf("1950") !== -1 && guidance.message.indexOf("1900") !== -1, "expected both the logged and target kcal in the message");
+  });
+
+  test("getGoalPaceGuidance: intake well under today's target reads as under, with the kcal difference", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107, calories: 1200 } });
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance.message.indexOf("under") !== -1, "expected an 'under' message, got: " + guidance.message);
+    assert(guidance.message.indexOf("700") !== -1, "expected the 700 kcal difference (1900 - 1200), got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: still falls back to target-only wording when nothing is logged today", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107 } }); // weight logged, but no calories yet
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance.message === "Right on pace — keep aiming for 1900 kcal today.", "expected the original target-only wording, got: " + guidance.message);
+  });
+
   clearStorage();
 
   // ---------- render ----------
