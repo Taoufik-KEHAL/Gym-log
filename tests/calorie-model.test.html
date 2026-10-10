@@ -226,7 +226,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
     hooks.saveDaily({ "2026-10-10": { weight: 107 } });
     var statuses = hooks.getGoalCheckpointStatuses("2026-10-15");
-    assert(statuses.length === 3, "expected 3 checkpoints, got " + statuses.length);
+    assert(statuses.length === 4, "expected 4 checkpoints, got " + statuses.length);
     assert(statuses.every(function (s) { return s.status === "upcoming"; }), "expected all upcoming before any checkpoint date");
   });
 
@@ -731,6 +731,35 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     hooks.saveSettings({ fixedTargetsEnabled: true, liftingDayTarget: 2300, cardioRestDayTarget: 1900 });
     assert(hooks.getGoalBaseCalorieTarget("workout") === 2300, "expected the lifting day target");
     assert(hooks.getGoalBaseCalorieTarget("rest") === 1900, "expected the cardio/rest day target");
+  });
+
+  test("getGoal: defaults to a 0.7 kg/week rate and the updated 4-checkpoint plan", function () {
+    clearStorage();
+    var goal = hooks.getGoal();
+    assert(goal.ratePerWeek === 0.7, "expected the default rate to be 0.7, got " + goal.ratePerWeek);
+    assert(goal.checkpoints.length === 4, "expected 4 default checkpoints, got " + goal.checkpoints.length);
+    var byDate = {};
+    goal.checkpoints.forEach(function (cp) { byDate[cp.date] = cp.target; });
+    assert(byDate["2026-10-31"] === 105.0, "expected 2026-10-31 <= 105.0 kg");
+    assert(byDate["2026-11-21"] === 102.8, "expected 2026-11-21 <= 102.8 kg");
+    assert(byDate["2026-12-12"] === 100.7, "expected 2026-12-12 <= 100.7 kg");
+    assert(byDate["2026-12-31"] === 99.0, "expected 2026-12-31 = 99.0 kg");
+  });
+
+  test("computeUpdatedCheckpoints: updates only the targeted checkpoint's date or target", function () {
+    var checkpoints = [{ date: "2026-10-31", target: 105.0 }, { date: "2026-11-21", target: 102.8 }];
+    var afterTarget = hooks.computeUpdatedCheckpoints(checkpoints, 1, "target", "101.5");
+    assert(afterTarget[1].target === 101.5 && afterTarget[1].date === "2026-11-21", "expected only index 1's target to change");
+    assert(afterTarget[0].target === 105.0, "expected index 0 to be untouched");
+
+    var afterDate = hooks.computeUpdatedCheckpoints(checkpoints, 0, "date", "2026-11-01");
+    assert(afterDate[0].date === "2026-11-01" && afterDate[0].target === 105.0, "expected only index 0's date to change");
+  });
+
+  test("computeUpdatedCheckpoints: ignores an invalid target and an empty date", function () {
+    var checkpoints = [{ date: "2026-10-31", target: 105.0 }];
+    assert(hooks.computeUpdatedCheckpoints(checkpoints, 0, "target", "not a number")[0].target === 105.0, "expected an invalid target to be ignored");
+    assert(hooks.computeUpdatedCheckpoints(checkpoints, 0, "date", "")[0].date === "2026-10-31", "expected an empty date to be ignored");
   });
 
   clearStorage();

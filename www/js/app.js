@@ -1441,16 +1441,17 @@
     startDate: "2026-10-10",
     startWeight: 107.0,
     goalWeight: 99,
-    ratePerWeek: 0.8
+    ratePerWeek: 0.7
   };
 
-  // Not separately editable in the UI (only start/goal/rate are) -- these come from the
-  // user's own plan and don't divide evenly from the rate, so they're kept as given
-  // rather than derived.
+  // Editable independently (date + target per checkpoint, via renderGoalCheckpointEditor)
+  // -- these come from the user's own plan and don't divide evenly from the rate, so
+  // they're kept as given rather than derived.
   var GOAL_CHECKPOINTS_DEFAULT = [
-    { date: "2026-10-31", target: 104.8 },
-    { date: "2026-11-21", target: 102.4 },
-    { date: "2026-12-19", target: 99 }
+    { date: "2026-10-31", target: 105.0 },
+    { date: "2026-11-21", target: 102.8 },
+    { date: "2026-12-12", target: 100.7 },
+    { date: "2026-12-31", target: 99.0 }
   ];
 
   function getGoal() {
@@ -1803,6 +1804,76 @@
     document.getElementById("goalStartWeightInput").value = goal.startWeight;
     document.getElementById("goalWeightInput").value = goal.goalWeight;
     document.getElementById("goalRateInput").value = goal.ratePerWeek;
+    renderGoalCheckpointEditor();
+  }
+
+  // Each checkpoint is its own date + target-weight pair, editable independently --
+  // they come from the user's own plan and don't divide evenly from the rate, so
+  // they're never recomputed from start/goal/rate.
+  function renderGoalCheckpointEditor() {
+    var container = document.getElementById("goalCheckpointEditor");
+    if (!container) return;
+    var goal = getGoal();
+    container.innerHTML = "";
+    goal.checkpoints.forEach(function (cp, i) {
+      var row = document.createElement("div");
+      row.className = "add-set-row";
+      row.style.gridTemplateColumns = "1fr 1fr";
+      row.style.marginTop = "8px";
+
+      var dateField = document.createElement("div");
+      dateField.className = "mini-field";
+      var dateLabel = document.createElement("label");
+      dateLabel.textContent = "Checkpoint " + (i + 1) + " date";
+      var dateInput = document.createElement("input");
+      dateInput.type = "date";
+      dateInput.value = cp.date;
+      dateInput.addEventListener("change", function () { handleGoalCheckpointChange(i, "date", dateInput.value); });
+      dateField.appendChild(dateLabel);
+      dateField.appendChild(dateInput);
+
+      var targetField = document.createElement("div");
+      targetField.className = "mini-field";
+      var targetLabel = document.createElement("label");
+      targetLabel.textContent = "Target (kg)";
+      var targetInput = document.createElement("input");
+      targetInput.type = "number";
+      targetInput.step = "0.1";
+      targetInput.min = "0";
+      targetInput.inputMode = "decimal";
+      targetInput.value = cp.target;
+      targetInput.addEventListener("change", function () { handleGoalCheckpointChange(i, "target", targetInput.value); });
+      targetField.appendChild(targetLabel);
+      targetField.appendChild(targetInput);
+
+      row.appendChild(dateField);
+      row.appendChild(targetField);
+      container.appendChild(row);
+    });
+  }
+
+  function computeUpdatedCheckpoints(checkpoints, index, field, value) {
+    var next = checkpoints.map(function (cp) { return { date: cp.date, target: cp.target }; });
+    if (field === "date" && value) next[index].date = value;
+    if (field === "target") {
+      var parsed = parseFloat(value);
+      if (!isNaN(parsed)) next[index].target = parsed;
+    }
+    return next;
+  }
+
+  function handleGoalCheckpointChange(index, field, value) {
+    var goal = getGoal();
+    var settings = loadSettings();
+    settings.goal = {
+      startDate: goal.startDate,
+      startWeight: goal.startWeight,
+      goalWeight: goal.goalWeight,
+      ratePerWeek: goal.ratePerWeek,
+      checkpoints: computeUpdatedCheckpoints(goal.checkpoints, index, field, value)
+    };
+    saveSettings(settings);
+    renderGoalChart();
   }
 
   function handleGoalFieldChange() {
@@ -3636,7 +3707,9 @@
       saveSettings: saveSettings,
       loadDaily: loadDaily,
       saveDaily: saveDaily,
+      getGoal: getGoal,
       getGoalEndDate: getGoalEndDate,
+      computeUpdatedCheckpoints: computeUpdatedCheckpoints,
       getGoalCheckpointStatuses: getGoalCheckpointStatuses,
       isGoalStalled: isGoalStalled,
       getBestWeightSoFar: getBestWeightSoFar,
