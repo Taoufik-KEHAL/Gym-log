@@ -330,6 +330,15 @@
       <canvas id="trendsFatChart"></canvas>
       <div class="empty-state" id="trendsFatEmpty" style="display:none;">Log fat on a few days to see a trend.</div>
     </div>
+
+    <div class="card">
+      <h2>Goal Plan</h2>
+      <p class="hint hint--tight">Solid line: 7-day rolling average weight. Dashed line: straight-line target from start to goal.</p>
+      <canvas id="goalChart"></canvas>
+      <div class="empty-state" id="goalChartEmpty" style="display:none;">Log your weight on a few days to see your goal trend.</div>
+      <div id="goalCheckpoints"></div>
+      <p class="hint hint--tight" id="goalStallWarning" style="display:none; color:var(--danger);"></p>
+    </div>
   </section>
 
   <!-- DATA VIEW -->
@@ -370,6 +379,18 @@
       <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:10px;">
         <div class="mini-field"><label for="cardioMinutesTargetInput">Daily cardio target (min)</label><input type="number" id="cardioMinutesTargetInput" step="5" min="0" inputmode="numeric" placeholder="e.g. 60" /></div>
         <div class="mini-field"><label for="stepTargetInput">Alternative step target</label><input type="number" id="stepTargetInput" step="500" min="0" inputmode="numeric" placeholder="e.g. 22000" /></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Goal Plan</h2>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:0;">
+        <div class="mini-field"><label for="goalStartDateInput">Start date</label><input type="date" id="goalStartDateInput" /></div>
+        <div class="mini-field"><label for="goalStartWeightInput">Start weight (kg)</label><input type="number" id="goalStartWeightInput" step="0.1" min="0" inputmode="decimal" /></div>
+      </div>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
+        <div class="mini-field"><label for="goalWeightInput">Goal weight (kg)</label><input type="number" id="goalWeightInput" step="0.1" min="0" inputmode="decimal" /></div>
+        <div class="mini-field"><label for="goalRateInput">Planned rate (kg/week)</label><input type="number" id="goalRateInput" step="0.1" min="0" inputmode="decimal" /></div>
       </div>
     </div>
 

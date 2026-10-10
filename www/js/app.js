@@ -1265,11 +1265,180 @@
     el.style.display = "flex";
   }
 
+  // ---------- goal plan ----------
+
+  var GOAL_DEFAULTS = {
+    startDate: "2026-10-10",
+    startWeight: 107.0,
+    goalWeight: 99,
+    ratePerWeek: 0.8
+  };
+
+  // Not separately editable in the UI (only start/goal/rate are) -- these come from the
+  // user's own plan and don't divide evenly from the rate, so they're kept as given
+  // rather than derived.
+  var GOAL_CHECKPOINTS_DEFAULT = [
+    { date: "2026-10-31", target: 104.8 },
+    { date: "2026-11-21", target: 102.4 },
+    { date: "2026-12-19", target: 99 }
+  ];
+
+  function getGoal() {
+    var settings = loadSettings();
+    var goal = settings.goal || {};
+    return {
+      startDate: goal.startDate || GOAL_DEFAULTS.startDate,
+      startWeight: goal.startWeight != null ? goal.startWeight : GOAL_DEFAULTS.startWeight,
+      goalWeight: goal.goalWeight != null ? goal.goalWeight : GOAL_DEFAULTS.goalWeight,
+      ratePerWeek: goal.ratePerWeek != null ? goal.ratePerWeek : GOAL_DEFAULTS.ratePerWeek,
+      checkpoints: goal.checkpoints || GOAL_CHECKPOINTS_DEFAULT
+    };
+  }
+
+  // The straight target line's implied end date: when goalWeight is reached if
+  // ratePerWeek holds exactly from startDate.
+  function getGoalEndDate(goal) {
+    if (!(goal.ratePerWeek > 0)) return goal.startDate;
+    var weeks = (goal.startWeight - goal.goalWeight) / goal.ratePerWeek;
+    return addDaysISO(goal.startDate, Math.round(weeks * 7));
+  }
+
+  // Simple (non-exponential) trailing N-day mean over an interpolated daily weight series.
+  function computeRollingAverageSeries(series, windowDays) {
+    return series.map(function (pt, i) {
+      var slice = series.slice(Math.max(0, i - windowDays + 1), i + 1);
+      var avg = slice.reduce(function (sum, p) { return sum + p.weight; }, 0) / slice.length;
+      return { date: pt.date, value: avg };
+    });
+  }
+
+  // 7-day rolling average of (interpolated) daily weight from the goal's start date
+  // through endDate. Null if nothing has ever been weighed in.
+  function getGoalRollingAverage(endDate) {
+    var goal = getGoal();
+    var start = goal.startDate < endDate ? goal.startDate : endDate;
+    var series = buildInterpolatedWeightSeries(loadDaily(), start, endDate);
+    if (series == null) return null;
+    return computeRollingAverageSeries(series, 7);
+  }
+
+  // The rolling-average value at, or nearest before, a given date.
+  function rollingAverageValueAt(rollingAvg, date) {
+    var value = null;
+    for (var i = 0; i < rollingAvg.length; i++) {
+      if (rollingAvg[i].date > date) break;
+      value = rollingAvg[i].value;
+    }
+    return value;
+  }
+
+  // Each checkpoint is "upcoming" before its date arrives, else "on-track" when the
+  // rolling average is at or under its target weight, else "behind".
+  function getGoalCheckpointStatuses(today) {
+    var goal = getGoal();
+    var rollingAvg = getGoalRollingAverage(today);
+    return goal.checkpoints.map(function (cp) {
+      if (today < cp.date) return { date: cp.date, target: cp.target, status: "upcoming", value: null };
+      var value = rollingAvg ? rollingAverageValueAt(rollingAvg, cp.date) : null;
+      if (value == null) return { date: cp.date, target: cp.target, status: "upcoming", value: null };
+      return { date: cp.date, target: cp.target, status: value <= cp.target ? "on-track" : "behind", value: value };
+    });
+  }
+
+  // True if the 7-day rolling average has not dropped at all across the last 14
+  // consecutive days (every day-over-day step was flat or up).
+  function isGoalStalled(today) {
+    var rollingAvg = getGoalRollingAverage(today);
+    if (rollingAvg == null || rollingAvg.length < 15) return false;
+    var last15 = rollingAvg.slice(-15);
+    for (var i = 1; i < last15.length; i++) {
+      if (last15[i].value < last15[i - 1].value) return false;
+    }
+    return true;
+  }
+
+  function renderGoalCheckpoints(today) {
+    var listEl = document.getElementById("goalCheckpoints");
+    if (listEl) {
+      var statuses = getGoalCheckpointStatuses(today);
+      listEl.innerHTML = "";
+      statuses.forEach(function (cp) {
+        var row = document.createElement("div");
+        row.className = "day-status";
+        row.style.display = "flex";
+        var icon = cp.status === "on-track" ? "🟢" : cp.status === "behind" ? "🔴" : "⚪";
+        var cls = cp.status === "on-track" ? "status-good" : cp.status === "behind" ? "status-bad" : "";
+        var label = cp.status === "on-track" ? "On track" : cp.status === "behind" ? "Behind" : "Upcoming";
+        row.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + formatDateShort(cp.date) + " ≤ " + cp.target + " kg</span>" +
+          "<span>" + label + (cp.value != null ? " (" + roundN(cp.value, 1) + " kg avg)" : "") + "</span>";
+        listEl.appendChild(row);
+      });
+    }
+
+    var stallEl = document.getElementById("goalStallWarning");
+    if (stallEl) {
+      var stalled = isGoalStalled(today);
+      stallEl.style.display = stalled ? "block" : "none";
+      if (stalled) stallEl.textContent = "⚠️ Your 7-day average hasn't dropped in the last 14 days.";
+    }
+  }
+
+  function renderGoalChart() {
+    var goal = getGoal();
+    var today = todayISO();
+    var chartEnd = today > goal.startDate ? today : goal.startDate;
+    var rollingAvg = getGoalRollingAverage(chartEnd);
+    var avgPoints = rollingAvg ? rollingAvg.map(function (p) { return { date: p.date, value: roundN(p.value, 2) }; }) : [];
+
+    var goalEndDate = getGoalEndDate(goal);
+    var series = [];
+    var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
+    var textDimColor = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
+
+    if (avgPoints.length > 0) series.push({ points: avgPoints, color: accentColor });
+    if (goalEndDate !== goal.startDate) {
+      series.push({
+        points: [{ date: goal.startDate, value: goal.startWeight }, { date: goalEndDate, value: goal.goalWeight }],
+        color: textDimColor,
+        dashed: true
+      });
+    }
+    drawMultiLineChart("goalChart", "goalChartEmpty", series);
+    renderGoalCheckpoints(today);
+  }
+
+  function fillGoalForm() {
+    var goal = getGoal();
+    document.getElementById("goalStartDateInput").value = goal.startDate;
+    document.getElementById("goalStartWeightInput").value = goal.startWeight;
+    document.getElementById("goalWeightInput").value = goal.goalWeight;
+    document.getElementById("goalRateInput").value = goal.ratePerWeek;
+  }
+
+  function handleGoalFieldChange() {
+    var settings = loadSettings();
+    var startDate = document.getElementById("goalStartDateInput").value || GOAL_DEFAULTS.startDate;
+    var startWeight = parseFloat(document.getElementById("goalStartWeightInput").value);
+    var goalWeight = parseFloat(document.getElementById("goalWeightInput").value);
+    var ratePerWeek = parseFloat(document.getElementById("goalRateInput").value);
+    settings.goal = {
+      startDate: startDate,
+      startWeight: isNaN(startWeight) ? GOAL_DEFAULTS.startWeight : startWeight,
+      goalWeight: isNaN(goalWeight) ? GOAL_DEFAULTS.goalWeight : goalWeight,
+      ratePerWeek: isNaN(ratePerWeek) ? GOAL_DEFAULTS.ratePerWeek : ratePerWeek,
+      checkpoints: (settings.goal && settings.goal.checkpoints) || GOAL_CHECKPOINTS_DEFAULT
+    };
+    saveSettings(settings);
+    renderGoalChart();
+  }
+
   function renderTrends() {
     var daily = loadDaily();
     var range = getTrendsRange();
     renderCaloriesTrend(daily, range);
     TREND_METRICS.forEach(function (cfg) { renderMetricTrend(cfg, daily, range); });
+    renderGoalChart();
   }
 
   // ---------- workout builder ----------
@@ -2640,6 +2809,7 @@
     if (payload.fasting) { saveFasting(payload.fasting); renderFastingStatus(); }
     toast("Import complete");
     fillProfileForm();
+    fillGoalForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
@@ -2669,6 +2839,7 @@
     editingWorkoutId = null;
     handleCancelEditMyFood();
     fillProfileForm();
+    fillGoalForm();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
     renderToday();
@@ -3011,6 +3182,11 @@
     document.getElementById("cardioMinutesTargetInput").addEventListener("change", handleCardioMinutesTargetChange);
     document.getElementById("stepTargetInput").addEventListener("change", handleStepTargetChange);
 
+    fillGoalForm();
+    ["goalStartDateInput", "goalStartWeightInput", "goalWeightInput", "goalRateInput"].forEach(function (id) {
+      document.getElementById(id).addEventListener("change", handleGoalFieldChange);
+    });
+
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
 
@@ -3114,7 +3290,10 @@
       loadSettings: loadSettings,
       saveSettings: saveSettings,
       loadDaily: loadDaily,
-      saveDaily: saveDaily
+      saveDaily: saveDaily,
+      getGoalEndDate: getGoalEndDate,
+      getGoalCheckpointStatuses: getGoalCheckpointStatuses,
+      isGoalStalled: isGoalStalled
     };
   }
 
