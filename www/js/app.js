@@ -216,6 +216,25 @@
     return best;
   }
 
+  var TYPO_CHECK_MAX_REPS = 30; // ask for confirmation above this many reps in one set
+  var TYPO_CHECK_WEIGHT_INCREASE_PCT = 0.25; // ...or this much above the previous best
+
+  // Null when the set looks normal; otherwise a confirmation message naming every
+  // reason it looks like a typo (e.g. 127 kg x 100 reps on a calf press).
+  function getSetTypoWarning(exerciseName, reps, weight, currentSessionSets) {
+    var reasons = [];
+    if (reps > TYPO_CHECK_MAX_REPS) {
+      reasons.push(reps + " reps");
+    }
+    var prevBest = getBestWeightSoFar(exerciseName, currentSessionSets);
+    if (prevBest != null && prevBest > 0 && weight > prevBest * (1 + TYPO_CHECK_WEIGHT_INCREASE_PCT)) {
+      reasons.push(weight + " kg (more than " + Math.round(TYPO_CHECK_WEIGHT_INCREASE_PCT * 100) +
+        "% above your previous best of " + prevBest + " kg)");
+    }
+    if (reasons.length === 0) return null;
+    return "Double-check this set for " + exerciseName + ": " + reasons.join(" and ") + ". Save it anyway?";
+  }
+
   // The best set (by reps x weight) for a strength exercise from the most recent
   // *saved* session strictly before `beforeDate` that included it -- "last time you
   // did this exercise", not the all-time best. Null if there's no prior session.
@@ -1886,12 +1905,8 @@
           var weight = parseFloat(weightInput.value);
           if (!reps) { toast("Enter reps"); return; }
           var w = isNaN(weight) ? 0 : weight;
-          var prevBest = getBestWeightSoFar(ex.name, ex.sets);
-          if (prevBest != null && prevBest > 0 && w > prevBest * 1.5) {
-            var ok = confirm(w + " kg for " + ex.name + " is more than 50% above your previous best of " +
-              prevBest + " kg. Save this set anyway?");
-            if (!ok) return;
-          }
+          var warning = getSetTypoWarning(ex.name, reps, w, ex.sets);
+          if (warning && !confirm(warning)) return;
           ex.sets.push({ reps: reps, weight: w });
           renderWorkoutBuilder();
         });
@@ -3626,7 +3641,8 @@
       loadFoodLog: loadFoodLog,
       saveFoodLog: saveFoodLog,
       resolveIsTreatForEntry: resolveIsTreatForEntry,
-      getTreatCaloriesForDate: getTreatCaloriesForDate
+      getTreatCaloriesForDate: getTreatCaloriesForDate,
+      getSetTypoWarning: getSetTypoWarning
     };
   }
 
