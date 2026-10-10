@@ -573,6 +573,7 @@
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     renderCardioTarget(today, daily);
+    renderGoalSummary(today);
     renderDayStatus(entry, today, daily);
     renderWeightTrend(daily);
   }
@@ -1426,6 +1427,70 @@
     }
     drawMultiLineChart("goalChart", "goalChartEmpty", series);
     renderGoalCheckpoints(today);
+  }
+
+  // Weight expected on the straight start->goal target line at a given date.
+  function getGoalTargetWeightAt(goal, date) {
+    var endDate = getGoalEndDate(goal);
+    if (date <= goal.startDate || endDate <= goal.startDate) return goal.startWeight;
+    if (date >= endDate) return goal.goalWeight;
+    var toMs = function (iso) { return new Date(iso + "T00:00:00").getTime(); };
+    var frac = (toMs(date) - toMs(goal.startDate)) / (toMs(endDate) - toMs(goal.startDate));
+    return goal.startWeight + (goal.goalWeight - goal.startWeight) * frac;
+  }
+
+  // A condensed snapshot of goal progress for a given date: current rolling-average
+  // weight, how far it is from the straight-line target at that date (positive = behind,
+  // i.e. heavier than planned), the next not-yet-arrived checkpoint, and stall state.
+  // Null before the goal has started or before any weight is logged.
+  function getGoalTodaySummary(today) {
+    var goal = getGoal();
+    if (today < goal.startDate) return null;
+    var rollingAvg = getGoalRollingAverage(today);
+    if (!rollingAvg || rollingAvg.length === 0) return null;
+    var currentAvg = rollingAvg[rollingAvg.length - 1].value;
+    var targetAtToday = getGoalTargetWeightAt(goal, today);
+    var nextCheckpoint = null;
+    getGoalCheckpointStatuses(today).some(function (cp) {
+      if (cp.status === "upcoming") { nextCheckpoint = cp; return true; }
+      return false;
+    });
+    return {
+      currentAvg: currentAvg,
+      targetAtToday: targetAtToday,
+      gapKg: currentAvg - targetAtToday,
+      nextCheckpoint: nextCheckpoint,
+      stalled: isGoalStalled(today)
+    };
+  }
+
+  function renderGoalSummary(today) {
+    var el = document.getElementById("goalTodaySummary");
+    if (!el) return;
+    var summary = getGoalTodaySummary(today);
+    if (!summary) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    var onPace = Math.abs(summary.gapKg) <= 0.15;
+    var behind = summary.gapKg > 0.15;
+    var cls = behind ? "status-bad" : onPace ? "status-warn" : "status-good";
+    var icon = behind ? "🔴" : onPace ? "🟡" : "🟢";
+    var gapText = onPace ? "on pace" : behind
+      ? roundN(summary.gapKg, 1) + " kg behind pace"
+      : roundN(Math.abs(summary.gapKg), 1) + " kg ahead of pace";
+
+    var parts = [];
+    parts.push('<span class="day-badge ' + cls + '">' + icon + " " + roundN(summary.currentAvg, 1) + " kg avg — " + gapText + "</span>");
+    if (summary.nextCheckpoint) {
+      parts.push("<span>Next: " + formatDateShort(summary.nextCheckpoint.date) + " ≤ " + summary.nextCheckpoint.target + " kg</span>");
+    }
+    if (summary.stalled) {
+      parts.push('<span class="day-badge status-bad">⚠️ Stalled 14+ days</span>');
+    }
+    el.innerHTML = parts.join("");
+    el.style.display = "flex";
   }
 
   function fillGoalForm() {
@@ -3177,7 +3242,9 @@
       isGoalStalled: isGoalStalled,
       getBestWeightSoFar: getBestWeightSoFar,
       saveWorkouts: saveWorkouts,
-      getExportableSettings: getExportableSettings
+      getExportableSettings: getExportableSettings,
+      getGoalTargetWeightAt: getGoalTargetWeightAt,
+      getGoalTodaySummary: getGoalTodaySummary
     };
   }
 

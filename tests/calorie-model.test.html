@@ -322,6 +322,40 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.loadSettings().usdaApiKey === "super-secret-key", "expected the stored key to be unaffected");
   });
 
+  // ---------- goal: surfaced on Today ----------
+
+  test("getGoalTargetWeightAt: linear interpolation along the straight target line", function () {
+    var goal = { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 };
+    // End date is 2026-12-19 (70 days). Halfway (35 days in) should be halfway in weight.
+    var halfway = hooks.getGoalTargetWeightAt(goal, "2026-11-14");
+    assert(approx(halfway, 103, 0.3), "expected ~103 kg halfway, got " + halfway);
+    assert(hooks.getGoalTargetWeightAt(goal, "2026-10-10") === 107, "expected startWeight at startDate");
+    assert(hooks.getGoalTargetWeightAt(goal, "2026-12-19") === 99, "expected goalWeight at the implied end date");
+    assert(hooks.getGoalTargetWeightAt(goal, "2027-01-01") === 99, "expected goalWeight to hold past the end date");
+  });
+
+  test("getGoalTodaySummary: flags behind pace when the rolling average trails the target line", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-09-20", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    for (var i = 0; i <= 20; i++) {
+      var d = new Date("2026-09-20T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.05 }; // slow decline, well under the 0.8kg/week pace
+    }
+    hooks.saveDaily(daily);
+    var summary = hooks.getGoalTodaySummary("2026-10-10");
+    assert(summary != null, "expected a summary once the goal has started and weight is logged");
+    assert(summary.gapKg > 0.5, "expected a meaningfully positive (behind-pace) gap, got " + summary.gapKg);
+    assert(summary.nextCheckpoint && summary.nextCheckpoint.date === "2026-10-31", "expected the first checkpoint as next, got " + JSON.stringify(summary.nextCheckpoint));
+  });
+
+  test("getGoalTodaySummary: null before the goal's start date", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    hooks.saveDaily({ "2026-10-01": { weight: 108 } });
+    assert(hooks.getGoalTodaySummary("2026-10-05") === null, "expected null before the goal has started");
+  });
+
   clearStorage();
 
   // ---------- render ----------
