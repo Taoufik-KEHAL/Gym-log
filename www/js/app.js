@@ -574,6 +574,7 @@
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     renderCardioTarget(today, daily);
     renderGoalSummary(today);
+    renderGoalPaceHint(today);
     renderDayStatus(entry, today, daily);
     renderWeightTrend(daily);
   }
@@ -1491,6 +1492,60 @@
     }
     el.innerHTML = parts.join("");
     el.style.display = "flex";
+  }
+
+  var GOAL_PACE_ADJUSTMENT_KCAL = 150; // how much to tighten/relax today's target by, based on pace
+  var GOAL_PACE_GAP_THRESHOLD_KG = 0.15; // matches the "on pace" band used in the Today summary badge
+
+  // The calorie target pace guidance adjusts from -- the fixed target if one's set,
+  // else the midpoint of the auto-mode's 500-750 kcal deficit range off the editable
+  // maintenance estimate.
+  function getGoalBaseCalorieTarget() {
+    var fixed = getFixedCalorieTarget();
+    if (fixed != null) return fixed;
+    return Math.round((getMaintenanceTdeeForTargets() - 600) / 10) * 10;
+  }
+
+  // Turns today's pace gap into a concrete suggested calorie target and message --
+  // tighter than usual when behind pace (floored at BMR), looser when comfortably
+  // ahead, unchanged when on pace. Null wherever getGoalTodaySummary is (goal not
+  // started yet, or nothing logged).
+  function getGoalPaceGuidance(today) {
+    var summary = getGoalTodaySummary(today);
+    if (!summary) return null;
+    var base = getGoalBaseCalorieTarget();
+    var behind = summary.gapKg > GOAL_PACE_GAP_THRESHOLD_KG;
+    var ahead = summary.gapKg < -GOAL_PACE_GAP_THRESHOLD_KG;
+    var suggested = base;
+    var message;
+    if (behind) {
+      var daily = loadDaily();
+      var bmr = computeBMRForDate(today, daily[today] || {}, daily);
+      suggested = Math.round((base - GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
+      if (bmr != null) suggested = Math.max(suggested, bmr);
+      message = "Behind pace by " + roundN(summary.gapKg, 1) + " kg — aim for " + suggested +
+        " kcal today (or add extra cardio) to work back toward the line.";
+    } else if (ahead) {
+      suggested = Math.round((base + GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
+      message = "Ahead of pace by " + roundN(Math.abs(summary.gapKg), 1) + " kg — " + suggested +
+        " kcal today is plenty, no need to push harder.";
+    } else {
+      message = "Right on pace — keep aiming for " + base + " kcal today.";
+    }
+    return { baseTarget: base, suggestedTarget: suggested, message: message, behind: behind, ahead: ahead };
+  }
+
+  function renderGoalPaceHint(today) {
+    var el = document.getElementById("goalPaceHint");
+    if (!el) return;
+    var guidance = getGoalPaceGuidance(today);
+    if (!guidance) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = guidance.message;
+    el.style.display = "block";
   }
 
   function fillGoalForm() {
@@ -3244,7 +3299,9 @@
       saveWorkouts: saveWorkouts,
       getExportableSettings: getExportableSettings,
       getGoalTargetWeightAt: getGoalTargetWeightAt,
-      getGoalTodaySummary: getGoalTodaySummary
+      getGoalTodaySummary: getGoalTodaySummary,
+      getGoalBaseCalorieTarget: getGoalBaseCalorieTarget,
+      getGoalPaceGuidance: getGoalPaceGuidance
     };
   }
 

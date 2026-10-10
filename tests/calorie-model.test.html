@@ -356,6 +356,58 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.getGoalTodaySummary("2026-10-05") === null, "expected null before the goal has started");
   });
 
+  test("getGoalBaseCalorieTarget: fixed target when enabled, else derived from maintenance TDEE", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2200 });
+    assert(hooks.getGoalBaseCalorieTarget() === 2200, "expected the fixed target to win when enabled");
+
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: false, maintenanceTdeeForTargets: 2500 });
+    assert(hooks.getGoalBaseCalorieTarget() === 1900, "expected maintenance - 600 kcal when no fixed target is set");
+  });
+
+  test("getGoalPaceGuidance: behind pace suggests a lower target, floored to BMR", function () {
+    clearStorage();
+    hooks.saveSettings({
+      goal: { startDate: "2026-09-20", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 },
+      age: 30, heightCm: 180, sex: "male"
+    });
+    var daily = {};
+    for (var i = 0; i <= 20; i++) {
+      var d = new Date("2026-09-20T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.05 };
+    }
+    hooks.saveDaily(daily);
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance != null, "expected guidance once the goal has started and weight is logged");
+    assert(guidance.behind === true, "expected behind pace");
+    assert(guidance.suggestedTarget === 2040, "expected the BMR floor (2040) to win over base - 150, got " + guidance.suggestedTarget);
+    assert(guidance.message.indexOf("Behind pace") === 0, "expected a behind-pace message, got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: ahead of pace suggests a higher target", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-09-20", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    for (var i = 0; i <= 20; i++) {
+      var d = new Date("2026-09-20T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.2 };
+    }
+    hooks.saveDaily(daily);
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance != null, "expected guidance once the goal has started and weight is logged");
+    assert(guidance.ahead === true, "expected ahead of pace");
+    assert(guidance.suggestedTarget === 2050, "expected base + 150 (2050), got " + guidance.suggestedTarget);
+    assert(guidance.message.indexOf("Ahead of pace") === 0, "expected an ahead-of-pace message, got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: null before the goal's start date", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    hooks.saveDaily({ "2026-10-01": { weight: 108 } });
+    assert(hooks.getGoalPaceGuidance("2026-10-05") === null, "expected null before the goal has started");
+  });
+
   clearStorage();
 
   // ---------- render ----------
