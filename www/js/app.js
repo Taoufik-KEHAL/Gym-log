@@ -9,8 +9,7 @@
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     foods: "gymlog.foods",       // { "2026-07-27": { corn: true, potatoes: false, water: true, ... } } -- the allowed-foods checklist, separate from the searchable food log above
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    customWorkoutTemplates: "gymlog.customWorkoutTemplates", // [ { id, name, exercises: [{name, type}] } ]
-    fasting: "gymlog.fasting" // { current: {start: ISOString} | null, log: [{id, start, end, hours}] }
+    customWorkoutTemplates: "gymlog.customWorkoutTemplates" // [ { id, name, exercises: [{name, type}] } ]
   };
 
   var WORKOUT_TEMPLATE_SEED = [
@@ -1920,128 +1919,6 @@
     toast("Workout deleted");
   }
 
-  // ---------- fasting ----------
-  //
-  // A fast starts when the user taps "Start Fast" and runs until they log any food,
-  // which is what actually breaks it -- it can span multiple calendar days (e.g.
-  // an extended fast), so it's tracked as its own timer rather than a per-day field.
-  // No "cancel" escape hatch is offered once started: the only way out is logging
-  // food, matching a fast being a real commitment rather than a toggle.
-
-  var fastingTimerInterval = null;
-
-  function loadFasting() {
-    try {
-      var data = JSON.parse(localStorage.getItem(STORAGE.fasting) || "{}");
-      return { current: data.current || null, log: data.log || [] };
-    } catch (e) {
-      return { current: null, log: [] };
-    }
-  }
-
-  function saveFasting(data) {
-    localStorage.setItem(STORAGE.fasting, JSON.stringify(data));
-  }
-
-  // If a fast is still running and has already crossed one or more midnights,
-  // retroactively saves "hours fasted" for each full calendar day it's fully spanned
-  // into that day's daily entry -- so History shows fasting progress for every day of a
-  // multi-day fast, not just the day it's eventually broken. There's no way to run this
-  // exactly at midnight while the app is closed, so it runs on app open/foreground and
-  // catches up on any days that elapsed in the meantime.
-  function snapshotFastingDays() {
-    var fasting = loadFasting();
-    if (!fasting.current) return;
-    var startMs = new Date(fasting.current.start).getTime();
-    var startDate = localDateISO(new Date(startMs));
-    var today = todayISO();
-    if (startDate >= today) return;
-
-    var daily = loadDaily();
-    var d = startDate;
-    while (d < today) {
-      var dayEndMs = new Date(addDaysISO(d, 1) + "T00:00:00").getTime();
-      var dayStartMs = new Date(d + "T00:00:00").getTime();
-      var segmentStart = Math.max(startMs, dayStartMs);
-      var hours = Math.round(((dayEndMs - segmentStart) / 3600000) * 10) / 10;
-      var entry = daily[d] || {};
-      entry.fastedHours = hours;
-      daily[d] = entry;
-      d = addDaysISO(d, 1);
-    }
-    saveDaily(daily);
-  }
-
-  function startFast() {
-    var fasting = loadFasting();
-    fasting.current = { start: new Date().toISOString() };
-    saveFasting(fasting);
-    renderFastingStatus();
-  }
-
-  // Ends the active fast (if any) right now and logs its duration -- called
-  // whenever real food gets logged, since eating is what breaks a fast.
-  function breakFastNow() {
-    var fasting = loadFasting();
-    if (!fasting.current) return;
-    var startMs = new Date(fasting.current.start).getTime();
-    var end = new Date();
-    var hours = Math.round(((end.getTime() - startMs) / 3600000) * 10) / 10;
-    fasting.log.push({ id: makeId(), start: fasting.current.start, end: end.toISOString(), hours: hours });
-    fasting.current = null;
-    saveFasting(fasting);
-    renderFastingStatus();
-    renderHistory();
-  }
-
-  function formatFastingDuration(hours) {
-    var h = Math.floor(hours);
-    var m = Math.round((hours - h) * 60);
-    if (m === 60) { h += 1; m = 0; }
-    return h + "h " + m + "m";
-  }
-
-  function formatClockTime(iso) {
-    var d = new Date(iso);
-    var h = d.getHours();
-    var m = d.getMinutes();
-    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
-  }
-
-  function renderFastingStatus() {
-    snapshotFastingDays();
-    var fasting = loadFasting();
-    var timerEl = document.getElementById("fastingTimer");
-    var labelEl = document.getElementById("fastingLabel");
-    var startBtn = document.getElementById("startFastBtn");
-    if (!timerEl) return;
-
-    clearInterval(fastingTimerInterval);
-    fastingTimerInterval = null;
-
-    if (fasting.current) {
-      // No button shown at all while a fast is active -- the only way out is
-      // logging food, which breaks it automatically.
-      startBtn.style.display = "none";
-      // Always include the date, not just the clock time -- a fast can run past
-      // midnight (even several days), so "since 07:04" alone would be ambiguous
-      // about which day it actually started.
-      labelEl.textContent = "Fasting since " + formatDateShort(localDateISO(new Date(fasting.current.start))) +
-        ", " + formatClockTime(fasting.current.start);
-      var update = function () {
-        var hours = (Date.now() - new Date(fasting.current.start).getTime()) / 3600000;
-        timerEl.textContent = formatFastingDuration(hours);
-      };
-      update();
-      fastingTimerInterval = setInterval(update, 60000);
-    } else {
-      startBtn.style.display = "inline-block";
-      var lastFast = fasting.log[fasting.log.length - 1];
-      timerEl.textContent = lastFast ? formatFastingDuration(lastFast.hours) : "—";
-      labelEl.textContent = lastFast ? "Last fast" : "Not fasting";
-    }
-  }
-
   // ---------- food log ----------
 
   function clearFoodSearchState() {
@@ -2299,7 +2176,6 @@
       updated.id = makeId();
       updated.name = selectedFoodProduct.name;
       addFoodEntry(date, updated);
-      breakFastNow();
     }
 
     selectedFoodProduct = null;
@@ -2562,9 +2438,6 @@
     dayFoods[key] = checkbox.checked;
     foods[date] = dayFoods;
     saveFoods(foods);
-    // Checking anything off today -- including water or black coffee -- breaks an
-    // active fast, same as adding a food-log entry does.
-    if (checkbox.checked && date === todayISO()) breakFastNow();
   }
 
   // ---------- history view ----------
@@ -2575,18 +2448,9 @@
     var foods = loadFoods();
     var list = document.getElementById("historyList");
 
-    // Completed fasts are attributed to the date they ended on -- the day the
-    // fast was actually broken, which is when its duration became known.
-    var fastsByDate = {};
-    loadFasting().log.forEach(function (f) {
-      var d = localDateISO(new Date(f.end));
-      (fastsByDate[d] = fastsByDate[d] || []).push(f);
-    });
-
     var dates = {};
     Object.keys(daily).forEach(function (d) { dates[d] = true; });
     workouts.forEach(function (w) { dates[w.date] = true; });
-    Object.keys(fastsByDate).forEach(function (d) { dates[d] = true; });
     Object.keys(foods).forEach(function (d) {
       if (FOOD_ITEMS.some(function (f) { return foods[d][f.key]; })) dates[d] = true;
     });
@@ -2644,21 +2508,6 @@
         if (entry.steps != null) parts.push(entry.steps + " steps");
         line.innerHTML = "<span>" + parts.join(" · ") + "</span>";
         wrap.appendChild(line);
-      }
-
-      (fastsByDate[date] || []).forEach(function (f) {
-        var fastLine = document.createElement("div");
-        fastLine.className = "h-line";
-        fastLine.innerHTML = "<span>⏱️ Fasted " + formatFastingDuration(f.hours) + " (" +
-          formatClockTime(f.start) + " → " + formatClockTime(f.end) + ")</span>";
-        wrap.appendChild(fastLine);
-      });
-
-      if (entry && entry.fastedHours != null) {
-        var fastSnapshotLine = document.createElement("div");
-        fastSnapshotLine.className = "h-line";
-        fastSnapshotLine.innerHTML = "<span>⏱️ Fasted " + formatFastingDuration(entry.fastedHours) + " (fast continued past midnight)</span>";
-        wrap.appendChild(fastSnapshotLine);
       }
 
       var dayFoods = foods[date] || {};
@@ -2776,8 +2625,7 @@
       customFoods: loadCustomFoods(),
       foods: loadFoods(),
       customExercises: loadCustomExercises(),
-      customWorkoutTemplates: loadWorkoutTemplates(),
-      fasting: loadFasting()
+      customWorkoutTemplates: loadWorkoutTemplates()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -2848,7 +2696,6 @@
     if (payload.foods) saveFoods(payload.foods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
-    if (payload.fasting) { saveFasting(payload.fasting); renderFastingStatus(); }
     toast("Import complete");
     fillProfileForm();
     fillGoalForm();
@@ -2876,7 +2723,6 @@
     localStorage.removeItem(STORAGE.foods);
     localStorage.removeItem(STORAGE.customExercises);
     localStorage.removeItem(STORAGE.customWorkoutTemplates);
-    localStorage.removeItem(STORAGE.fasting);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
@@ -2887,7 +2733,6 @@
     renderToday();
     renderHistory();
     renderTrends();
-    renderFastingStatus();
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
@@ -3186,8 +3031,6 @@
     });
 
     document.getElementById("dailyForm").addEventListener("submit", handleDailySubmit);
-    document.getElementById("startFastBtn").addEventListener("click", startFast);
-    renderFastingStatus();
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
     });
@@ -3300,11 +3143,6 @@
     });
 
     window.addEventListener("resize", function () { renderToday(); renderTrends(); });
-    // Refresh the fasting timer's display immediately on foregrounding, so it
-    // doesn't look stale for up to a minute after the app was backgrounded.
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) renderFastingStatus();
-    });
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
