@@ -358,8 +358,8 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getGoalBaseCalorieTarget: fixed target when enabled, else derived from maintenance TDEE", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2200 });
-    assert(hooks.getGoalBaseCalorieTarget() === 2200, "expected the fixed target to win when enabled");
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2200 });
+    assert(hooks.getGoalBaseCalorieTarget() === 2200, "expected the fixed target to win when enabled, got " + hooks.getGoalBaseCalorieTarget());
 
     clearStorage();
     hooks.saveSettings({ fixedTargetsEnabled: false, maintenanceTdeeForTargets: 2500 });
@@ -410,7 +410,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("isCalorieTargetMetForDate: fixed target, and false with no data logged", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({ "2026-10-01": { calories: 1900 }, "2026-10-02": { calories: 2100 } });
     assert(hooks.isCalorieTargetMetForDate("2026-10-01") === true, "expected 1900 <= 2000 to be met");
     assert(hooks.isCalorieTargetMetForDate("2026-10-02") === false, "expected 2100 > 2000 to be unmet");
@@ -427,7 +427,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getStreaks: counts a prior streak and flags it at-risk when today hasn't met it yet", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({
       "2026-10-05": { calories: 1900 },
       "2026-10-06": { calories: 1950 },
@@ -443,7 +443,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getStreaks: streak extends and is no longer at-risk once today also meets it", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({
       "2026-10-05": { calories: 1900 },
       "2026-10-06": { calories: 1950 },
@@ -460,7 +460,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getStreaks: a missed day resets the prior streak", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({
       "2026-10-05": { calories: 1900 },
       "2026-10-06": { calories: 2500 },
@@ -692,6 +692,45 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     hooks.saveWorkouts([{ id: "w1", date: "2026-10-01", name: "Push", exercises: [{ name: "Bench Press", type: "strength", sets: [{ reps: 8, weight: 100 }] }] }]);
     assert(hooks.getSetTypoWarning("Bench Press", 8, 126, []) !== null, "expected a warning at 26% above the previous best of 100 kg");
     assert(hooks.getSetTypoWarning("Bench Press", 8, 124, []) === null, "expected no warning at 24% above (under the 25% threshold)");
+  });
+
+  test("getFixedCalorieTarget: separate lifting vs. cardio/rest targets, defaulting to 2200/2000", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true });
+    assert(hooks.getFixedCalorieTarget("workout") === 2200, "expected the lifting day default 2200, got " + hooks.getFixedCalorieTarget("workout"));
+    assert(hooks.getFixedCalorieTarget("cardio") === 2000, "expected the cardio/rest default 2000, got " + hooks.getFixedCalorieTarget("cardio"));
+    assert(hooks.getFixedCalorieTarget("rest") === 2000, "expected rest days to use the cardio/rest default too");
+    assert(hooks.getFixedCalorieTarget(null) === 2000, "expected an unset dayType to fall back to the cardio/rest default");
+  });
+
+  test("getFixedCalorieTarget: respects explicit per-day-type settings, and null when auto mode", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, liftingDayTarget: 2400, cardioRestDayTarget: 1900 });
+    assert(hooks.getFixedCalorieTarget("workout") === 2400, "expected the explicit lifting target");
+    assert(hooks.getFixedCalorieTarget("rest") === 1900, "expected the explicit cardio/rest target");
+    hooks.saveSettings({ fixedTargetsEnabled: false, liftingDayTarget: 2400, cardioRestDayTarget: 1900 });
+    assert(hooks.getFixedCalorieTarget("workout") === null, "expected null when fixed targets are disabled (auto mode)");
+  });
+
+  test("migrateLegacyFixedTarget: seeds both new day-type targets from the old single calorieTarget", function () {
+    clearStorage();
+    var settings = hooks.migrateLegacyFixedTarget({ calorieTarget: 2100 });
+    assert(settings.liftingDayTarget === 2100 && settings.cardioRestDayTarget === 2100,
+      "expected both new fields seeded from the old single value, got " + JSON.stringify(settings));
+    assert(settings.calorieTarget === 2100, "expected the old field to survive untouched (backward compatible)");
+  });
+
+  test("migrateLegacyFixedTarget: does not override an already-split lifting/cardio-rest target", function () {
+    clearStorage();
+    var settings = hooks.migrateLegacyFixedTarget({ calorieTarget: 2100, liftingDayTarget: 2300, cardioRestDayTarget: 1950 });
+    assert(settings.liftingDayTarget === 2300 && settings.cardioRestDayTarget === 1950, "expected the already-set split values to survive");
+  });
+
+  test("getGoalBaseCalorieTarget: follows the day's dayType when fixed targets are enabled", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, liftingDayTarget: 2300, cardioRestDayTarget: 1900 });
+    assert(hooks.getGoalBaseCalorieTarget("workout") === 2300, "expected the lifting day target");
+    assert(hooks.getGoalBaseCalorieTarget("rest") === 1900, "expected the cardio/rest day target");
   });
 
   clearStorage();

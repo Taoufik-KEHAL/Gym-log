@@ -726,16 +726,22 @@
     return { low: low, high: high };
   }
 
-  var CALORIE_TARGET_DEFAULT = 2000;
+  var CALORIE_TARGET_DEFAULT = 2000; // legacy single-target default, kept only for migrating old data
+  var LIFTING_DAY_TARGET_DEFAULT = 2200;
+  var CARDIO_REST_DAY_TARGET_DEFAULT = 2000;
   var PROTEIN_TARGET_DEFAULT = 190;
   var MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT = 2500;
 
-  // The Profile's single fixed calorie target, if enabled -- same value for every day
-  // type (rest, workout, cardio); no training-day bump.
-  function getFixedCalorieTarget() {
+  // The Profile's fixed calorie target, if enabled -- a separate value for a lifting
+  // (workout) day vs. a cardio or rest day; falls back to the cardio/rest value when
+  // the day has no dayType set. Protein target stays the same every day.
+  function getFixedCalorieTarget(dayType) {
     var settings = loadSettings();
     if (!settings.fixedTargetsEnabled) return null;
-    return settings.calorieTarget != null ? settings.calorieTarget : CALORIE_TARGET_DEFAULT;
+    if (dayType === "workout") {
+      return settings.liftingDayTarget != null ? settings.liftingDayTarget : LIFTING_DAY_TARGET_DEFAULT;
+    }
+    return settings.cardioRestDayTarget != null ? settings.cardioRestDayTarget : CARDIO_REST_DAY_TARGET_DEFAULT;
   }
 
   function getProteinTarget() {
@@ -798,7 +804,7 @@
 
   function renderCalorieTarget(date, entry, daily) {
     var el = document.getElementById("sumCaloriesTarget");
-    var fixed = getFixedCalorieTarget();
+    var fixed = getFixedCalorieTarget(entry.dayType);
     if (fixed != null) {
       el.textContent = "Target " + fixed + " (fixed)";
       return;
@@ -1642,8 +1648,8 @@
   // The calorie target pace guidance adjusts from -- the fixed target if one's set,
   // else the midpoint of the auto-mode's 500-750 kcal deficit range off the editable
   // maintenance estimate.
-  function getGoalBaseCalorieTarget() {
-    var fixed = getFixedCalorieTarget();
+  function getGoalBaseCalorieTarget(dayType) {
+    var fixed = getFixedCalorieTarget(dayType);
     if (fixed != null) return fixed;
     return Math.round((getMaintenanceTdeeForTargets() - 600) / 10) * 10;
   }
@@ -1657,7 +1663,8 @@
   function getGoalPaceGuidance(today) {
     var summary = getGoalTodaySummary(today);
     if (!summary) return null;
-    var base = getGoalBaseCalorieTarget();
+    var todayDayType = (loadDaily()[today] || {}).dayType;
+    var base = getGoalBaseCalorieTarget(todayDayType);
     var behind = summary.gapKg > GOAL_PACE_GAP_THRESHOLD_KG;
     var ahead = summary.gapKg < -GOAL_PACE_GAP_THRESHOLD_KG;
     var suggested = base;
@@ -1718,7 +1725,7 @@
     daily = daily || loadDaily();
     var entry = daily[date];
     if (!entry || entry.calories == null) return false;
-    var fixed = getFixedCalorieTarget();
+    var fixed = getFixedCalorieTarget(entry.dayType);
     if (fixed != null) return entry.calories <= fixed;
     var range = computeSuggestedCalorieRange(date, entry, daily);
     if (!range) return false;
@@ -3213,6 +3220,15 @@
       settings.calorieTarget = settings.fixedTargetRest;
       saveSettings(settings);
     }
+    // The single calorieTarget was itself a later simplification of separate
+    // lifting/cardio-rest targets; bring that split back, seeded from whatever single
+    // value the user already had set, so a fixed-target user's effective target
+    // doesn't silently change the moment this ships.
+    if (settings.liftingDayTarget == null && settings.cardioRestDayTarget == null && settings.calorieTarget != null) {
+      settings.liftingDayTarget = settings.calorieTarget;
+      settings.cardioRestDayTarget = settings.calorieTarget;
+      saveSettings(settings);
+    }
     return settings;
   }
 
@@ -3226,6 +3242,8 @@
     if (settings.treatBudget == null) { settings.treatBudget = TREAT_BUDGET_DEFAULT; changed = true; }
     if (settings.cardioMinutesTarget == null) { settings.cardioMinutesTarget = CARDIO_MINUTES_TARGET_DEFAULT; changed = true; }
     if (settings.stepTarget == null) { settings.stepTarget = STEP_TARGET_DEFAULT; changed = true; }
+    if (settings.liftingDayTarget == null) { settings.liftingDayTarget = LIFTING_DAY_TARGET_DEFAULT; changed = true; }
+    if (settings.cardioRestDayTarget == null) { settings.cardioRestDayTarget = CARDIO_REST_DAY_TARGET_DEFAULT; changed = true; }
     if (changed) saveSettings(settings);
     return settings;
   }
@@ -3237,7 +3255,8 @@
     setSexToggle(settings.sex || "male");
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
     setTargetModeToggle(settings.fixedTargetsEnabled ? "fixed" : "auto");
-    document.getElementById("calorieTargetInput").value = settings.calorieTarget != null ? settings.calorieTarget : "";
+    document.getElementById("liftingDayTargetInput").value = settings.liftingDayTarget;
+    document.getElementById("cardioRestDayTargetInput").value = settings.cardioRestDayTarget;
     document.getElementById("proteinTargetInput").value = settings.proteinTarget;
     document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
     document.getElementById("treatBudgetInput").value = settings.treatBudget;
@@ -3247,20 +3266,25 @@
 
   function handleTargetModeChange(mode) {
     setTargetModeToggle(mode);
-    var settings = loadSettings();
+    var settings = applySettingsDefaults(loadSettings());
     settings.fixedTargetsEnabled = mode === "fixed";
-    if (mode === "fixed" && settings.calorieTarget == null) {
-      settings.calorieTarget = CALORIE_TARGET_DEFAULT;
-    }
     saveSettings(settings);
     fillProfileForm();
     renderToday();
   }
 
-  function handleFixedTargetChange() {
-    var value = document.getElementById("calorieTargetInput").value;
+  function handleLiftingDayTargetChange() {
+    var value = document.getElementById("liftingDayTargetInput").value;
     var settings = loadSettings();
-    settings.calorieTarget = value !== "" ? Math.round(parseFloat(value)) : CALORIE_TARGET_DEFAULT;
+    settings.liftingDayTarget = value !== "" ? Math.round(parseFloat(value)) : LIFTING_DAY_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleCardioRestDayTargetChange() {
+    var value = document.getElementById("cardioRestDayTargetInput").value;
+    var settings = loadSettings();
+    settings.cardioRestDayTarget = value !== "" ? Math.round(parseFloat(value)) : CARDIO_REST_DAY_TARGET_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -3451,7 +3475,7 @@
   function init() {
     seedCustomFoodsIfNeeded();
     migrateDefaultTreatsIfNeeded();
-    applySettingsDefaults(loadSettings());
+    applySettingsDefaults(migrateLegacyFixedTarget(loadSettings()));
     seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
@@ -3500,7 +3524,8 @@
     document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () { handleTargetModeChange(btn.dataset.targetMode); });
     });
-    document.getElementById("calorieTargetInput").addEventListener("change", handleFixedTargetChange);
+    document.getElementById("liftingDayTargetInput").addEventListener("change", handleLiftingDayTargetChange);
+    document.getElementById("cardioRestDayTargetInput").addEventListener("change", handleCardioRestDayTargetChange);
     document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
     document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
     document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
@@ -3642,7 +3667,9 @@
       saveFoodLog: saveFoodLog,
       resolveIsTreatForEntry: resolveIsTreatForEntry,
       getTreatCaloriesForDate: getTreatCaloriesForDate,
-      getSetTypoWarning: getSetTypoWarning
+      getSetTypoWarning: getSetTypoWarning,
+      getFixedCalorieTarget: getFixedCalorieTarget,
+      migrateLegacyFixedTarget: migrateLegacyFixedTarget
     };
   }
 
