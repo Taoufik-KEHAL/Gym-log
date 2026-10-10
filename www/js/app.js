@@ -9,7 +9,8 @@
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     foods: "gymlog.foods",       // { "2026-07-27": { corn: true, potatoes: false, water: true, ... } } -- the allowed-foods checklist, separate from the searchable food log above
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    customWorkoutTemplates: "gymlog.customWorkoutTemplates" // [ { id, name, exercises: [{name, type}] } ]
+    customWorkoutTemplates: "gymlog.customWorkoutTemplates", // [ { id, name, exercises: [{name, type}] } ]
+    foodTemplates: "gymlog.foodtemplates" // [ { id, name, items: [{name, grams, calories, protein, carbs, fat, isTreat, basis, customFoodId, units, unitGrams}] } ]
   };
 
   var WORKOUT_TEMPLATE_SEED = [
@@ -350,6 +351,18 @@
     localStorage.setItem(STORAGE.foodlog, JSON.stringify(log));
   }
 
+  function loadFoodTemplates() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.foodTemplates) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveFoodTemplatesList(list) {
+    localStorage.setItem(STORAGE.foodTemplates, JSON.stringify(list));
+  }
+
   function loadCustomFoods() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.customFoods) || "[]");
@@ -659,6 +672,7 @@
       var foodDate = document.getElementById("foodDate").value || todayISO();
       renderFoodLog(foodDate);
       renderFoodChecklist(foodDate);
+      populateFoodTemplateSelect();
     }
     if (name === "trends") renderTrends();
     if (name === "data") { renderCustomFoodList(); renderWorkoutTemplateList(); }
@@ -2909,6 +2923,95 @@
     }
   }
 
+  // ---------- meal templates ----------
+
+  function buildFoodTemplateItemFromEntry(entry) {
+    return {
+      name: entry.name,
+      grams: entry.grams,
+      calories: entry.calories,
+      protein: entry.protein,
+      carbs: entry.carbs,
+      fat: entry.fat,
+      isTreat: !!entry.isTreat,
+      basis: entry.basis,
+      customFoodId: entry.customFoodId,
+      units: entry.units,
+      unitGrams: entry.unitGrams
+    };
+  }
+
+  function populateFoodTemplateSelect() {
+    var select = document.getElementById("foodTemplateSelect");
+    if (!select) return;
+    var current = select.value;
+    select.innerHTML = "";
+    var placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select a template…";
+    select.appendChild(placeholder);
+    loadFoodTemplates().forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name + " (" + t.items.length + ")";
+      select.appendChild(opt);
+    });
+    if (current) select.value = current;
+  }
+
+  // Saves every food currently logged on the viewed date as a named template --
+  // each item keeps its own quantity/macros, so logging the template later needs no
+  // re-entry (e.g. "Breakfast: 4 eggs + whey").
+  function handleSaveFoodTemplate() {
+    var nameInput = document.getElementById("foodTemplateNameInput");
+    var name = nameInput.value.trim();
+    if (!name) { toast("Enter a template name"); return; }
+    var date = document.getElementById("foodDate").value || todayISO();
+    var entries = loadFoodLog()[date] || [];
+    if (entries.length === 0) { toast("No food logged on this date to save"); return; }
+    var templates = loadFoodTemplates();
+    templates.push({ id: makeId(), name: name, items: entries.map(buildFoodTemplateItemFromEntry) });
+    saveFoodTemplatesList(templates);
+    nameInput.value = "";
+    populateFoodTemplateSelect();
+    toast('Saved template "' + name + '"');
+  }
+
+  // Logs every item in the template as its own separate food log entry (eaten, not
+  // planned) on the viewed date, in one tap.
+  function handleLoadFoodTemplate() {
+    var select = document.getElementById("foodTemplateSelect");
+    var id = select.value;
+    if (!id) return;
+    var template = loadFoodTemplates().filter(function (t) { return t.id === id; })[0];
+    if (!template) return;
+    var date = document.getElementById("foodDate").value || todayISO();
+    var meal = guessMealForTime(new Date().getHours());
+    template.items.forEach(function (item) {
+      var entry = {
+        id: makeId(),
+        name: item.name,
+        grams: item.grams,
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+        isTreat: item.isTreat,
+        basis: item.basis,
+        customFoodId: item.customFoodId,
+        meal: meal,
+        planned: false
+      };
+      if (item.units != null) {
+        entry.units = item.units;
+        entry.unitGrams = item.unitGrams;
+      }
+      addFoodEntry(date, entry);
+    });
+    select.value = "";
+    toast('Logged "' + template.name + '"');
+  }
+
   function renderFoodLogItem(list, date, entry) {
     var item = document.createElement("div");
     item.className = "food-log-item" + (entry.planned ? " food-log-item--planned" : "");
@@ -3225,7 +3328,8 @@
       customFoods: loadCustomFoods(),
       foods: loadFoods(),
       customExercises: loadCustomExercises(),
-      customWorkoutTemplates: loadWorkoutTemplates()
+      customWorkoutTemplates: loadWorkoutTemplates(),
+      foodTemplates: loadFoodTemplates()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -3296,6 +3400,7 @@
     if (payload.foods) saveFoods(payload.foods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
+    if (payload.foodTemplates) saveFoodTemplatesList(payload.foodTemplates);
     toast("Import complete");
     fillProfileForm();
     fillGoalForm();
@@ -3307,6 +3412,7 @@
     renderTrends();
     populateExerciseSelect(currentExerciseType);
     populateWorkoutTemplateSelect();
+    populateFoodTemplateSelect();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderFoodChecklist(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
@@ -3323,6 +3429,7 @@
     localStorage.removeItem(STORAGE.foods);
     localStorage.removeItem(STORAGE.customExercises);
     localStorage.removeItem(STORAGE.customWorkoutTemplates);
+    localStorage.removeItem(STORAGE.foodTemplates);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
@@ -3337,6 +3444,7 @@
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
     populateWorkoutTemplateSelect();
+    populateFoodTemplateSelect();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderFoodChecklist(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
@@ -3762,6 +3870,8 @@
     });
     document.getElementById("addFoodBtn").addEventListener("click", handleAddFoodFromSearch);
     document.getElementById("cancelEditFoodLogBtn").addEventListener("click", cancelEditFoodLogEntry);
+    document.getElementById("loadFoodTemplateBtn").addEventListener("click", handleLoadFoodTemplate);
+    document.getElementById("saveFoodTemplateBtn").addEventListener("click", handleSaveFoodTemplate);
     document.getElementById("showNewFoodBtn").addEventListener("click", function () {
       var card = document.getElementById("newFoodCard");
       card.style.display = card.style.display === "none" ? "block" : "none";
@@ -3810,6 +3920,9 @@
       getWeekStartISO: getWeekStartISO,
       computeWeeklyAverageSeries: computeWeeklyAverageSeries,
       getEntryDailyContribution: getEntryDailyContribution,
+      loadFoodTemplates: loadFoodTemplates,
+      saveFoodTemplatesList: saveFoodTemplatesList,
+      buildFoodTemplateItemFromEntry: buildFoodTemplateItemFromEntry,
       getGoalCheckpointStatuses: getGoalCheckpointStatuses,
       isGoalStalled: isGoalStalled,
       getBestWeightSoFar: getBestWeightSoFar,

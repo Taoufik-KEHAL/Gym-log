@@ -115,6 +115,14 @@
       </div>
 
       <div class="field">
+        <label for="foodTemplateSelect">Load a meal template</label>
+        <div class="row">
+          <select id="foodTemplateSelect"></select>
+          <button type="button" class="secondary" id="loadFoodTemplateBtn">Log</button>
+        </div>
+      </div>
+
+      <div class="field">
         <label for="foodSearchInput">Search foods</label>
         <input type="text" id="foodSearchInput" placeholder="e.g. chicken breast" autocomplete="off" />
         <div id="foodSearchStatus" class="empty-state" style="display:none; padding:10px 0;"></div>
@@ -182,6 +190,10 @@
       <h2>Logged Today</h2>
       <div id="foodLogList"></div>
       <div class="day-status" id="foodLogTotals" style="display:none;"></div>
+      <div class="row" style="margin-top:10px; display:flex; gap:8px;">
+        <input type="text" id="foodTemplateNameInput" placeholder="Template name, e.g. Breakfast" />
+        <button type="button" class="secondary" id="saveFoodTemplateBtn">Save as template</button>
+      </div>
     </div>
 
     <div class="card">

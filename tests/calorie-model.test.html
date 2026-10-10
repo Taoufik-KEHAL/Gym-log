@@ -809,6 +809,26 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(breakfast.entries.length === 2, "expected both the planned and eaten entry in the same meal group");
   });
 
+  test("buildFoodTemplateItemFromEntry: snapshots quantity and macros, not a live reference", function () {
+    var entry = {
+      id: "e1", name: "Eggs", grams: 200, calories: 280, protein: 24, carbs: 2, fat: 20,
+      isTreat: false, basis: "cooked", customFoodId: "f1", meal: "breakfast", planned: false
+    };
+    var item = hooks.buildFoodTemplateItemFromEntry(entry);
+    assert(item.name === "Eggs" && item.grams === 200 && item.calories === 280, "expected the core quantity/macros to be captured");
+    assert(item.customFoodId === "f1", "expected the customFoodId to carry over for treat-matching");
+    assert(item.meal === undefined && item.id === undefined, "expected meal/id to NOT be captured -- those are set fresh each time the template is logged");
+  });
+
+  test("loadFoodTemplates / saveFoodTemplatesList: round-trips templates through storage", function () {
+    clearStorage();
+    assert(hooks.loadFoodTemplates().length === 0, "expected no templates on a clean device");
+    var templates = [{ id: "t1", name: "Breakfast", items: [{ name: "Eggs", grams: 200, calories: 280, protein: 24, carbs: 2, fat: 20 }] }];
+    hooks.saveFoodTemplatesList(templates);
+    var loaded = hooks.loadFoodTemplates();
+    assert(loaded.length === 1 && loaded[0].name === "Breakfast" && loaded[0].items.length === 1, "expected the saved template to round-trip");
+  });
+
   clearStorage();
 
   // ---------- render ----------
