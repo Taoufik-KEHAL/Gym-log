@@ -489,6 +489,22 @@ button:active { transform: scale(0.98); }
 
 .food-log-item:last-child { border-bottom: none; }
 
+.food-log-item--planned {
+  opacity: 0.55;
+}
+
+.food-planned-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(154, 161, 172, 0.2);
+  color: var(--text-dim);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .food-log-item .food-log-name {
   font-weight: 600;
   font-size: 0.88rem;

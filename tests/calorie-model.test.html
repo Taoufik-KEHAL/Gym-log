@@ -226,7 +226,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
     hooks.saveDaily({ "2026-10-10": { weight: 107 } });
     var statuses = hooks.getGoalCheckpointStatuses("2026-10-15");
-    assert(statuses.length === 3, "expected 3 checkpoints, got " + statuses.length);
+    assert(statuses.length === 4, "expected 4 checkpoints, got " + statuses.length);
     assert(statuses.every(function (s) { return s.status === "upcoming"; }), "expected all upcoming before any checkpoint date");
   });
 
@@ -358,8 +358,8 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getGoalBaseCalorieTarget: fixed target when enabled, else derived from maintenance TDEE", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2200 });
-    assert(hooks.getGoalBaseCalorieTarget() === 2200, "expected the fixed target to win when enabled");
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2200 });
+    assert(hooks.getGoalBaseCalorieTarget() === 2200, "expected the fixed target to win when enabled, got " + hooks.getGoalBaseCalorieTarget());
 
     clearStorage();
     hooks.saveSettings({ fixedTargetsEnabled: false, maintenanceTdeeForTargets: 2500 });
@@ -410,7 +410,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("isCalorieTargetMetForDate: fixed target, and false with no data logged", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({ "2026-10-01": { calories: 1900 }, "2026-10-02": { calories: 2100 } });
     assert(hooks.isCalorieTargetMetForDate("2026-10-01") === true, "expected 1900 <= 2000 to be met");
     assert(hooks.isCalorieTargetMetForDate("2026-10-02") === false, "expected 2100 > 2000 to be unmet");
@@ -427,7 +427,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getStreaks: counts a prior streak and flags it at-risk when today hasn't met it yet", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({
       "2026-10-05": { calories: 1900 },
       "2026-10-06": { calories: 1950 },
@@ -443,7 +443,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getStreaks: streak extends and is no longer at-risk once today also meets it", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({
       "2026-10-05": { calories: 1900 },
       "2026-10-06": { calories: 1950 },
@@ -460,7 +460,7 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
 
   test("getStreaks: a missed day resets the prior streak", function () {
     clearStorage();
-    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
     hooks.saveDaily({
       "2026-10-05": { calories: 1900 },
       "2026-10-06": { calories: 2500 },
@@ -571,6 +571,262 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     workouts.push({ id: "w6", date: "2026-10-07", name: "Day7", exercises: [{ name: "Squat", type: "strength", sets: [{ reps: 5, weight: 100 }] }] });
     hooks.saveWorkouts(workouts);
     assert(hooks.getRestDayAdvice("2026-10-07") === null, "expected no advice once the day itself is already a training day");
+  });
+
+  test("applySettingsDefaults: fills unset targets with real default values", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({});
+    assert(settings.proteinTarget === 190, "expected protein default 190, got " + settings.proteinTarget);
+    assert(settings.treatBudget === 150, "expected treat budget default 150, got " + settings.treatBudget);
+    assert(settings.cardioMinutesTarget === 60, "expected cardio default 60, got " + settings.cardioMinutesTarget);
+    assert(settings.stepTarget === 22000, "expected step default 22000, got " + settings.stepTarget);
+    assert(hooks.getProteinTarget() === 190, "expected getProteinTarget to read back the persisted default");
+  });
+
+  test("applySettingsDefaults: a treat budget of 0 is a real value, not treated as unset", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({ treatBudget: 0 });
+    assert(settings.treatBudget === 0, "expected treatBudget to stay 0, got " + settings.treatBudget);
+    hooks.saveSettings(settings);
+    assert(hooks.getTreatBudget() === 0, "expected getTreatBudget() to read back 0, not fall back to the 150 default");
+  });
+
+  test("applySettingsDefaults: leaves already-set values untouched", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({ proteinTarget: 220, cardioMinutesTarget: 45, stepTarget: 10000 });
+    assert(settings.proteinTarget === 220, "expected explicit proteinTarget to survive");
+    assert(settings.cardioMinutesTarget === 45, "expected explicit cardioMinutesTarget to survive");
+    assert(settings.stepTarget === 10000, "expected explicit stepTarget to survive");
+    assert(settings.treatBudget === 150, "expected the untouched treatBudget to still get its default");
+  });
+
+  test("getTreatCaloriesForDate: counts a legacy entry (no isTreat snapshot) by matching the live custom food's name", function () {
+    clearStorage();
+    hooks.saveCustomFoods([{ id: "f1", name: "Dates", per100: { calories: 280, protein: 2, carbs: 75, fat: 0.4 }, isTreat: true }]);
+    hooks.saveFoodLog({
+      "2026-10-10": [
+        { id: "e1", name: "Dates", grams: 50, calories: 140, protein: 1, carbs: 37, fat: 0.2 }, // no isTreat at all -- pre-dates the flag
+        { id: "e2", name: "Maruja", grams: 30, calories: 160, protein: 2, carbs: 18, fat: 9, isTreat: true }
+      ]
+    });
+    assert(hooks.getTreatCaloriesForDate("2026-10-10") === 300, "expected both Dates (140) and Maruja (160) to count, got " + hooks.getTreatCaloriesForDate("2026-10-10"));
+  });
+
+  test("resolveIsTreatForEntry: matches by customFoodId first, falls back to name, and respects an explicit false", function () {
+    var customFoods = [
+      { id: "f1", name: "Dates", isTreat: true },
+      { id: "f2", name: "Chicken Breast", isTreat: false }
+    ];
+    assert(hooks.resolveIsTreatForEntry({ name: "anything", customFoodId: "f1" }, customFoods) === true, "expected a customFoodId match to win");
+    assert(hooks.resolveIsTreatForEntry({ name: "Dates" }, customFoods) === true, "expected a name-only match to fall back correctly");
+    assert(hooks.resolveIsTreatForEntry({ name: "Unknown Food" }, customFoods) === false, "expected no match to resolve false");
+    assert(hooks.resolveIsTreatForEntry({ name: "Dates", isTreat: false }, customFoods) === false, "expected an explicit false snapshot to never be overridden by a live match");
+  });
+
+  test("resolveIsTreatForEntry: an explicit true snapshot is respected even if the live food is no longer a treat", function () {
+    var customFoods = [{ id: "f1", name: "Dates", isTreat: false }];
+    assert(hooks.resolveIsTreatForEntry({ name: "Dates", isTreat: true }, customFoods) === true, "expected the historical snapshot to win over a later un-treat");
+  });
+
+  test("getGoalPaceGuidance: on-pace weight-wise but today's intake is far over target does not say 'Right on pace'", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107, calories: 3000 } });
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance != null, "expected guidance once weight is logged on the goal's start date");
+    assert(guidance.behind === false && guidance.ahead === false, "expected on-pace (weight exactly on the target line)");
+    assert(guidance.message.indexOf("Right on pace") === -1, "expected the misleading 'Right on pace' wording to be gone, got: " + guidance.message);
+    assert(guidance.message.indexOf("3000") !== -1 && guidance.message.indexOf("over") !== -1,
+      "expected the message to call out today's logged 3000 kcal as over target, got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: intake near today's target reads as on target", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107, calories: 1950 } }); // base target is 1900 by default
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance.message.indexOf("On target today") === 0, "expected an on-target message, got: " + guidance.message);
+    assert(guidance.message.indexOf("1950") !== -1 && guidance.message.indexOf("1900") !== -1, "expected both the logged and target kcal in the message");
+  });
+
+  test("getGoalPaceGuidance: intake well under today's target reads as under, with the kcal difference", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107, calories: 1200 } });
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance.message.indexOf("under") !== -1, "expected an 'under' message, got: " + guidance.message);
+    assert(guidance.message.indexOf("700") !== -1, "expected the 700 kcal difference (1900 - 1200), got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: still falls back to target-only wording when nothing is logged today", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.7 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107 } }); // weight logged, but no calories yet
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance.message === "Right on pace — keep aiming for 1900 kcal today.", "expected the original target-only wording, got: " + guidance.message);
+  });
+
+  test("getSetTypoWarning: flags the 127kg x 100 reps calf press that previously got through", function () {
+    clearStorage();
+    hooks.saveWorkouts([{ id: "w1", date: "2026-10-01", name: "Legs", exercises: [{ name: "Calf Press", type: "strength", sets: [{ reps: 15, weight: 100 }] }] }]);
+    var warning = hooks.getSetTypoWarning("Calf Press", 100, 127, []);
+    assert(warning != null, "expected a warning for 100 reps and a 27% weight jump");
+    assert(warning.indexOf("100 reps") !== -1, "expected the reps reason in the message, got: " + warning);
+    assert(warning.indexOf("127") !== -1, "expected the weight reason in the message, got: " + warning);
+  });
+
+  test("getSetTypoWarning: null for a normal set", function () {
+    clearStorage();
+    hooks.saveWorkouts([{ id: "w1", date: "2026-10-01", name: "Legs", exercises: [{ name: "Squat", type: "strength", sets: [{ reps: 8, weight: 100 }] }] }]);
+    assert(hooks.getSetTypoWarning("Squat", 8, 105, []) === null, "expected no warning for a normal 8-rep set at a similar weight");
+  });
+
+  test("getSetTypoWarning: more than 30 reps alone triggers a warning", function () {
+    clearStorage();
+    assert(hooks.getSetTypoWarning("Push-up", 31, 0, []) !== null, "expected a warning for 31 reps even with no prior weight data");
+    assert(hooks.getSetTypoWarning("Push-up", 30, 0, []) === null, "expected exactly 30 reps to not trigger (threshold is 'more than 30')");
+  });
+
+  test("getSetTypoWarning: more than 25% above previous best alone triggers a warning", function () {
+    clearStorage();
+    hooks.saveWorkouts([{ id: "w1", date: "2026-10-01", name: "Push", exercises: [{ name: "Bench Press", type: "strength", sets: [{ reps: 8, weight: 100 }] }] }]);
+    assert(hooks.getSetTypoWarning("Bench Press", 8, 126, []) !== null, "expected a warning at 26% above the previous best of 100 kg");
+    assert(hooks.getSetTypoWarning("Bench Press", 8, 124, []) === null, "expected no warning at 24% above (under the 25% threshold)");
+  });
+
+  test("getFixedCalorieTarget: separate lifting vs. cardio/rest targets, defaulting to 2200/2000", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true });
+    assert(hooks.getFixedCalorieTarget("workout") === 2200, "expected the lifting day default 2200, got " + hooks.getFixedCalorieTarget("workout"));
+    assert(hooks.getFixedCalorieTarget("cardio") === 2000, "expected the cardio/rest default 2000, got " + hooks.getFixedCalorieTarget("cardio"));
+    assert(hooks.getFixedCalorieTarget("rest") === 2000, "expected rest days to use the cardio/rest default too");
+    assert(hooks.getFixedCalorieTarget(null) === 2000, "expected an unset dayType to fall back to the cardio/rest default");
+  });
+
+  test("getFixedCalorieTarget: respects explicit per-day-type settings, and null when auto mode", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, liftingDayTarget: 2400, cardioRestDayTarget: 1900 });
+    assert(hooks.getFixedCalorieTarget("workout") === 2400, "expected the explicit lifting target");
+    assert(hooks.getFixedCalorieTarget("rest") === 1900, "expected the explicit cardio/rest target");
+    hooks.saveSettings({ fixedTargetsEnabled: false, liftingDayTarget: 2400, cardioRestDayTarget: 1900 });
+    assert(hooks.getFixedCalorieTarget("workout") === null, "expected null when fixed targets are disabled (auto mode)");
+  });
+
+  test("migrateLegacyFixedTarget: seeds both new day-type targets from the old single calorieTarget", function () {
+    clearStorage();
+    var settings = hooks.migrateLegacyFixedTarget({ calorieTarget: 2100 });
+    assert(settings.liftingDayTarget === 2100 && settings.cardioRestDayTarget === 2100,
+      "expected both new fields seeded from the old single value, got " + JSON.stringify(settings));
+    assert(settings.calorieTarget === 2100, "expected the old field to survive untouched (backward compatible)");
+  });
+
+  test("migrateLegacyFixedTarget: does not override an already-split lifting/cardio-rest target", function () {
+    clearStorage();
+    var settings = hooks.migrateLegacyFixedTarget({ calorieTarget: 2100, liftingDayTarget: 2300, cardioRestDayTarget: 1950 });
+    assert(settings.liftingDayTarget === 2300 && settings.cardioRestDayTarget === 1950, "expected the already-set split values to survive");
+  });
+
+  test("getGoalBaseCalorieTarget: follows the day's dayType when fixed targets are enabled", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, liftingDayTarget: 2300, cardioRestDayTarget: 1900 });
+    assert(hooks.getGoalBaseCalorieTarget("workout") === 2300, "expected the lifting day target");
+    assert(hooks.getGoalBaseCalorieTarget("rest") === 1900, "expected the cardio/rest day target");
+  });
+
+  test("getGoal: defaults to a 0.7 kg/week rate and the updated 4-checkpoint plan", function () {
+    clearStorage();
+    var goal = hooks.getGoal();
+    assert(goal.ratePerWeek === 0.7, "expected the default rate to be 0.7, got " + goal.ratePerWeek);
+    assert(goal.checkpoints.length === 4, "expected 4 default checkpoints, got " + goal.checkpoints.length);
+    var byDate = {};
+    goal.checkpoints.forEach(function (cp) { byDate[cp.date] = cp.target; });
+    assert(byDate["2026-10-31"] === 105.0, "expected 2026-10-31 <= 105.0 kg");
+    assert(byDate["2026-11-21"] === 102.8, "expected 2026-11-21 <= 102.8 kg");
+    assert(byDate["2026-12-12"] === 100.7, "expected 2026-12-12 <= 100.7 kg");
+    assert(byDate["2026-12-31"] === 99.0, "expected 2026-12-31 = 99.0 kg");
+  });
+
+  test("computeUpdatedCheckpoints: updates only the targeted checkpoint's date or target", function () {
+    var checkpoints = [{ date: "2026-10-31", target: 105.0 }, { date: "2026-11-21", target: 102.8 }];
+    var afterTarget = hooks.computeUpdatedCheckpoints(checkpoints, 1, "target", "101.5");
+    assert(afterTarget[1].target === 101.5 && afterTarget[1].date === "2026-11-21", "expected only index 1's target to change");
+    assert(afterTarget[0].target === 105.0, "expected index 0 to be untouched");
+
+    var afterDate = hooks.computeUpdatedCheckpoints(checkpoints, 0, "date", "2026-11-01");
+    assert(afterDate[0].date === "2026-11-01" && afterDate[0].target === 105.0, "expected only index 0's date to change");
+  });
+
+  test("computeUpdatedCheckpoints: ignores an invalid target and an empty date", function () {
+    var checkpoints = [{ date: "2026-10-31", target: 105.0 }];
+    assert(hooks.computeUpdatedCheckpoints(checkpoints, 0, "target", "not a number")[0].target === 105.0, "expected an invalid target to be ignored");
+    assert(hooks.computeUpdatedCheckpoints(checkpoints, 0, "date", "")[0].date === "2026-10-31", "expected an empty date to be ignored");
+  });
+
+  test("getWeekStartISO: returns the Monday of the containing week", function () {
+    assert(hooks.getWeekStartISO("2026-10-14") === "2026-10-12", "expected Wed 2026-10-14's week to start Mon 2026-10-12, got " + hooks.getWeekStartISO("2026-10-14"));
+    assert(hooks.getWeekStartISO("2026-10-12") === "2026-10-12", "expected a Monday to be its own week start");
+    assert(hooks.getWeekStartISO("2026-10-18") === "2026-10-12", "expected Sunday to belong to the week that started the Monday before");
+  });
+
+  test("computeWeeklyAverageSeries: averages waist by Monday-starting week, skipping unlogged days", function () {
+    var daily = {
+      "2026-10-12": { waistCm: 90 },
+      "2026-10-14": { waistCm: 92 }, // same week as 10-12 -> average 91
+      "2026-10-13": { weight: 80 }, // no waistCm -- excluded
+      "2026-10-19": { waistCm: 88 } // next week, Monday 10-19
+    };
+    var series = hooks.computeWeeklyAverageSeries(daily, "waistCm", { start: "2026-10-01", end: "2026-10-31" });
+    assert(series.length === 2, "expected 2 weekly points, got " + series.length);
+    assert(series[0].date === "2026-10-12" && series[0].value === 91, "expected week 1 averaged to 91, got " + JSON.stringify(series[0]));
+    assert(series[1].date === "2026-10-19" && series[1].value === 88, "expected week 2 to be 88, got " + JSON.stringify(series[1]));
+  });
+
+  test("computeWeeklyAverageSeries: respects the date range", function () {
+    var daily = { "2026-10-05": { waistCm: 95 }, "2026-10-12": { waistCm: 90 } };
+    var series = hooks.computeWeeklyAverageSeries(daily, "waistCm", { start: "2026-10-10", end: "2026-10-31" });
+    assert(series.length === 1 && series[0].value === 90, "expected only the in-range point, got " + JSON.stringify(series));
+  });
+
+  test("getEntryDailyContribution: a planned entry contributes nothing, an eaten entry contributes its own macros", function () {
+    var planned = { calories: 300, protein: 20, carbs: 30, fat: 10, planned: true };
+    var eaten = { calories: 300, protein: 20, carbs: 30, fat: 10, planned: false };
+    var legacy = { calories: 300, protein: 20, carbs: 30, fat: 10 }; // no planned field at all -- always counts
+    assert(JSON.stringify(hooks.getEntryDailyContribution(planned)) === JSON.stringify({ calories: 0, protein: 0, carbs: 0, fat: 0 }),
+      "expected a planned entry to contribute zero");
+    assert(JSON.stringify(hooks.getEntryDailyContribution(eaten)) === JSON.stringify({ calories: 300, protein: 20, carbs: 30, fat: 10 }),
+      "expected an eaten entry to contribute its macros");
+    assert(JSON.stringify(hooks.getEntryDailyContribution(legacy)) === JSON.stringify({ calories: 300, protein: 20, carbs: 30, fat: 10 }),
+      "expected a legacy entry with no planned field to contribute its macros, same as always");
+  });
+
+  test("groupFoodLogByMeal: keeps planned entries in their meal group alongside eaten ones", function () {
+    var entries = [
+      { id: "1", name: "Planned Oats", protein: 10, meal: "breakfast", planned: true },
+      { id: "2", name: "Eggs", protein: 12, meal: "breakfast" }
+    ];
+    var groups = hooks.groupFoodLogByMeal(entries);
+    var breakfast = groups.filter(function (g) { return g.key === "breakfast"; })[0];
+    assert(breakfast.entries.length === 2, "expected both the planned and eaten entry in the same meal group");
+  });
+
+  test("buildFoodTemplateItemFromEntry: snapshots quantity and macros, not a live reference", function () {
+    var entry = {
+      id: "e1", name: "Eggs", grams: 200, calories: 280, protein: 24, carbs: 2, fat: 20,
+      isTreat: false, basis: "cooked", customFoodId: "f1", meal: "breakfast", planned: false
+    };
+    var item = hooks.buildFoodTemplateItemFromEntry(entry);
+    assert(item.name === "Eggs" && item.grams === 200 && item.calories === 280, "expected the core quantity/macros to be captured");
+    assert(item.customFoodId === "f1", "expected the customFoodId to carry over for treat-matching");
+    assert(item.meal === undefined && item.id === undefined, "expected meal/id to NOT be captured -- those are set fresh each time the template is logged");
+  });
+
+  test("loadFoodTemplates / saveFoodTemplatesList: round-trips templates through storage", function () {
+    clearStorage();
+    assert(hooks.loadFoodTemplates().length === 0, "expected no templates on a clean device");
+    var templates = [{ id: "t1", name: "Breakfast", items: [{ name: "Eggs", grams: 200, calories: 280, protein: 24, carbs: 2, fat: 20 }] }];
+    hooks.saveFoodTemplatesList(templates);
+    var loaded = hooks.loadFoodTemplates();
+    assert(loaded.length === 1 && loaded[0].name === "Breakfast" && loaded[0].items.length === 1, "expected the saved template to round-trip");
   });
 
   clearStorage();

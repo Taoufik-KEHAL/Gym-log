@@ -2,14 +2,15 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, waterLiters, cigarettesCount, calories, protein, carbs, fat, steps, dayType } }
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, waistCm, sleepHours, waterLiters, cigarettesCount, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
     settings: "gymlog.settings", // reserved for future use; currently unused
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     foods: "gymlog.foods",       // { "2026-07-27": { corn: true, potatoes: false, water: true, ... } } -- the allowed-foods checklist, separate from the searchable food log above
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    customWorkoutTemplates: "gymlog.customWorkoutTemplates" // [ { id, name, exercises: [{name, type}] } ]
+    customWorkoutTemplates: "gymlog.customWorkoutTemplates", // [ { id, name, exercises: [{name, type}] } ]
+    foodTemplates: "gymlog.foodtemplates" // [ { id, name, items: [{name, grams, calories, protein, carbs, fat, isTreat, basis, customFoodId, units, unitGrams}] } ]
   };
 
   var WORKOUT_TEMPLATE_SEED = [
@@ -216,6 +217,25 @@
     return best;
   }
 
+  var TYPO_CHECK_MAX_REPS = 30; // ask for confirmation above this many reps in one set
+  var TYPO_CHECK_WEIGHT_INCREASE_PCT = 0.25; // ...or this much above the previous best
+
+  // Null when the set looks normal; otherwise a confirmation message naming every
+  // reason it looks like a typo (e.g. 127 kg x 100 reps on a calf press).
+  function getSetTypoWarning(exerciseName, reps, weight, currentSessionSets) {
+    var reasons = [];
+    if (reps > TYPO_CHECK_MAX_REPS) {
+      reasons.push(reps + " reps");
+    }
+    var prevBest = getBestWeightSoFar(exerciseName, currentSessionSets);
+    if (prevBest != null && prevBest > 0 && weight > prevBest * (1 + TYPO_CHECK_WEIGHT_INCREASE_PCT)) {
+      reasons.push(weight + " kg (more than " + Math.round(TYPO_CHECK_WEIGHT_INCREASE_PCT * 100) +
+        "% above your previous best of " + prevBest + " kg)");
+    }
+    if (reasons.length === 0) return null;
+    return "Double-check this set for " + exerciseName + ": " + reasons.join(" and ") + ". Save it anyway?";
+  }
+
   // The best set (by reps x weight) for a strength exercise from the most recent
   // *saved* session strictly before `beforeDate` that included it -- "last time you
   // did this exercise", not the all-time best. Null if there's no prior session.
@@ -329,6 +349,18 @@
 
   function saveFoodLog(log) {
     localStorage.setItem(STORAGE.foodlog, JSON.stringify(log));
+  }
+
+  function loadFoodTemplates() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE.foodTemplates) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveFoodTemplatesList(list) {
+    localStorage.setItem(STORAGE.foodTemplates, JSON.stringify(list));
   }
 
   function loadCustomFoods() {
@@ -640,6 +672,7 @@
       var foodDate = document.getElementById("foodDate").value || todayISO();
       renderFoodLog(foodDate);
       renderFoodChecklist(foodDate);
+      populateFoodTemplateSelect();
     }
     if (name === "trends") renderTrends();
     if (name === "data") { renderCustomFoodList(); renderWorkoutTemplateList(); }
@@ -652,6 +685,7 @@
     var today = document.getElementById("logDate").value || todayISO();
     var entry = daily[today] || {};
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
+    document.getElementById("sumWaist").textContent = entry.waistCm != null ? entry.waistCm : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
     document.getElementById("sumWater").textContent = entry.waterLiters != null ? entry.waterLiters : "—";
     document.getElementById("sumCigarettes").textContent = entry.cigarettesCount != null ? entry.cigarettesCount : "—";
@@ -707,16 +741,22 @@
     return { low: low, high: high };
   }
 
-  var CALORIE_TARGET_DEFAULT = 2000;
+  var CALORIE_TARGET_DEFAULT = 2000; // legacy single-target default, kept only for migrating old data
+  var LIFTING_DAY_TARGET_DEFAULT = 2200;
+  var CARDIO_REST_DAY_TARGET_DEFAULT = 2000;
   var PROTEIN_TARGET_DEFAULT = 190;
   var MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT = 2500;
 
-  // The Profile's single fixed calorie target, if enabled -- same value for every day
-  // type (rest, workout, cardio); no training-day bump.
-  function getFixedCalorieTarget() {
+  // The Profile's fixed calorie target, if enabled -- a separate value for a lifting
+  // (workout) day vs. a cardio or rest day; falls back to the cardio/rest value when
+  // the day has no dayType set. Protein target stays the same every day.
+  function getFixedCalorieTarget(dayType) {
     var settings = loadSettings();
     if (!settings.fixedTargetsEnabled) return null;
-    return settings.calorieTarget != null ? settings.calorieTarget : CALORIE_TARGET_DEFAULT;
+    if (dayType === "workout") {
+      return settings.liftingDayTarget != null ? settings.liftingDayTarget : LIFTING_DAY_TARGET_DEFAULT;
+    }
+    return settings.cardioRestDayTarget != null ? settings.cardioRestDayTarget : CARDIO_REST_DAY_TARGET_DEFAULT;
   }
 
   function getProteinTarget() {
@@ -739,12 +779,33 @@
     return settings.treatBudget != null ? settings.treatBudget : TREAT_BUDGET_DEFAULT;
   }
 
-  // Treat calories logged on a date -- summed straight from that day's food log entries
-  // (each snapshots isTreat at the time it was logged), not from the live My Foods list,
-  // so changing a food's treat status later doesn't rewrite past days.
+  // Whether a logged food-log entry counts as a treat. Respects an explicit isTreat
+  // snapshot (true or false) as-is, so a deliberate flag never gets overridden by a
+  // later change to the food. Only entries with no snapshot at all -- logged before
+  // the treat flag existed -- fall back to matching the live My Foods list, by
+  // customFoodId first, then by name (case-insensitive), so old entries for a food
+  // that's since been marked a treat still count.
+  function resolveIsTreatForEntry(entry, customFoods) {
+    if (entry.isTreat != null) return !!entry.isTreat;
+    var match = null;
+    if (entry.customFoodId) {
+      match = customFoods.filter(function (f) { return f.id === entry.customFoodId; })[0] || null;
+    }
+    if (!match) {
+      var lname = (entry.name || "").toLowerCase();
+      match = customFoods.filter(function (f) { return f.name.toLowerCase() === lname; })[0] || null;
+    }
+    return !!(match && match.isTreat);
+  }
+
+  // Treat calories logged on a date -- summed from that day's food log entries, each
+  // resolved via resolveIsTreatForEntry (see above).
   function getTreatCaloriesForDate(date) {
     var entries = loadFoodLog()[date] || [];
-    return entries.reduce(function (sum, e) { return sum + (e.isTreat ? e.calories : 0); }, 0);
+    var customFoods = loadCustomFoods();
+    return entries.reduce(function (sum, e) {
+      return sum + (resolveIsTreatForEntry(e, customFoods) ? e.calories : 0);
+    }, 0);
   }
 
   function renderTreatBudget(date) {
@@ -758,7 +819,7 @@
 
   function renderCalorieTarget(date, entry, daily) {
     var el = document.getElementById("sumCaloriesTarget");
-    var fixed = getFixedCalorieTarget();
+    var fixed = getFixedCalorieTarget(entry.dayType);
     if (fixed != null) {
       el.textContent = "Target " + fixed + " (fixed)";
       return;
@@ -1012,6 +1073,7 @@
     var daily = loadDaily();
     var entry = daily[iso] || {};
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
+    document.getElementById("waistInput").value = entry.waistCm != null ? entry.waistCm : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
     document.getElementById("waterInput").value = entry.waterLiters != null ? entry.waterLiters : "";
@@ -1023,6 +1085,7 @@
     e.preventDefault();
     var date = document.getElementById("logDate").value || todayISO();
     var weight = document.getElementById("weightInput").value;
+    var waistCm = document.getElementById("waistInput").value;
     var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
     var waterLiters = document.getElementById("waterInput").value;
@@ -1032,6 +1095,7 @@
     var existing = daily[date] || {};
     var entry = {};
     if (weight !== "") entry.weight = parseFloat(weight);
+    if (waistCm !== "") entry.waistCm = parseFloat(waistCm);
     if (sleepHours !== "") entry.sleepHours = parseFloat(sleepHours);
     // Calories/protein/carbs/fat are maintained by the Food tab, not this form; carry them over untouched.
     if (existing.calories != null) entry.calories = existing.calories;
@@ -1395,16 +1459,17 @@
     startDate: "2026-10-10",
     startWeight: 107.0,
     goalWeight: 99,
-    ratePerWeek: 0.8
+    ratePerWeek: 0.7
   };
 
-  // Not separately editable in the UI (only start/goal/rate are) -- these come from the
-  // user's own plan and don't divide evenly from the rate, so they're kept as given
-  // rather than derived.
+  // Editable independently (date + target per checkpoint, via renderGoalCheckpointEditor)
+  // -- these come from the user's own plan and don't divide evenly from the rate, so
+  // they're kept as given rather than derived.
   var GOAL_CHECKPOINTS_DEFAULT = [
-    { date: "2026-10-31", target: 104.8 },
-    { date: "2026-11-21", target: 102.4 },
-    { date: "2026-12-19", target: 99 }
+    { date: "2026-10-31", target: 105.0 },
+    { date: "2026-11-21", target: 102.8 },
+    { date: "2026-12-12", target: 100.7 },
+    { date: "2026-12-31", target: 99.0 }
   ];
 
   function getGoal() {
@@ -1602,8 +1667,8 @@
   // The calorie target pace guidance adjusts from -- the fixed target if one's set,
   // else the midpoint of the auto-mode's 500-750 kcal deficit range off the editable
   // maintenance estimate.
-  function getGoalBaseCalorieTarget() {
-    var fixed = getFixedCalorieTarget();
+  function getGoalBaseCalorieTarget(dayType) {
+    var fixed = getFixedCalorieTarget(dayType);
     if (fixed != null) return fixed;
     return Math.round((getMaintenanceTdeeForTargets() - 600) / 10) * 10;
   }
@@ -1612,27 +1677,50 @@
   // tighter than usual when behind pace (floored at BMR), looser when comfortably
   // ahead, unchanged when on pace. Null wherever getGoalTodaySummary is (goal not
   // started yet, or nothing logged).
+  var GOAL_INTAKE_NEAR_KCAL = 100; // "on target today" band for logged intake vs. today's target
+
   function getGoalPaceGuidance(today) {
     var summary = getGoalTodaySummary(today);
     if (!summary) return null;
-    var base = getGoalBaseCalorieTarget();
+    var todayDayType = (loadDaily()[today] || {}).dayType;
+    var base = getGoalBaseCalorieTarget(todayDayType);
     var behind = summary.gapKg > GOAL_PACE_GAP_THRESHOLD_KG;
     var ahead = summary.gapKg < -GOAL_PACE_GAP_THRESHOLD_KG;
     var suggested = base;
-    var message;
+    var paceNote = "";
     if (behind) {
       var daily = loadDaily();
       var bmr = computeBMRForDate(today, daily[today] || {}, daily);
       suggested = Math.round((base - GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
       if (bmr != null) suggested = Math.max(suggested, bmr);
-      message = "Behind pace by " + roundN(summary.gapKg, 1) + " kg — aim for " + suggested +
-        " kcal today (or add extra cardio) to work back toward the line.";
+      paceNote = "Behind pace by " + roundN(summary.gapKg, 1) + " kg — ";
     } else if (ahead) {
       suggested = Math.round((base + GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
-      message = "Ahead of pace by " + roundN(Math.abs(summary.gapKg), 1) + " kg — " + suggested +
-        " kcal today is plenty, no need to push harder.";
+      paceNote = "Ahead of pace by " + roundN(Math.abs(summary.gapKg), 1) + " kg — ";
+    }
+
+    var intake = (loadDaily()[today] || {}).calories;
+    var message;
+    if (intake == null) {
+      // Nothing logged yet today -- there's no intake to compare, so just state the target.
+      if (behind) {
+        message = paceNote + "aim for " + suggested + " kcal today (or add extra cardio) to work back toward the line.";
+      } else if (ahead) {
+        message = paceNote + suggested + " kcal today is plenty, no need to push harder.";
+      } else {
+        message = "Right on pace — keep aiming for " + base + " kcal today.";
+      }
     } else {
-      message = "Right on pace — keep aiming for " + base + " kcal today.";
+      // Something's logged -- the message must reflect it, not just the weight trend,
+      // otherwise "on pace" can read as "fine" on a day that's actually way over target.
+      var diff = intake - suggested;
+      if (Math.abs(diff) <= GOAL_INTAKE_NEAR_KCAL) {
+        message = paceNote + "On target today — " + intake + " / " + suggested + " kcal logged.";
+      } else if (diff > 0) {
+        message = paceNote + intake + " kcal logged, " + diff + " kcal over today's " + suggested + " kcal target.";
+      } else {
+        message = paceNote + intake + " kcal logged, " + Math.abs(diff) + " kcal under today's " + suggested + " kcal target.";
+      }
     }
     return { baseTarget: base, suggestedTarget: suggested, message: message, behind: behind, ahead: ahead };
   }
@@ -1656,7 +1744,7 @@
     daily = daily || loadDaily();
     var entry = daily[date];
     if (!entry || entry.calories == null) return false;
-    var fixed = getFixedCalorieTarget();
+    var fixed = getFixedCalorieTarget(entry.dayType);
     if (fixed != null) return entry.calories <= fixed;
     var range = computeSuggestedCalorieRange(date, entry, daily);
     if (!range) return false;
@@ -1734,6 +1822,76 @@
     document.getElementById("goalStartWeightInput").value = goal.startWeight;
     document.getElementById("goalWeightInput").value = goal.goalWeight;
     document.getElementById("goalRateInput").value = goal.ratePerWeek;
+    renderGoalCheckpointEditor();
+  }
+
+  // Each checkpoint is its own date + target-weight pair, editable independently --
+  // they come from the user's own plan and don't divide evenly from the rate, so
+  // they're never recomputed from start/goal/rate.
+  function renderGoalCheckpointEditor() {
+    var container = document.getElementById("goalCheckpointEditor");
+    if (!container) return;
+    var goal = getGoal();
+    container.innerHTML = "";
+    goal.checkpoints.forEach(function (cp, i) {
+      var row = document.createElement("div");
+      row.className = "add-set-row";
+      row.style.gridTemplateColumns = "1fr 1fr";
+      row.style.marginTop = "8px";
+
+      var dateField = document.createElement("div");
+      dateField.className = "mini-field";
+      var dateLabel = document.createElement("label");
+      dateLabel.textContent = "Checkpoint " + (i + 1) + " date";
+      var dateInput = document.createElement("input");
+      dateInput.type = "date";
+      dateInput.value = cp.date;
+      dateInput.addEventListener("change", function () { handleGoalCheckpointChange(i, "date", dateInput.value); });
+      dateField.appendChild(dateLabel);
+      dateField.appendChild(dateInput);
+
+      var targetField = document.createElement("div");
+      targetField.className = "mini-field";
+      var targetLabel = document.createElement("label");
+      targetLabel.textContent = "Target (kg)";
+      var targetInput = document.createElement("input");
+      targetInput.type = "number";
+      targetInput.step = "0.1";
+      targetInput.min = "0";
+      targetInput.inputMode = "decimal";
+      targetInput.value = cp.target;
+      targetInput.addEventListener("change", function () { handleGoalCheckpointChange(i, "target", targetInput.value); });
+      targetField.appendChild(targetLabel);
+      targetField.appendChild(targetInput);
+
+      row.appendChild(dateField);
+      row.appendChild(targetField);
+      container.appendChild(row);
+    });
+  }
+
+  function computeUpdatedCheckpoints(checkpoints, index, field, value) {
+    var next = checkpoints.map(function (cp) { return { date: cp.date, target: cp.target }; });
+    if (field === "date" && value) next[index].date = value;
+    if (field === "target") {
+      var parsed = parseFloat(value);
+      if (!isNaN(parsed)) next[index].target = parsed;
+    }
+    return next;
+  }
+
+  function handleGoalCheckpointChange(index, field, value) {
+    var goal = getGoal();
+    var settings = loadSettings();
+    settings.goal = {
+      startDate: goal.startDate,
+      startWeight: goal.startWeight,
+      goalWeight: goal.goalWeight,
+      ratePerWeek: goal.ratePerWeek,
+      checkpoints: computeUpdatedCheckpoints(goal.checkpoints, index, field, value)
+    };
+    saveSettings(settings);
+    renderGoalChart();
   }
 
   function handleGoalFieldChange() {
@@ -1753,11 +1911,45 @@
     renderGoalChart();
   }
 
+  // The Monday that starts the calendar week containing a given date.
+  function getWeekStartISO(dateISO) {
+    var d = new Date(dateISO + "T00:00:00");
+    var day = d.getDay(); // 0 = Sunday .. 6 = Saturday
+    var diffToMonday = day === 0 ? 6 : day - 1;
+    d.setDate(d.getDate() - diffToMonday);
+    var tz = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+  }
+
+  // One point per Monday-starting week that has at least one logged value for `key`
+  // within range -- waist is noisy day to day, so it's averaged per week rather than
+  // charted daily like sleep/water/cigarettes.
+  function computeWeeklyAverageSeries(daily, key, range) {
+    var buckets = {}; // weekStart -> { sum, count }
+    Object.keys(daily)
+      .filter(function (d) { return d >= range.start && d <= range.end && daily[d][key] != null; })
+      .forEach(function (d) {
+        var weekStart = getWeekStartISO(d);
+        buckets[weekStart] = buckets[weekStart] || { sum: 0, count: 0 };
+        buckets[weekStart].sum += daily[d][key];
+        buckets[weekStart].count += 1;
+      });
+    return Object.keys(buckets).sort().map(function (weekStart) {
+      return { date: weekStart, value: roundN(buckets[weekStart].sum / buckets[weekStart].count, 1) };
+    });
+  }
+
+  function renderWaistTrend(daily, range) {
+    var points = computeWeeklyAverageSeries(daily, "waistCm", range);
+    drawLineChart("trendsWaistChart", "trendsWaistEmpty", points);
+  }
+
   function renderTrends() {
     var daily = loadDaily();
     var range = getTrendsRange();
     renderCaloriesTrend(daily, range);
     TREND_METRICS.forEach(function (cfg) { renderMetricTrend(cfg, daily, range); });
+    renderWaistTrend(daily, range);
     renderGoalChart();
   }
 
@@ -1843,12 +2035,8 @@
           var weight = parseFloat(weightInput.value);
           if (!reps) { toast("Enter reps"); return; }
           var w = isNaN(weight) ? 0 : weight;
-          var prevBest = getBestWeightSoFar(ex.name, ex.sets);
-          if (prevBest != null && prevBest > 0 && w > prevBest * 1.5) {
-            var ok = confirm(w + " kg for " + ex.name + " is more than 50% above your previous best of " +
-              prevBest + " kg. Save this set anyway?");
-            if (!ok) return;
-          }
+          var warning = getSetTypoWarning(ex.name, reps, w, ex.sets);
+          if (warning && !confirm(warning)) return;
           ex.sets.push({ reps: reps, weight: w });
           renderWorkoutBuilder();
         });
@@ -2345,7 +2533,7 @@
     var matches = loadCustomFoods()
       .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
       .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat, basis: f.basis };
+        return { id: f.id, name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat, basis: f.basis };
       });
     return Promise.resolve(matches);
   }
@@ -2464,6 +2652,7 @@
     document.getElementById("foodUnitGramsInput").value = 50;
     document.getElementById("foodQuantityCard").style.display = "block";
     document.getElementById("foodMealSelect").value = guessMealForTime(new Date().getHours());
+    document.getElementById("foodPlannedInput").checked = false;
     clearFoodSearchState();
     setQtyMode("grams");
   }
@@ -2495,7 +2684,9 @@
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
       fat: Math.round(selectedFoodProduct.per100.fat * factor),
       isTreat: !!selectedFoodProduct.isTreat,
-      meal: document.getElementById("foodMealSelect").value
+      meal: document.getElementById("foodMealSelect").value,
+      customFoodId: selectedFoodProduct.source === "My Foods" ? selectedFoodProduct.id : null,
+      planned: document.getElementById("foodPlannedInput").checked
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -2535,12 +2726,16 @@
         protein: entry.protein * per100Factor,
         carbs: entry.carbs * per100Factor,
         fat: entry.fat * per100Factor
-      }
+      },
+      isTreat: entry.isTreat,
+      source: entry.customFoodId ? "My Foods" : undefined,
+      id: entry.customFoodId
     };
 
     document.getElementById("foodQuantityName").textContent = "Edit: " + entry.name;
     document.getElementById("foodQuantityCard").style.display = "block";
     document.getElementById("foodMealSelect").value = entry.meal || guessMealForTime(new Date().getHours());
+    document.getElementById("foodPlannedInput").checked = !!entry.planned;
     document.getElementById("addFoodBtn").textContent = "Update log entry";
     document.getElementById("cancelEditFoodLogBtn").style.display = "inline-block";
     document.getElementById("foodSearchInput").value = "";
@@ -2565,6 +2760,12 @@
     document.getElementById("cancelEditFoodLogBtn").style.display = "none";
   }
 
+  // A planned entry contributes nothing to the day's totals until it's marked eaten.
+  function getEntryDailyContribution(entry) {
+    if (entry.planned) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    return { calories: entry.calories, protein: entry.protein, carbs: entry.carbs, fat: entry.fat };
+  }
+
   function updateFoodLogEntryQuantity(date, id, updated) {
     var log = loadFoodLog();
     var entries = log[date] || [];
@@ -2580,7 +2781,10 @@
       protein: updated.protein,
       carbs: updated.carbs,
       fat: updated.fat,
-      meal: updated.meal != null ? updated.meal : old.meal
+      meal: updated.meal != null ? updated.meal : old.meal,
+      isTreat: updated.isTreat != null ? updated.isTreat : old.isTreat,
+      customFoodId: updated.customFoodId != null ? updated.customFoodId : old.customFoodId,
+      planned: updated.planned != null ? updated.planned : old.planned
     };
     if (updated.units != null) {
       next.units = updated.units;
@@ -2589,13 +2793,16 @@
     entries[idx] = next;
     saveFoodLog(log);
 
+    // Covers all four planned/eaten transitions, not just a same-state quantity edit.
     var daily = loadDaily();
     var d = daily[date];
     if (d) {
-      d.calories = Math.max(0, (d.calories || 0) - old.calories + updated.calories);
-      d.protein = Math.max(0, (d.protein || 0) - old.protein + updated.protein);
-      d.carbs = Math.max(0, (d.carbs || 0) - old.carbs + updated.carbs);
-      d.fat = Math.max(0, (d.fat || 0) - old.fat + updated.fat);
+      var oldContribution = getEntryDailyContribution(old);
+      var newContribution = getEntryDailyContribution(next.planned ? next : updated);
+      d.calories = Math.max(0, (d.calories || 0) - oldContribution.calories + newContribution.calories);
+      d.protein = Math.max(0, (d.protein || 0) - oldContribution.protein + newContribution.protein);
+      d.carbs = Math.max(0, (d.carbs || 0) - oldContribution.carbs + newContribution.carbs);
+      d.fat = Math.max(0, (d.fat || 0) - oldContribution.fat + newContribution.fat);
       saveDaily(daily);
     }
 
@@ -2638,6 +2845,33 @@
     log[date].push(entry);
     saveFoodLog(log);
 
+    // A planned entry doesn't count toward the day's totals until it's marked eaten.
+    if (!entry.planned) {
+      var daily = loadDaily();
+      var d = daily[date] || {};
+      d.calories = (d.calories || 0) + entry.calories;
+      d.protein = (d.protein || 0) + entry.protein;
+      d.carbs = (d.carbs || 0) + entry.carbs;
+      d.fat = (d.fat || 0) + entry.fat;
+      daily[date] = d;
+      saveDaily(daily);
+    }
+
+    toast(entry.planned ? "Added as planned" : "Added to food log");
+    renderFoodLog(date);
+    syncTodayIfSameDate(date);
+  }
+
+  // Marks a planned entry as eaten and adds its macros to the day's totals, which were
+  // excluded while it was planned.
+  function handleMarkFoodEntryEaten(date, id) {
+    var log = loadFoodLog();
+    var entries = log[date] || [];
+    var entry = entries.filter(function (e) { return e.id === id; })[0];
+    if (!entry || !entry.planned) return;
+    entry.planned = false;
+    saveFoodLog(log);
+
     var daily = loadDaily();
     var d = daily[date] || {};
     d.calories = (d.calories || 0) + entry.calories;
@@ -2647,7 +2881,7 @@
     daily[date] = d;
     saveDaily(daily);
 
-    toast("Added to food log");
+    toast("Marked as eaten");
     renderFoodLog(date);
     syncTodayIfSameDate(date);
   }
@@ -2661,9 +2895,11 @@
     var removed = entries.splice(idx, 1)[0];
     saveFoodLog(log);
 
+    // A planned entry was never added to the day's totals, so there's nothing to
+    // subtract back out.
     var daily = loadDaily();
     var d = daily[date];
-    if (d) {
+    if (d && !removed.planned) {
       d.calories = Math.max(0, (d.calories || 0) - removed.calories);
       d.protein = Math.max(0, (d.protein || 0) - removed.protein);
       d.carbs = Math.max(0, (d.carbs || 0) - removed.carbs);
@@ -2687,17 +2923,112 @@
     }
   }
 
+  // ---------- meal templates ----------
+
+  function buildFoodTemplateItemFromEntry(entry) {
+    return {
+      name: entry.name,
+      grams: entry.grams,
+      calories: entry.calories,
+      protein: entry.protein,
+      carbs: entry.carbs,
+      fat: entry.fat,
+      isTreat: !!entry.isTreat,
+      basis: entry.basis,
+      customFoodId: entry.customFoodId,
+      units: entry.units,
+      unitGrams: entry.unitGrams
+    };
+  }
+
+  function populateFoodTemplateSelect() {
+    var select = document.getElementById("foodTemplateSelect");
+    if (!select) return;
+    var current = select.value;
+    select.innerHTML = "";
+    var placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select a template…";
+    select.appendChild(placeholder);
+    loadFoodTemplates().forEach(function (t) {
+      var opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name + " (" + t.items.length + ")";
+      select.appendChild(opt);
+    });
+    if (current) select.value = current;
+  }
+
+  // Saves every food currently logged on the viewed date as a named template --
+  // each item keeps its own quantity/macros, so logging the template later needs no
+  // re-entry (e.g. "Breakfast: 4 eggs + whey").
+  function handleSaveFoodTemplate() {
+    var nameInput = document.getElementById("foodTemplateNameInput");
+    var name = nameInput.value.trim();
+    if (!name) { toast("Enter a template name"); return; }
+    var date = document.getElementById("foodDate").value || todayISO();
+    var entries = loadFoodLog()[date] || [];
+    if (entries.length === 0) { toast("No food logged on this date to save"); return; }
+    var templates = loadFoodTemplates();
+    templates.push({ id: makeId(), name: name, items: entries.map(buildFoodTemplateItemFromEntry) });
+    saveFoodTemplatesList(templates);
+    nameInput.value = "";
+    populateFoodTemplateSelect();
+    toast('Saved template "' + name + '"');
+  }
+
+  // Logs every item in the template as its own separate food log entry (eaten, not
+  // planned) on the viewed date, in one tap.
+  function handleLoadFoodTemplate() {
+    var select = document.getElementById("foodTemplateSelect");
+    var id = select.value;
+    if (!id) return;
+    var template = loadFoodTemplates().filter(function (t) { return t.id === id; })[0];
+    if (!template) return;
+    var date = document.getElementById("foodDate").value || todayISO();
+    var meal = guessMealForTime(new Date().getHours());
+    template.items.forEach(function (item) {
+      var entry = {
+        id: makeId(),
+        name: item.name,
+        grams: item.grams,
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+        isTreat: item.isTreat,
+        basis: item.basis,
+        customFoodId: item.customFoodId,
+        meal: meal,
+        planned: false
+      };
+      if (item.units != null) {
+        entry.units = item.units;
+        entry.unitGrams = item.unitGrams;
+      }
+      addFoodEntry(date, entry);
+    });
+    select.value = "";
+    toast('Logged "' + template.name + '"');
+  }
+
   function renderFoodLogItem(list, date, entry) {
     var item = document.createElement("div");
-    item.className = "food-log-item";
+    item.className = "food-log-item" + (entry.planned ? " food-log-item--planned" : "");
 
     var info = document.createElement("div");
     var nameEl = document.createElement("div");
     nameEl.className = "food-log-name";
+    if (entry.planned) {
+      var plannedTag = document.createElement("span");
+      plannedTag.className = "food-planned-tag";
+      plannedTag.textContent = "🕓 PLANNED";
+      nameEl.appendChild(plannedTag);
+    }
     var qtyLabel = entry.units != null
       ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
       : (entry.grams != null ? " (" + entry.grams + " g)" : "");
-    nameEl.textContent = entry.name + qtyLabel;
+    nameEl.appendChild(document.createTextNode(entry.name + qtyLabel));
     var macrosEl = document.createElement("div");
     macrosEl.className = "food-log-macros";
     macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
@@ -2706,6 +3037,15 @@
 
     var actions = document.createElement("div");
     actions.className = "food-log-actions";
+
+    if (entry.planned) {
+      var eatenBtn = document.createElement("button");
+      eatenBtn.type = "button";
+      eatenBtn.className = "icon-btn";
+      eatenBtn.textContent = "Eaten";
+      eatenBtn.addEventListener("click", function () { handleMarkFoodEntryEaten(date, entry.id); });
+      actions.appendChild(eatenBtn);
+    }
 
     var editBtn = document.createElement("button");
     editBtn.type = "button";
@@ -2756,10 +3096,11 @@
       if (group.entries.length === 0) return;
       var header = document.createElement("div");
       header.className = "food-meal-header";
-      var groupProtein = group.entries.reduce(function (sum, e) { return sum + e.protein; }, 0);
+      var groupProtein = group.entries.reduce(function (sum, e) { return sum + (e.planned ? 0 : e.protein); }, 0);
       header.textContent = group.icon + " " + group.label + " · " + groupProtein + " g protein";
       list.appendChild(header);
       group.entries.forEach(function (entry) {
+        if (entry.planned) { renderFoodLogItem(list, date, entry); return; }
         totals.calories += entry.calories;
         totals.protein += entry.protein;
         totals.carbs += entry.carbs;
@@ -2859,6 +3200,7 @@
           }
           parts.push(weightPart);
         }
+        if (entry.waistCm != null) parts.push(entry.waistCm + " cm waist");
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
         if (entry.waterLiters != null) parts.push(entry.waterLiters + " L water");
         if (entry.cigarettesCount != null) parts.push(entry.cigarettesCount + " cigarettes");
@@ -2986,7 +3328,8 @@
       customFoods: loadCustomFoods(),
       foods: loadFoods(),
       customExercises: loadCustomExercises(),
-      customWorkoutTemplates: loadWorkoutTemplates()
+      customWorkoutTemplates: loadWorkoutTemplates(),
+      foodTemplates: loadFoodTemplates()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -3057,6 +3400,7 @@
     if (payload.foods) saveFoods(payload.foods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
+    if (payload.foodTemplates) saveFoodTemplatesList(payload.foodTemplates);
     toast("Import complete");
     fillProfileForm();
     fillGoalForm();
@@ -3068,6 +3412,7 @@
     renderTrends();
     populateExerciseSelect(currentExerciseType);
     populateWorkoutTemplateSelect();
+    populateFoodTemplateSelect();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderFoodChecklist(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
@@ -3084,6 +3429,7 @@
     localStorage.removeItem(STORAGE.foods);
     localStorage.removeItem(STORAGE.customExercises);
     localStorage.removeItem(STORAGE.customWorkoutTemplates);
+    localStorage.removeItem(STORAGE.foodTemplates);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
@@ -3098,6 +3444,7 @@
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
     populateWorkoutTemplateSelect();
+    populateFoodTemplateSelect();
     renderFoodLog(document.getElementById("foodDate").value || todayISO());
     renderFoodChecklist(document.getElementById("foodDate").value || todayISO());
     renderCustomFoodList();
@@ -3149,40 +3496,71 @@
       settings.calorieTarget = settings.fixedTargetRest;
       saveSettings(settings);
     }
+    // The single calorieTarget was itself a later simplification of separate
+    // lifting/cardio-rest targets; bring that split back, seeded from whatever single
+    // value the user already had set, so a fixed-target user's effective target
+    // doesn't silently change the moment this ships.
+    if (settings.liftingDayTarget == null && settings.cardioRestDayTarget == null && settings.calorieTarget != null) {
+      settings.liftingDayTarget = settings.calorieTarget;
+      settings.cardioRestDayTarget = settings.calorieTarget;
+      saveSettings(settings);
+    }
+    return settings;
+  }
+
+  // Gives protein/treat/cardio/step targets a real stored value instead of leaving
+  // them undefined and relying on the input's placeholder text to hint the default --
+  // undefined is "unset", but an explicit 0 (e.g. a 0 kcal treat budget) is a real
+  // value and must be left alone.
+  function applySettingsDefaults(settings) {
+    var changed = false;
+    if (settings.proteinTarget == null) { settings.proteinTarget = PROTEIN_TARGET_DEFAULT; changed = true; }
+    if (settings.treatBudget == null) { settings.treatBudget = TREAT_BUDGET_DEFAULT; changed = true; }
+    if (settings.cardioMinutesTarget == null) { settings.cardioMinutesTarget = CARDIO_MINUTES_TARGET_DEFAULT; changed = true; }
+    if (settings.stepTarget == null) { settings.stepTarget = STEP_TARGET_DEFAULT; changed = true; }
+    if (settings.liftingDayTarget == null) { settings.liftingDayTarget = LIFTING_DAY_TARGET_DEFAULT; changed = true; }
+    if (settings.cardioRestDayTarget == null) { settings.cardioRestDayTarget = CARDIO_REST_DAY_TARGET_DEFAULT; changed = true; }
+    if (changed) saveSettings(settings);
     return settings;
   }
 
   function fillProfileForm() {
-    var settings = migrateLegacyFixedTarget(loadSettings());
+    var settings = applySettingsDefaults(migrateLegacyFixedTarget(loadSettings()));
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     setSexToggle(settings.sex || "male");
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
     setTargetModeToggle(settings.fixedTargetsEnabled ? "fixed" : "auto");
-    document.getElementById("calorieTargetInput").value = settings.calorieTarget != null ? settings.calorieTarget : "";
-    document.getElementById("proteinTargetInput").value = settings.proteinTarget != null ? settings.proteinTarget : "";
+    document.getElementById("liftingDayTargetInput").value = settings.liftingDayTarget;
+    document.getElementById("cardioRestDayTargetInput").value = settings.cardioRestDayTarget;
+    document.getElementById("proteinTargetInput").value = settings.proteinTarget;
     document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
-    document.getElementById("treatBudgetInput").value = settings.treatBudget != null ? settings.treatBudget : "";
-    document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : "";
-    document.getElementById("stepTargetInput").value = settings.stepTarget != null ? settings.stepTarget : "";
+    document.getElementById("treatBudgetInput").value = settings.treatBudget;
+    document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget;
+    document.getElementById("stepTargetInput").value = settings.stepTarget;
   }
 
   function handleTargetModeChange(mode) {
     setTargetModeToggle(mode);
-    var settings = loadSettings();
+    var settings = applySettingsDefaults(loadSettings());
     settings.fixedTargetsEnabled = mode === "fixed";
-    if (mode === "fixed" && settings.calorieTarget == null) {
-      settings.calorieTarget = CALORIE_TARGET_DEFAULT;
-    }
     saveSettings(settings);
     fillProfileForm();
     renderToday();
   }
 
-  function handleFixedTargetChange() {
-    var value = document.getElementById("calorieTargetInput").value;
+  function handleLiftingDayTargetChange() {
+    var value = document.getElementById("liftingDayTargetInput").value;
     var settings = loadSettings();
-    settings.calorieTarget = value !== "" ? Math.round(parseFloat(value)) : CALORIE_TARGET_DEFAULT;
+    settings.liftingDayTarget = value !== "" ? Math.round(parseFloat(value)) : LIFTING_DAY_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleCardioRestDayTargetChange() {
+    var value = document.getElementById("cardioRestDayTargetInput").value;
+    var settings = loadSettings();
+    settings.cardioRestDayTarget = value !== "" ? Math.round(parseFloat(value)) : CARDIO_REST_DAY_TARGET_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -3373,6 +3751,7 @@
   function init() {
     seedCustomFoodsIfNeeded();
     migrateDefaultTreatsIfNeeded();
+    applySettingsDefaults(migrateLegacyFixedTarget(loadSettings()));
     seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
@@ -3421,7 +3800,8 @@
     document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () { handleTargetModeChange(btn.dataset.targetMode); });
     });
-    document.getElementById("calorieTargetInput").addEventListener("change", handleFixedTargetChange);
+    document.getElementById("liftingDayTargetInput").addEventListener("change", handleLiftingDayTargetChange);
+    document.getElementById("cardioRestDayTargetInput").addEventListener("change", handleCardioRestDayTargetChange);
     document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
     document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
     document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
@@ -3490,6 +3870,8 @@
     });
     document.getElementById("addFoodBtn").addEventListener("click", handleAddFoodFromSearch);
     document.getElementById("cancelEditFoodLogBtn").addEventListener("click", cancelEditFoodLogEntry);
+    document.getElementById("loadFoodTemplateBtn").addEventListener("click", handleLoadFoodTemplate);
+    document.getElementById("saveFoodTemplateBtn").addEventListener("click", handleSaveFoodTemplate);
     document.getElementById("showNewFoodBtn").addEventListener("click", function () {
       var card = document.getElementById("newFoodCard");
       card.style.display = card.style.display === "none" ? "block" : "none";
@@ -3532,7 +3914,15 @@
       saveSettings: saveSettings,
       loadDaily: loadDaily,
       saveDaily: saveDaily,
+      getGoal: getGoal,
       getGoalEndDate: getGoalEndDate,
+      computeUpdatedCheckpoints: computeUpdatedCheckpoints,
+      getWeekStartISO: getWeekStartISO,
+      computeWeeklyAverageSeries: computeWeeklyAverageSeries,
+      getEntryDailyContribution: getEntryDailyContribution,
+      loadFoodTemplates: loadFoodTemplates,
+      saveFoodTemplatesList: saveFoodTemplatesList,
+      buildFoodTemplateItemFromEntry: buildFoodTemplateItemFromEntry,
       getGoalCheckpointStatuses: getGoalCheckpointStatuses,
       isGoalStalled: isGoalStalled,
       getBestWeightSoFar: getBestWeightSoFar,
@@ -3551,7 +3941,21 @@
       getProgressiveOverloadStatus: getProgressiveOverloadStatus,
       isTrainingDay: isTrainingDay,
       getConsecutiveTrainingDaysBefore: getConsecutiveTrainingDaysBefore,
-      getRestDayAdvice: getRestDayAdvice
+      getRestDayAdvice: getRestDayAdvice,
+      applySettingsDefaults: applySettingsDefaults,
+      getProteinTarget: getProteinTarget,
+      getTreatBudget: getTreatBudget,
+      getCardioMinutesTarget: getCardioMinutesTarget,
+      getStepTarget: getStepTarget,
+      loadCustomFoods: loadCustomFoods,
+      saveCustomFoods: saveCustomFoods,
+      loadFoodLog: loadFoodLog,
+      saveFoodLog: saveFoodLog,
+      resolveIsTreatForEntry: resolveIsTreatForEntry,
+      getTreatCaloriesForDate: getTreatCaloriesForDate,
+      getSetTypoWarning: getSetTypoWarning,
+      getFixedCalorieTarget: getFixedCalorieTarget,
+      migrateLegacyFixedTarget: migrateLegacyFixedTarget
     };
   }
 
