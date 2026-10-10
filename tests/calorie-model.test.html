@@ -213,6 +213,115 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.adaptiveTDEE("2026-09-28", 28) === null, "expected null with zero weigh-ins");
   });
 
+  // ---------- goal plan ----------
+
+  test("getGoalEndDate: 8kg at 0.8kg/week implies 70 days (matches the given checkpoints)", function () {
+    clearStorage();
+    var end = hooks.getGoalEndDate({ startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 });
+    assert(end === "2026-12-19", "expected 2026-12-19, got " + end);
+  });
+
+  test("getGoalCheckpointStatuses: before start date, all checkpoints are upcoming", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107 } });
+    var statuses = hooks.getGoalCheckpointStatuses("2026-10-15");
+    assert(statuses.length === 3, "expected 3 checkpoints, got " + statuses.length);
+    assert(statuses.every(function (s) { return s.status === "upcoming"; }), "expected all upcoming before any checkpoint date");
+  });
+
+  test("getGoalCheckpointStatuses: on-track once the rolling average clears a checkpoint", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    // A steady decline from 107 -> well under 104.8 by the first checkpoint (2026-10-31).
+    for (var i = 0; i <= 25; i++) {
+      var d = new Date("2026-10-10T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.15 };
+    }
+    hooks.saveDaily(daily);
+    var statuses = hooks.getGoalCheckpointStatuses("2026-11-05");
+    assert(statuses[0].status === "on-track", "expected checkpoint 1 on-track, got " + statuses[0].status + " (value " + statuses[0].value + ")");
+    assert(statuses[1].status === "upcoming", "expected checkpoint 2 still upcoming, got " + statuses[1].status);
+  });
+
+  test("getGoalCheckpointStatuses: behind when the rolling average is still above target", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    // Barely moving -- nowhere near 104.8 by 2026-10-31.
+    for (var i = 0; i <= 25; i++) {
+      var d = new Date("2026-10-10T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.01 };
+    }
+    hooks.saveDaily(daily);
+    var statuses = hooks.getGoalCheckpointStatuses("2026-11-05");
+    assert(statuses[0].status === "behind", "expected checkpoint 1 behind, got " + statuses[0].status + " (value " + statuses[0].value + ")");
+  });
+
+  test("isGoalStalled: true when the 7-day average never drops over 14 days", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-01", startWeight: 100, goalWeight: 95, ratePerWeek: 0.5 } });
+    var daily = {};
+    // Flat weight for a month straight -> the rolling average never decreases.
+    for (var i = 0; i <= 30; i++) {
+      var d = new Date("2026-10-01T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 100 };
+    }
+    hooks.saveDaily(daily);
+    assert(hooks.isGoalStalled("2026-10-31") === true, "expected stalled on a flat 30-day weight series");
+  });
+
+  test("isGoalStalled: false when the average is still trending down", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-01", startWeight: 100, goalWeight: 95, ratePerWeek: 0.5 } });
+    var daily = {};
+    for (var i = 0; i <= 30; i++) {
+      var d = new Date("2026-10-01T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 100 - i * 0.1 };
+    }
+    hooks.saveDaily(daily);
+    assert(hooks.isGoalStalled("2026-10-31") === false, "expected not stalled on a steadily-declining series");
+  });
+
+  // ---------- data quality: previous-best weight check ----------
+
+  test("getBestWeightSoFar: finds the max weight across saved workouts for that exercise", function () {
+    clearStorage();
+    hooks.saveWorkouts([
+      { id: "w1", date: "2026-09-01", name: "A", exercises: [{ name: "Concentration Curl", type: "strength", sets: [{ reps: 10, weight: 12 }, { reps: 8, weight: 14 }] }] },
+      { id: "w2", date: "2026-09-08", name: "B", exercises: [{ name: "concentration curl", type: "strength", sets: [{ reps: 6, weight: 16 }] }] },
+      { id: "w3", date: "2026-09-15", name: "C", exercises: [{ name: "Barbell Row", type: "strength", sets: [{ reps: 5, weight: 60 }] }] }
+    ]);
+    var best = hooks.getBestWeightSoFar("Concentration Curl", []);
+    assert(best === 16, "expected 16 (case-insensitive match across workouts), got " + best);
+  });
+
+  test("getBestWeightSoFar: also considers sets already added this session", function () {
+    clearStorage();
+    hooks.saveWorkouts([]);
+    var best = hooks.getBestWeightSoFar("Concentration Curl", [{ reps: 10, weight: 14 }, { reps: 8, weight: 18 }]);
+    assert(best === 18, "expected 18 from the in-progress session sets, got " + best);
+  });
+
+  test("getBestWeightSoFar: null when the exercise has never been logged", function () {
+    clearStorage();
+    hooks.saveWorkouts([]);
+    assert(hooks.getBestWeightSoFar("Deadlift", []) === null, "expected null for a never-logged exercise");
+  });
+
+  // ---------- security: usdaApiKey excluded from export ----------
+
+  test("getExportableSettings: strips usdaApiKey but keeps everything else", function () {
+    clearStorage();
+    hooks.saveSettings({ age: 30, heightCm: 180, sex: "male", usdaApiKey: "super-secret-key" });
+    var exportable = hooks.getExportableSettings();
+    assert(exportable.usdaApiKey === undefined, "expected usdaApiKey stripped, got " + exportable.usdaApiKey);
+    assert(exportable.age === 30 && exportable.heightCm === 180 && exportable.sex === "male", "expected other settings preserved");
+    // The real localStorage copy is untouched -- only the export payload is filtered.
+    assert(hooks.loadSettings().usdaApiKey === "super-secret-key", "expected the stored key to be unaffected");
+  });
+
   clearStorage();
 
   // ---------- render ----------

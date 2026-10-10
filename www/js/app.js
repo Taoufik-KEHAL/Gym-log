@@ -48,6 +48,16 @@
     { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
   ];
 
+  // Foods marked as treats by default (case-insensitive name match), the first time
+  // each is seen without an explicit isTreat already set -- covers both the seed above
+  // and any custom foods already saved on this device.
+  var DEFAULT_TREAT_NAMES = [
+    "Chocolat aiguebelle 55 cacao", "Milka nut", "Milka Tablette Noisette", "Maruja",
+    "Snickers bar", "Snikers peanut butter", "Mood almond", "Mood hazelnut", "Bounty",
+    "Mars", "Chocolat jouven", "KitKat", "Pringles Original", "Snik snack",
+    "Mille-feuille (pastry)", "Sugar", "Confiture cerise", "Honey", "Dates"
+  ];
+
   // A separate, simpler "did you have this today" checklist -- no quantities, no
   // nutrients -- that coexists with the searchable/quantified food log above.
   var FOOD_ITEMS = [
@@ -191,6 +201,23 @@
     localStorage.setItem(STORAGE.workouts, JSON.stringify(list));
   }
 
+  // Heaviest weight ever logged for a strength exercise (case-insensitive name match),
+  // across saved workouts plus any sets already added for it in the in-progress,
+  // not-yet-saved session (currentSessionSets) -- so a typo later in the same session
+  // still gets caught. Null if nothing's been logged for this exercise yet.
+  function getBestWeightSoFar(exerciseName, currentSessionSets) {
+    var lname = exerciseName.toLowerCase();
+    var best = null;
+    loadWorkouts().forEach(function (w) {
+      w.exercises.forEach(function (ex) {
+        if (ex.type !== "strength" || ex.name.toLowerCase() !== lname) return;
+        ex.sets.forEach(function (s) { if (best == null || s.weight > best) best = s.weight; });
+      });
+    });
+    (currentSessionSets || []).forEach(function (s) { if (best == null || s.weight > best) best = s.weight; });
+    return best;
+  }
+
   function loadSettings() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.settings) || "{}");
@@ -279,6 +306,23 @@
     saveCustomFoods(seeded);
   }
 
+  // Marks any custom food matching DEFAULT_TREAT_NAMES (case-insensitive) as a treat,
+  // but only the first time each food is seen with isTreat not yet set -- so a user who
+  // explicitly un-treats one of these foods later isn't overridden back on every load.
+  function migrateDefaultTreatsIfNeeded() {
+    var foods = loadCustomFoods();
+    var lowerTreatNames = DEFAULT_TREAT_NAMES.map(function (n) { return n.toLowerCase(); });
+    var changed = false;
+    foods.forEach(function (f) {
+      if (f.isTreat != null) return;
+      if (lowerTreatNames.indexOf(f.name.toLowerCase()) !== -1) {
+        f.isTreat = true;
+        changed = true;
+      }
+    });
+    if (changed) saveCustomFoods(foods);
+  }
+
   function loadWorkoutTemplates() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.customWorkoutTemplates) || "[]");
@@ -316,13 +360,24 @@
       var info = document.createElement("div");
       var nameEl = document.createElement("div");
       nameEl.className = "food-log-name";
-      nameEl.textContent = f.name;
+      nameEl.textContent = f.name + (f.basis ? " (" + f.basis + ")" : "");
       var macrosEl = document.createElement("div");
       macrosEl.className = "food-log-macros";
       macrosEl.textContent = f.per100.calories + " kcal · " + f.per100.protein + " g protein · " +
         f.per100.carbs + " g carbs · " + f.per100.fat + " g fat (per 100g)";
       info.appendChild(nameEl);
       info.appendChild(macrosEl);
+
+      var treatLabel = document.createElement("label");
+      treatLabel.className = "food-check-row";
+      treatLabel.style.marginTop = "4px";
+      var treatCheckbox = document.createElement("input");
+      treatCheckbox.type = "checkbox";
+      treatCheckbox.checked = !!f.isTreat;
+      treatCheckbox.addEventListener("change", function () { handleToggleMyFoodTreat(f.id, treatCheckbox.checked); });
+      treatLabel.appendChild(treatCheckbox);
+      treatLabel.appendChild(document.createTextNode(" Treat"));
+      info.appendChild(treatLabel);
 
       var actions = document.createElement("div");
       actions.className = "food-log-actions";
@@ -357,11 +412,13 @@
       carbs: parseFloat(document.getElementById("myFoodCarbs").value) || 0,
       fat: parseFloat(document.getElementById("myFoodFat").value) || 0
     };
+    var isTreat = document.getElementById("myFoodIsTreat").checked;
+    var basis = document.getElementById("myFoodBasis").value || undefined;
     var foods = loadCustomFoods();
 
     if (editingMyFoodId) {
       var idx = foods.findIndex(function (f) { return f.id === editingMyFoodId; });
-      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100 };
+      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100, isTreat: isTreat, basis: basis };
       saveCustomFoods(foods);
       handleCancelEditMyFood();
       renderCustomFoodList();
@@ -369,14 +426,24 @@
       return;
     }
 
-    foods.push({ id: makeId(), name: name, per100: per100 });
+    foods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat, basis: basis });
     saveCustomFoods(foods);
 
     ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("myFoodIsTreat").checked = false;
+    document.getElementById("myFoodBasis").value = "";
     renderCustomFoodList();
     toast("Added to My Foods");
+  }
+
+  function handleToggleMyFoodTreat(id, isTreat) {
+    var foods = loadCustomFoods();
+    var food = foods.find(function (f) { return f.id === id; });
+    if (!food) return;
+    food.isTreat = isTreat;
+    saveCustomFoods(foods);
   }
 
   function handleEditMyFood(id) {
@@ -388,6 +455,8 @@
     document.getElementById("myFoodProtein").value = food.per100.protein;
     document.getElementById("myFoodCarbs").value = food.per100.carbs;
     document.getElementById("myFoodFat").value = food.per100.fat;
+    document.getElementById("myFoodIsTreat").checked = !!food.isTreat;
+    document.getElementById("myFoodBasis").value = food.basis || "";
     document.getElementById("addMyFoodBtn").textContent = "Update food";
     document.getElementById("cancelEditMyFoodBtn").style.display = "inline-block";
     document.getElementById("myFoodName").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -398,6 +467,8 @@
     ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("myFoodIsTreat").checked = false;
+    document.getElementById("myFoodBasis").value = "";
     document.getElementById("addMyFoodBtn").textContent = "Add to My Foods";
     document.getElementById("cancelEditMyFoodBtn").style.display = "none";
   }
@@ -496,10 +567,13 @@
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
+    renderTreatBudget(today);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
+    renderProteinTarget(entry);
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
+    renderCardioTarget(today, daily);
     renderDayStatus(entry, today, daily);
     renderWeightTrend(daily);
   }
@@ -517,9 +591,17 @@
     el.className = "stat-sub";
   }
 
-  // Suggested intake for a day: Maintenance minus a 500-750 kcal deficit, never below BMR.
+  // Suggested intake for a day: the Profile's editable maintenance estimate minus a
+  // 500-750 kcal deficit, never below BMR. Uses a flat, user-set maintenance figure
+  // rather than the computed BMR+burn+TEF estimate, since that one can swing widely
+  // day to day and isn't meant for target-setting.
+  function getMaintenanceTdeeForTargets() {
+    var settings = loadSettings();
+    return settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT;
+  }
+
   function computeSuggestedCalorieRange(date, entry, daily) {
-    var maintenance = getMaintenanceForDay(date, entry, daily);
+    var maintenance = getMaintenanceTdeeForTargets();
     var bmr = computeBMRForDate(date, entry, daily);
     if (maintenance == null || bmr == null) return null;
     var high = Math.round((maintenance - 500) / 10) * 10;
@@ -530,22 +612,58 @@
     return { low: low, high: high };
   }
 
-  var FIXED_TARGET_REST_DEFAULT = 2370;
-  var FIXED_TARGET_TRAINING_DEFAULT = 2700;
+  var CALORIE_TARGET_DEFAULT = 2000;
+  var PROTEIN_TARGET_DEFAULT = 190;
+  var MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT = 2500;
 
-  // The Profile's fixed rest/training-day target, if enabled -- rest day (or no day
-  // type logged yet) uses the rest value, workout/cardio days use the training value.
-  function getFixedCalorieTarget(entry) {
+  // The Profile's single fixed calorie target, if enabled -- same value for every day
+  // type (rest, workout, cardio); no training-day bump.
+  function getFixedCalorieTarget() {
     var settings = loadSettings();
     if (!settings.fixedTargetsEnabled) return null;
-    var isTraining = !!(entry && (entry.dayType === "workout" || entry.dayType === "cardio"));
-    var target = isTraining ? settings.fixedTargetTraining : settings.fixedTargetRest;
-    return target != null ? target : null;
+    return settings.calorieTarget != null ? settings.calorieTarget : CALORIE_TARGET_DEFAULT;
+  }
+
+  function getProteinTarget() {
+    var settings = loadSettings();
+    return settings.proteinTarget != null ? settings.proteinTarget : PROTEIN_TARGET_DEFAULT;
+  }
+
+  function renderProteinTarget(entry) {
+    var el = document.getElementById("sumProteinTarget");
+    if (!el) return;
+    var target = getProteinTarget();
+    var protein = entry.protein != null ? entry.protein : 0;
+    el.textContent = protein + " / " + target + " g";
+  }
+
+  var TREAT_BUDGET_DEFAULT = 150;
+
+  function getTreatBudget() {
+    var settings = loadSettings();
+    return settings.treatBudget != null ? settings.treatBudget : TREAT_BUDGET_DEFAULT;
+  }
+
+  // Treat calories logged on a date -- summed straight from that day's food log entries
+  // (each snapshots isTreat at the time it was logged), not from the live My Foods list,
+  // so changing a food's treat status later doesn't rewrite past days.
+  function getTreatCaloriesForDate(date) {
+    var entries = loadFoodLog()[date] || [];
+    return entries.reduce(function (sum, e) { return sum + (e.isTreat ? e.calories : 0); }, 0);
+  }
+
+  function renderTreatBudget(date) {
+    var el = document.getElementById("sumTreatBudget");
+    if (!el) return;
+    var used = getTreatCaloriesForDate(date);
+    var budget = getTreatBudget();
+    el.textContent = "Treats " + used + " / " + budget + " kcal";
+    el.classList.toggle("status-bad", used > budget);
   }
 
   function renderCalorieTarget(date, entry, daily) {
     var el = document.getElementById("sumCaloriesTarget");
-    var fixed = getFixedCalorieTarget(entry);
+    var fixed = getFixedCalorieTarget();
     if (fixed != null) {
       el.textContent = "Target " + fixed + " (fixed)";
       return;
@@ -656,6 +774,60 @@
     }
     var total = parts.reduce(function (sum, p) { return sum + p.kcal; }, 0);
     return { total: total, parts: parts };
+  }
+
+  var CARDIO_MINUTES_TARGET_DEFAULT = 60;
+  var STEP_TARGET_DEFAULT = 22000;
+
+  function getCardioMinutesTarget() {
+    var settings = loadSettings();
+    return settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : CARDIO_MINUTES_TARGET_DEFAULT;
+  }
+
+  function getStepTarget() {
+    var settings = loadSettings();
+    return settings.stepTarget != null ? settings.stepTarget : STEP_TARGET_DEFAULT;
+  }
+
+  // Minutes of logged cardio on a date, summed straight from that day's workouts'
+  // cardio exercises (actual logged duration, not the net-burn-minutes estimate used
+  // elsewhere for calorie math).
+  function getCardioMinutesForDate(date) {
+    var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
+    var minutes = 0;
+    workouts.forEach(function (wk) {
+      wk.exercises.forEach(function (ex) {
+        if (ex.type === "cardio") minutes += ex.duration || 0;
+      });
+    });
+    return minutes;
+  }
+
+  // A day counts as "cardio done" if either logged cardio minutes or steps clear their
+  // respective target -- doing one or the other is enough, not both.
+  function isCardioDoneForDate(date, daily) {
+    var entry = (daily || loadDaily())[date];
+    var minutes = getCardioMinutesForDate(date);
+    var steps = entry && entry.steps != null ? entry.steps : 0;
+    return minutes >= getCardioMinutesTarget() || steps >= getStepTarget();
+  }
+
+  // How many of the last 7 days (ending on date) had cardio done.
+  function getCardioAdherence7Day(date, daily) {
+    daily = daily || loadDaily();
+    var count = 0;
+    for (var i = 0; i < 7; i++) {
+      if (isCardioDoneForDate(addDaysISO(date, -i), daily)) count++;
+    }
+    return count;
+  }
+
+  function renderCardioTarget(date, daily) {
+    var el = document.getElementById("sumCardioTarget");
+    if (!el) return;
+    var done = isCardioDoneForDate(date, daily);
+    var adherence = getCardioAdherence7Day(date, daily);
+    el.textContent = (done ? "✅" : "⬜") + " Cardio done · " + adherence + "/7 this week";
   }
 
   function renderDayStatus(entry, date, daily) {
@@ -1114,11 +1286,180 @@
     el.style.display = "flex";
   }
 
+  // ---------- goal plan ----------
+
+  var GOAL_DEFAULTS = {
+    startDate: "2026-10-10",
+    startWeight: 107.0,
+    goalWeight: 99,
+    ratePerWeek: 0.8
+  };
+
+  // Not separately editable in the UI (only start/goal/rate are) -- these come from the
+  // user's own plan and don't divide evenly from the rate, so they're kept as given
+  // rather than derived.
+  var GOAL_CHECKPOINTS_DEFAULT = [
+    { date: "2026-10-31", target: 104.8 },
+    { date: "2026-11-21", target: 102.4 },
+    { date: "2026-12-19", target: 99 }
+  ];
+
+  function getGoal() {
+    var settings = loadSettings();
+    var goal = settings.goal || {};
+    return {
+      startDate: goal.startDate || GOAL_DEFAULTS.startDate,
+      startWeight: goal.startWeight != null ? goal.startWeight : GOAL_DEFAULTS.startWeight,
+      goalWeight: goal.goalWeight != null ? goal.goalWeight : GOAL_DEFAULTS.goalWeight,
+      ratePerWeek: goal.ratePerWeek != null ? goal.ratePerWeek : GOAL_DEFAULTS.ratePerWeek,
+      checkpoints: goal.checkpoints || GOAL_CHECKPOINTS_DEFAULT
+    };
+  }
+
+  // The straight target line's implied end date: when goalWeight is reached if
+  // ratePerWeek holds exactly from startDate.
+  function getGoalEndDate(goal) {
+    if (!(goal.ratePerWeek > 0)) return goal.startDate;
+    var weeks = (goal.startWeight - goal.goalWeight) / goal.ratePerWeek;
+    return addDaysISO(goal.startDate, Math.round(weeks * 7));
+  }
+
+  // Simple (non-exponential) trailing N-day mean over an interpolated daily weight series.
+  function computeRollingAverageSeries(series, windowDays) {
+    return series.map(function (pt, i) {
+      var slice = series.slice(Math.max(0, i - windowDays + 1), i + 1);
+      var avg = slice.reduce(function (sum, p) { return sum + p.weight; }, 0) / slice.length;
+      return { date: pt.date, value: avg };
+    });
+  }
+
+  // 7-day rolling average of (interpolated) daily weight from the goal's start date
+  // through endDate. Null if nothing has ever been weighed in.
+  function getGoalRollingAverage(endDate) {
+    var goal = getGoal();
+    var start = goal.startDate < endDate ? goal.startDate : endDate;
+    var series = buildInterpolatedWeightSeries(loadDaily(), start, endDate);
+    if (series == null) return null;
+    return computeRollingAverageSeries(series, 7);
+  }
+
+  // The rolling-average value at, or nearest before, a given date.
+  function rollingAverageValueAt(rollingAvg, date) {
+    var value = null;
+    for (var i = 0; i < rollingAvg.length; i++) {
+      if (rollingAvg[i].date > date) break;
+      value = rollingAvg[i].value;
+    }
+    return value;
+  }
+
+  // Each checkpoint is "upcoming" before its date arrives, else "on-track" when the
+  // rolling average is at or under its target weight, else "behind".
+  function getGoalCheckpointStatuses(today) {
+    var goal = getGoal();
+    var rollingAvg = getGoalRollingAverage(today);
+    return goal.checkpoints.map(function (cp) {
+      if (today < cp.date) return { date: cp.date, target: cp.target, status: "upcoming", value: null };
+      var value = rollingAvg ? rollingAverageValueAt(rollingAvg, cp.date) : null;
+      if (value == null) return { date: cp.date, target: cp.target, status: "upcoming", value: null };
+      return { date: cp.date, target: cp.target, status: value <= cp.target ? "on-track" : "behind", value: value };
+    });
+  }
+
+  // True if the 7-day rolling average has not dropped at all across the last 14
+  // consecutive days (every day-over-day step was flat or up).
+  function isGoalStalled(today) {
+    var rollingAvg = getGoalRollingAverage(today);
+    if (rollingAvg == null || rollingAvg.length < 15) return false;
+    var last15 = rollingAvg.slice(-15);
+    for (var i = 1; i < last15.length; i++) {
+      if (last15[i].value < last15[i - 1].value) return false;
+    }
+    return true;
+  }
+
+  function renderGoalCheckpoints(today) {
+    var listEl = document.getElementById("goalCheckpoints");
+    if (listEl) {
+      var statuses = getGoalCheckpointStatuses(today);
+      listEl.innerHTML = "";
+      statuses.forEach(function (cp) {
+        var row = document.createElement("div");
+        row.className = "day-status";
+        row.style.display = "flex";
+        var icon = cp.status === "on-track" ? "🟢" : cp.status === "behind" ? "🔴" : "⚪";
+        var cls = cp.status === "on-track" ? "status-good" : cp.status === "behind" ? "status-bad" : "";
+        var label = cp.status === "on-track" ? "On track" : cp.status === "behind" ? "Behind" : "Upcoming";
+        row.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + formatDateShort(cp.date) + " ≤ " + cp.target + " kg</span>" +
+          "<span>" + label + (cp.value != null ? " (" + roundN(cp.value, 1) + " kg avg)" : "") + "</span>";
+        listEl.appendChild(row);
+      });
+    }
+
+    var stallEl = document.getElementById("goalStallWarning");
+    if (stallEl) {
+      var stalled = isGoalStalled(today);
+      stallEl.style.display = stalled ? "block" : "none";
+      if (stalled) stallEl.textContent = "⚠️ Your 7-day average hasn't dropped in the last 14 days.";
+    }
+  }
+
+  function renderGoalChart() {
+    var goal = getGoal();
+    var today = todayISO();
+    var chartEnd = today > goal.startDate ? today : goal.startDate;
+    var rollingAvg = getGoalRollingAverage(chartEnd);
+    var avgPoints = rollingAvg ? rollingAvg.map(function (p) { return { date: p.date, value: roundN(p.value, 2) }; }) : [];
+
+    var goalEndDate = getGoalEndDate(goal);
+    var series = [];
+    var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
+    var textDimColor = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
+
+    if (avgPoints.length > 0) series.push({ points: avgPoints, color: accentColor });
+    if (goalEndDate !== goal.startDate) {
+      series.push({
+        points: [{ date: goal.startDate, value: goal.startWeight }, { date: goalEndDate, value: goal.goalWeight }],
+        color: textDimColor,
+        dashed: true
+      });
+    }
+    drawMultiLineChart("goalChart", "goalChartEmpty", series);
+    renderGoalCheckpoints(today);
+  }
+
+  function fillGoalForm() {
+    var goal = getGoal();
+    document.getElementById("goalStartDateInput").value = goal.startDate;
+    document.getElementById("goalStartWeightInput").value = goal.startWeight;
+    document.getElementById("goalWeightInput").value = goal.goalWeight;
+    document.getElementById("goalRateInput").value = goal.ratePerWeek;
+  }
+
+  function handleGoalFieldChange() {
+    var settings = loadSettings();
+    var startDate = document.getElementById("goalStartDateInput").value || GOAL_DEFAULTS.startDate;
+    var startWeight = parseFloat(document.getElementById("goalStartWeightInput").value);
+    var goalWeight = parseFloat(document.getElementById("goalWeightInput").value);
+    var ratePerWeek = parseFloat(document.getElementById("goalRateInput").value);
+    settings.goal = {
+      startDate: startDate,
+      startWeight: isNaN(startWeight) ? GOAL_DEFAULTS.startWeight : startWeight,
+      goalWeight: isNaN(goalWeight) ? GOAL_DEFAULTS.goalWeight : goalWeight,
+      ratePerWeek: isNaN(ratePerWeek) ? GOAL_DEFAULTS.ratePerWeek : ratePerWeek,
+      checkpoints: (settings.goal && settings.goal.checkpoints) || GOAL_CHECKPOINTS_DEFAULT
+    };
+    saveSettings(settings);
+    renderGoalChart();
+  }
+
   function renderTrends() {
     var daily = loadDaily();
     var range = getTrendsRange();
     renderCaloriesTrend(daily, range);
     TREND_METRICS.forEach(function (cfg) { renderMetricTrend(cfg, daily, range); });
+    renderGoalChart();
   }
 
   // ---------- workout builder ----------
@@ -1188,7 +1529,14 @@
           var reps = parseFloat(repsInput.value);
           var weight = parseFloat(weightInput.value);
           if (!reps) { toast("Enter reps"); return; }
-          ex.sets.push({ reps: reps, weight: isNaN(weight) ? 0 : weight });
+          var w = isNaN(weight) ? 0 : weight;
+          var prevBest = getBestWeightSoFar(ex.name, ex.sets);
+          if (prevBest != null && prevBest > 0 && w > prevBest * 1.5) {
+            var ok = confirm(w + " kg for " + ex.name + " is more than 50% above your previous best of " +
+              prevBest + " kg. Save this set anyway?");
+            if (!ok) return;
+          }
+          ex.sets.push({ reps: reps, weight: w });
           renderWorkoutBuilder();
         });
         addSetRow.appendChild(repsInput);
@@ -1789,7 +2137,7 @@
     var matches = loadCustomFoods()
       .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
       .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100 };
+        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat, basis: f.basis };
       });
     return Promise.resolve(matches);
   }
@@ -1867,7 +2215,7 @@
       var name = document.createElement("div");
       name.className = "food-result-name";
       name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>";
-      name.appendChild(document.createTextNode(p.name));
+      name.appendChild(document.createTextNode(p.name + (p.basis ? " (" + p.basis + ")" : "")));
 
       var meta = document.createElement("div");
       meta.className = "food-result-meta";
@@ -1935,7 +2283,8 @@
       calories: Math.round(selectedFoodProduct.per100.calories * factor),
       protein: Math.round(selectedFoodProduct.per100.protein * factor),
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
-      fat: Math.round(selectedFoodProduct.per100.fat * factor)
+      fat: Math.round(selectedFoodProduct.per100.fat * factor),
+      isTreat: !!selectedFoodProduct.isTreat
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -2053,18 +2402,22 @@
       fat: Math.round(parseFloat(document.getElementById("newFoodFat").value) || 0)
     };
 
+    var isTreat = document.getElementById("newFoodIsTreat").checked;
+    var basis = document.getElementById("newFoodBasis").value || undefined;
     var customFoods = loadCustomFoods();
-    customFoods.push({ id: makeId(), name: name, per100: per100 });
+    customFoods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat, basis: basis });
     saveCustomFoods(customFoods);
     renderCustomFoodList();
 
     ["newFoodName", "newFoodCalories", "newFoodProtein", "newFoodCarbs", "newFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("newFoodIsTreat").checked = false;
+    document.getElementById("newFoodBasis").value = "";
     document.getElementById("newFoodCard").style.display = "none";
 
     toast("Saved to My Foods");
-    selectFoodProduct({ name: name, per100: per100 });
+    selectFoodProduct({ name: name, per100: per100, isTreat: isTreat, basis: basis });
   }
 
   function addFoodEntry(date, entry) {
@@ -2401,12 +2754,24 @@
 
   // ---------- data export / import / clear ----------
 
+  // Settings minus usdaApiKey -- that key stays local-only and is never written into a
+  // backup, so a shared/synced export can't leak it. Import still accepts it from older
+  // backups that have it (nothing to migrate away from; it just keeps working).
+  function getExportableSettings() {
+    var settings = loadSettings();
+    var copy = {};
+    Object.keys(settings).forEach(function (key) {
+      if (key !== "usdaApiKey") copy[key] = settings[key];
+    });
+    return copy;
+  }
+
   async function handleExport() {
     var payload = {
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
       workouts: loadWorkouts(),
-      settings: loadSettings(),
+      settings: getExportableSettings(),
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
       foods: loadFoods(),
@@ -2486,6 +2851,7 @@
     if (payload.fasting) { saveFasting(payload.fasting); renderFastingStatus(); }
     toast("Import complete");
     fillProfileForm();
+    fillGoalForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
@@ -2515,6 +2881,7 @@
     editingWorkoutId = null;
     handleCancelEditMyFood();
     fillProfileForm();
+    fillGoalForm();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
     renderToday();
@@ -2564,27 +2931,42 @@
     document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.targetMode === mode);
     });
-    document.getElementById("fixedTargetFields").style.display = mode === "fixed" ? "grid" : "none";
+    document.getElementById("fixedTargetFields").style.display = mode === "fixed" ? "flex" : "none";
+  }
+
+  // Migrates a pre-existing rest/training pair (from before the calorie target was
+  // collapsed to one value) into the new single calorieTarget field, once, the first
+  // time settings are loaded with the old shape still present. Doesn't touch the old
+  // fields so older backups/exports of this same device stay meaningful.
+  function migrateLegacyFixedTarget(settings) {
+    if (settings.calorieTarget == null && settings.fixedTargetRest != null) {
+      settings.calorieTarget = settings.fixedTargetRest;
+      saveSettings(settings);
+    }
+    return settings;
   }
 
   function fillProfileForm() {
-    var settings = loadSettings();
+    var settings = migrateLegacyFixedTarget(loadSettings());
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     setSexToggle(settings.sex || "male");
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
     setTargetModeToggle(settings.fixedTargetsEnabled ? "fixed" : "auto");
-    document.getElementById("fixedTargetRestInput").value = settings.fixedTargetRest != null ? settings.fixedTargetRest : "";
-    document.getElementById("fixedTargetTrainingInput").value = settings.fixedTargetTraining != null ? settings.fixedTargetTraining : "";
+    document.getElementById("calorieTargetInput").value = settings.calorieTarget != null ? settings.calorieTarget : "";
+    document.getElementById("proteinTargetInput").value = settings.proteinTarget != null ? settings.proteinTarget : "";
+    document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
+    document.getElementById("treatBudgetInput").value = settings.treatBudget != null ? settings.treatBudget : "";
+    document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : "";
+    document.getElementById("stepTargetInput").value = settings.stepTarget != null ? settings.stepTarget : "";
   }
 
   function handleTargetModeChange(mode) {
     setTargetModeToggle(mode);
     var settings = loadSettings();
     settings.fixedTargetsEnabled = mode === "fixed";
-    if (mode === "fixed") {
-      if (settings.fixedTargetRest == null) settings.fixedTargetRest = FIXED_TARGET_REST_DEFAULT;
-      if (settings.fixedTargetTraining == null) settings.fixedTargetTraining = FIXED_TARGET_TRAINING_DEFAULT;
+    if (mode === "fixed" && settings.calorieTarget == null) {
+      settings.calorieTarget = CALORIE_TARGET_DEFAULT;
     }
     saveSettings(settings);
     fillProfileForm();
@@ -2592,11 +2974,49 @@
   }
 
   function handleFixedTargetChange() {
-    var rest = document.getElementById("fixedTargetRestInput").value;
-    var training = document.getElementById("fixedTargetTrainingInput").value;
+    var value = document.getElementById("calorieTargetInput").value;
     var settings = loadSettings();
-    settings.fixedTargetRest = rest !== "" ? Math.round(parseFloat(rest)) : FIXED_TARGET_REST_DEFAULT;
-    settings.fixedTargetTraining = training !== "" ? Math.round(parseFloat(training)) : FIXED_TARGET_TRAINING_DEFAULT;
+    settings.calorieTarget = value !== "" ? Math.round(parseFloat(value)) : CALORIE_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleProteinTargetChange() {
+    var value = document.getElementById("proteinTargetInput").value;
+    var settings = loadSettings();
+    settings.proteinTarget = value !== "" ? Math.round(parseFloat(value)) : PROTEIN_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleMaintenanceTdeeChange() {
+    var value = document.getElementById("maintenanceTdeeInput").value;
+    var settings = loadSettings();
+    settings.maintenanceTdeeForTargets = value !== "" ? Math.round(parseFloat(value)) : MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleTreatBudgetChange() {
+    var value = document.getElementById("treatBudgetInput").value;
+    var settings = loadSettings();
+    settings.treatBudget = value !== "" ? Math.round(parseFloat(value)) : TREAT_BUDGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleCardioMinutesTargetChange() {
+    var value = document.getElementById("cardioMinutesTargetInput").value;
+    var settings = loadSettings();
+    settings.cardioMinutesTarget = value !== "" ? Math.round(parseFloat(value)) : CARDIO_MINUTES_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleStepTargetChange() {
+    var value = document.getElementById("stepTargetInput").value;
+    var settings = loadSettings();
+    settings.stepTarget = value !== "" ? Math.round(parseFloat(value)) : STEP_TARGET_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -2746,6 +3166,7 @@
 
   function init() {
     seedCustomFoodsIfNeeded();
+    migrateDefaultTreatsIfNeeded();
     seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
@@ -2796,8 +3217,17 @@
     document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () { handleTargetModeChange(btn.dataset.targetMode); });
     });
-    document.getElementById("fixedTargetRestInput").addEventListener("change", handleFixedTargetChange);
-    document.getElementById("fixedTargetTrainingInput").addEventListener("change", handleFixedTargetChange);
+    document.getElementById("calorieTargetInput").addEventListener("change", handleFixedTargetChange);
+    document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
+    document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
+    document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
+    document.getElementById("cardioMinutesTargetInput").addEventListener("change", handleCardioMinutesTargetChange);
+    document.getElementById("stepTargetInput").addEventListener("change", handleStepTargetChange);
+
+    fillGoalForm();
+    ["goalStartDateInput", "goalStartWeightInput", "goalWeightInput", "goalRateInput"].forEach(function (id) {
+      document.getElementById(id).addEventListener("change", handleGoalFieldChange);
+    });
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
@@ -2902,7 +3332,13 @@
       loadSettings: loadSettings,
       saveSettings: saveSettings,
       loadDaily: loadDaily,
-      saveDaily: saveDaily
+      saveDaily: saveDaily,
+      getGoalEndDate: getGoalEndDate,
+      getGoalCheckpointStatuses: getGoalCheckpointStatuses,
+      isGoalStalled: isGoalStalled,
+      getBestWeightSoFar: getBestWeightSoFar,
+      saveWorkouts: saveWorkouts,
+      getExportableSettings: getExportableSettings
     };
   }
 
