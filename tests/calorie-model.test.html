@@ -573,6 +573,33 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.getRestDayAdvice("2026-10-07") === null, "expected no advice once the day itself is already a training day");
   });
 
+  test("applySettingsDefaults: fills unset targets with real default values", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({});
+    assert(settings.proteinTarget === 190, "expected protein default 190, got " + settings.proteinTarget);
+    assert(settings.treatBudget === 150, "expected treat budget default 150, got " + settings.treatBudget);
+    assert(settings.cardioMinutesTarget === 60, "expected cardio default 60, got " + settings.cardioMinutesTarget);
+    assert(settings.stepTarget === 22000, "expected step default 22000, got " + settings.stepTarget);
+    assert(hooks.getProteinTarget() === 190, "expected getProteinTarget to read back the persisted default");
+  });
+
+  test("applySettingsDefaults: a treat budget of 0 is a real value, not treated as unset", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({ treatBudget: 0 });
+    assert(settings.treatBudget === 0, "expected treatBudget to stay 0, got " + settings.treatBudget);
+    hooks.saveSettings(settings);
+    assert(hooks.getTreatBudget() === 0, "expected getTreatBudget() to read back 0, not fall back to the 150 default");
+  });
+
+  test("applySettingsDefaults: leaves already-set values untouched", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({ proteinTarget: 220, cardioMinutesTarget: 45, stepTarget: 10000 });
+    assert(settings.proteinTarget === 220, "expected explicit proteinTarget to survive");
+    assert(settings.cardioMinutesTarget === 45, "expected explicit cardioMinutesTarget to survive");
+    assert(settings.stepTarget === 10000, "expected explicit stepTarget to survive");
+    assert(settings.treatBudget === 150, "expected the untouched treatBudget to still get its default");
+  });
+
   clearStorage();
 
   // ---------- render ----------

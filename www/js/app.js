@@ -3152,19 +3152,33 @@
     return settings;
   }
 
+  // Gives protein/treat/cardio/step targets a real stored value instead of leaving
+  // them undefined and relying on the input's placeholder text to hint the default --
+  // undefined is "unset", but an explicit 0 (e.g. a 0 kcal treat budget) is a real
+  // value and must be left alone.
+  function applySettingsDefaults(settings) {
+    var changed = false;
+    if (settings.proteinTarget == null) { settings.proteinTarget = PROTEIN_TARGET_DEFAULT; changed = true; }
+    if (settings.treatBudget == null) { settings.treatBudget = TREAT_BUDGET_DEFAULT; changed = true; }
+    if (settings.cardioMinutesTarget == null) { settings.cardioMinutesTarget = CARDIO_MINUTES_TARGET_DEFAULT; changed = true; }
+    if (settings.stepTarget == null) { settings.stepTarget = STEP_TARGET_DEFAULT; changed = true; }
+    if (changed) saveSettings(settings);
+    return settings;
+  }
+
   function fillProfileForm() {
-    var settings = migrateLegacyFixedTarget(loadSettings());
+    var settings = applySettingsDefaults(migrateLegacyFixedTarget(loadSettings()));
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     setSexToggle(settings.sex || "male");
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
     setTargetModeToggle(settings.fixedTargetsEnabled ? "fixed" : "auto");
     document.getElementById("calorieTargetInput").value = settings.calorieTarget != null ? settings.calorieTarget : "";
-    document.getElementById("proteinTargetInput").value = settings.proteinTarget != null ? settings.proteinTarget : "";
+    document.getElementById("proteinTargetInput").value = settings.proteinTarget;
     document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
-    document.getElementById("treatBudgetInput").value = settings.treatBudget != null ? settings.treatBudget : "";
-    document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : "";
-    document.getElementById("stepTargetInput").value = settings.stepTarget != null ? settings.stepTarget : "";
+    document.getElementById("treatBudgetInput").value = settings.treatBudget;
+    document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget;
+    document.getElementById("stepTargetInput").value = settings.stepTarget;
   }
 
   function handleTargetModeChange(mode) {
@@ -3373,6 +3387,7 @@
   function init() {
     seedCustomFoodsIfNeeded();
     migrateDefaultTreatsIfNeeded();
+    applySettingsDefaults(loadSettings());
     seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
@@ -3551,7 +3566,12 @@
       getProgressiveOverloadStatus: getProgressiveOverloadStatus,
       isTrainingDay: isTrainingDay,
       getConsecutiveTrainingDaysBefore: getConsecutiveTrainingDaysBefore,
-      getRestDayAdvice: getRestDayAdvice
+      getRestDayAdvice: getRestDayAdvice,
+      applySettingsDefaults: applySettingsDefaults,
+      getProteinTarget: getProteinTarget,
+      getTreatBudget: getTreatBudget,
+      getCardioMinutesTarget: getCardioMinutesTarget,
+      getStepTarget: getStepTarget
     };
   }
 
