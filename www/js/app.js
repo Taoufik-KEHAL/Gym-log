@@ -9,8 +9,7 @@
     customFoods: "gymlog.customfoods", // [ { id, name, per100: {calories, protein, carbs, fat} } ]
     foods: "gymlog.foods",       // { "2026-07-27": { corn: true, potatoes: false, water: true, ... } } -- the allowed-foods checklist, separate from the searchable food log above
     customExercises: "gymlog.customExercises", // [ { name, type: 'strength' | 'cardio' } ]
-    customWorkoutTemplates: "gymlog.customWorkoutTemplates", // [ { id, name, exercises: [{name, type}] } ]
-    fasting: "gymlog.fasting" // { current: {start: ISOString} | null, log: [{id, start, end, hours}] }
+    customWorkoutTemplates: "gymlog.customWorkoutTemplates" // [ { id, name, exercises: [{name, type}] } ]
   };
 
   var WORKOUT_TEMPLATE_SEED = [
@@ -46,6 +45,16 @@
     { name: "Msemen (Moroccan flatbread, plain)", per100: { calories: 330, protein: 7.0, carbs: 45.0, fat: 14.0 } },
     { name: "Mille-feuille (pastry)", per100: { calories: 340, protein: 4.5, carbs: 32.0, fat: 22.0 } },
     { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
+  ];
+
+  // Foods marked as treats by default (case-insensitive name match), the first time
+  // each is seen without an explicit isTreat already set -- covers both the seed above
+  // and any custom foods already saved on this device.
+  var DEFAULT_TREAT_NAMES = [
+    "Chocolat aiguebelle 55 cacao", "Milka nut", "Milka Tablette Noisette", "Maruja",
+    "Snickers bar", "Snikers peanut butter", "Mood almond", "Mood hazelnut", "Bounty",
+    "Mars", "Chocolat jouven", "KitKat", "Pringles Original", "Snik snack",
+    "Mille-feuille (pastry)", "Sugar", "Confiture cerise", "Honey", "Dates"
   ];
 
   // A separate, simpler "did you have this today" checklist -- no quantities, no
@@ -191,6 +200,23 @@
     localStorage.setItem(STORAGE.workouts, JSON.stringify(list));
   }
 
+  // Heaviest weight ever logged for a strength exercise (case-insensitive name match),
+  // across saved workouts plus any sets already added for it in the in-progress,
+  // not-yet-saved session (currentSessionSets) -- so a typo later in the same session
+  // still gets caught. Null if nothing's been logged for this exercise yet.
+  function getBestWeightSoFar(exerciseName, currentSessionSets) {
+    var lname = exerciseName.toLowerCase();
+    var best = null;
+    loadWorkouts().forEach(function (w) {
+      w.exercises.forEach(function (ex) {
+        if (ex.type !== "strength" || ex.name.toLowerCase() !== lname) return;
+        ex.sets.forEach(function (s) { if (best == null || s.weight > best) best = s.weight; });
+      });
+    });
+    (currentSessionSets || []).forEach(function (s) { if (best == null || s.weight > best) best = s.weight; });
+    return best;
+  }
+
   function loadSettings() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.settings) || "{}");
@@ -279,6 +305,23 @@
     saveCustomFoods(seeded);
   }
 
+  // Marks any custom food matching DEFAULT_TREAT_NAMES (case-insensitive) as a treat,
+  // but only the first time each food is seen with isTreat not yet set -- so a user who
+  // explicitly un-treats one of these foods later isn't overridden back on every load.
+  function migrateDefaultTreatsIfNeeded() {
+    var foods = loadCustomFoods();
+    var lowerTreatNames = DEFAULT_TREAT_NAMES.map(function (n) { return n.toLowerCase(); });
+    var changed = false;
+    foods.forEach(function (f) {
+      if (f.isTreat != null) return;
+      if (lowerTreatNames.indexOf(f.name.toLowerCase()) !== -1) {
+        f.isTreat = true;
+        changed = true;
+      }
+    });
+    if (changed) saveCustomFoods(foods);
+  }
+
   function loadWorkoutTemplates() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.customWorkoutTemplates) || "[]");
@@ -316,13 +359,24 @@
       var info = document.createElement("div");
       var nameEl = document.createElement("div");
       nameEl.className = "food-log-name";
-      nameEl.textContent = f.name;
+      nameEl.textContent = f.name + (f.basis ? " (" + f.basis + ")" : "");
       var macrosEl = document.createElement("div");
       macrosEl.className = "food-log-macros";
       macrosEl.textContent = f.per100.calories + " kcal · " + f.per100.protein + " g protein · " +
         f.per100.carbs + " g carbs · " + f.per100.fat + " g fat (per 100g)";
       info.appendChild(nameEl);
       info.appendChild(macrosEl);
+
+      var treatLabel = document.createElement("label");
+      treatLabel.className = "food-check-row";
+      treatLabel.style.marginTop = "4px";
+      var treatCheckbox = document.createElement("input");
+      treatCheckbox.type = "checkbox";
+      treatCheckbox.checked = !!f.isTreat;
+      treatCheckbox.addEventListener("change", function () { handleToggleMyFoodTreat(f.id, treatCheckbox.checked); });
+      treatLabel.appendChild(treatCheckbox);
+      treatLabel.appendChild(document.createTextNode(" Treat"));
+      info.appendChild(treatLabel);
 
       var actions = document.createElement("div");
       actions.className = "food-log-actions";
@@ -357,11 +411,13 @@
       carbs: parseFloat(document.getElementById("myFoodCarbs").value) || 0,
       fat: parseFloat(document.getElementById("myFoodFat").value) || 0
     };
+    var isTreat = document.getElementById("myFoodIsTreat").checked;
+    var basis = document.getElementById("myFoodBasis").value || undefined;
     var foods = loadCustomFoods();
 
     if (editingMyFoodId) {
       var idx = foods.findIndex(function (f) { return f.id === editingMyFoodId; });
-      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100 };
+      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100, isTreat: isTreat, basis: basis };
       saveCustomFoods(foods);
       handleCancelEditMyFood();
       renderCustomFoodList();
@@ -369,14 +425,24 @@
       return;
     }
 
-    foods.push({ id: makeId(), name: name, per100: per100 });
+    foods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat, basis: basis });
     saveCustomFoods(foods);
 
     ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("myFoodIsTreat").checked = false;
+    document.getElementById("myFoodBasis").value = "";
     renderCustomFoodList();
     toast("Added to My Foods");
+  }
+
+  function handleToggleMyFoodTreat(id, isTreat) {
+    var foods = loadCustomFoods();
+    var food = foods.find(function (f) { return f.id === id; });
+    if (!food) return;
+    food.isTreat = isTreat;
+    saveCustomFoods(foods);
   }
 
   function handleEditMyFood(id) {
@@ -388,6 +454,8 @@
     document.getElementById("myFoodProtein").value = food.per100.protein;
     document.getElementById("myFoodCarbs").value = food.per100.carbs;
     document.getElementById("myFoodFat").value = food.per100.fat;
+    document.getElementById("myFoodIsTreat").checked = !!food.isTreat;
+    document.getElementById("myFoodBasis").value = food.basis || "";
     document.getElementById("addMyFoodBtn").textContent = "Update food";
     document.getElementById("cancelEditMyFoodBtn").style.display = "inline-block";
     document.getElementById("myFoodName").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -398,6 +466,8 @@
     ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("myFoodIsTreat").checked = false;
+    document.getElementById("myFoodBasis").value = "";
     document.getElementById("addMyFoodBtn").textContent = "Add to My Foods";
     document.getElementById("cancelEditMyFoodBtn").style.display = "none";
   }
@@ -496,11 +566,18 @@
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
+    renderTreatBudget(today);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
+    renderProteinTarget(entry);
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
-    renderDayStatus(entry, today);
+    renderCardioTarget(today, daily);
+    renderGoalSummary(today);
+    renderGoalPaceHint(today);
+    renderStreaks(today, daily);
+    renderStreakNudge(today, daily);
+    renderDayStatus(entry, today, daily);
     renderWeightTrend(daily);
   }
 
@@ -517,9 +594,17 @@
     el.className = "stat-sub";
   }
 
-  // Suggested intake for a day: Maintenance minus a 500-750 kcal deficit, never below BMR.
+  // Suggested intake for a day: the Profile's editable maintenance estimate minus a
+  // 500-750 kcal deficit, never below BMR. Uses a flat, user-set maintenance figure
+  // rather than the computed BMR+burn+TEF estimate, since that one can swing widely
+  // day to day and isn't meant for target-setting.
+  function getMaintenanceTdeeForTargets() {
+    var settings = loadSettings();
+    return settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT;
+  }
+
   function computeSuggestedCalorieRange(date, entry, daily) {
-    var maintenance = getMaintenanceForDay(date, entry, daily);
+    var maintenance = getMaintenanceTdeeForTargets();
     var bmr = computeBMRForDate(date, entry, daily);
     if (maintenance == null || bmr == null) return null;
     var high = Math.round((maintenance - 500) / 10) * 10;
@@ -530,8 +615,62 @@
     return { low: low, high: high };
   }
 
+  var CALORIE_TARGET_DEFAULT = 2000;
+  var PROTEIN_TARGET_DEFAULT = 190;
+  var MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT = 2500;
+
+  // The Profile's single fixed calorie target, if enabled -- same value for every day
+  // type (rest, workout, cardio); no training-day bump.
+  function getFixedCalorieTarget() {
+    var settings = loadSettings();
+    if (!settings.fixedTargetsEnabled) return null;
+    return settings.calorieTarget != null ? settings.calorieTarget : CALORIE_TARGET_DEFAULT;
+  }
+
+  function getProteinTarget() {
+    var settings = loadSettings();
+    return settings.proteinTarget != null ? settings.proteinTarget : PROTEIN_TARGET_DEFAULT;
+  }
+
+  function renderProteinTarget(entry) {
+    var el = document.getElementById("sumProteinTarget");
+    if (!el) return;
+    var target = getProteinTarget();
+    var protein = entry.protein != null ? entry.protein : 0;
+    el.textContent = protein + " / " + target + " g";
+  }
+
+  var TREAT_BUDGET_DEFAULT = 150;
+
+  function getTreatBudget() {
+    var settings = loadSettings();
+    return settings.treatBudget != null ? settings.treatBudget : TREAT_BUDGET_DEFAULT;
+  }
+
+  // Treat calories logged on a date -- summed straight from that day's food log entries
+  // (each snapshots isTreat at the time it was logged), not from the live My Foods list,
+  // so changing a food's treat status later doesn't rewrite past days.
+  function getTreatCaloriesForDate(date) {
+    var entries = loadFoodLog()[date] || [];
+    return entries.reduce(function (sum, e) { return sum + (e.isTreat ? e.calories : 0); }, 0);
+  }
+
+  function renderTreatBudget(date) {
+    var el = document.getElementById("sumTreatBudget");
+    if (!el) return;
+    var used = getTreatCaloriesForDate(date);
+    var budget = getTreatBudget();
+    el.textContent = "Treats " + used + " / " + budget + " kcal";
+    el.classList.toggle("status-bad", used > budget);
+  }
+
   function renderCalorieTarget(date, entry, daily) {
     var el = document.getElementById("sumCaloriesTarget");
+    var fixed = getFixedCalorieTarget();
+    if (fixed != null) {
+      el.textContent = "Target " + fixed + " (fixed)";
+      return;
+    }
     var range = computeSuggestedCalorieRange(date, entry, daily);
     if (range == null) {
       el.textContent = "";
@@ -562,7 +701,27 @@
     return CARDIO_MET_TABLE[lname] != null ? CARDIO_MET_TABLE[lname] : 6.0;
   }
 
-  function estimateExerciseCalories(ex, weightKg) {
+  var MINUTES_PER_SET = 1.5; // used to estimate active minutes when an exercise has no logged duration (i.e. strength sets)
+
+  // Active minutes for a logged exercise -- its own duration when it has one (cardio),
+  // else estimated from set count (strength). Used to net out resting burn already
+  // counted in BMR, so workout/step burn isn't double-counted against it.
+  function estimateExerciseMinutes(ex) {
+    if (ex.type === "cardio" && ex.duration) return ex.duration;
+    var sets = ex.sets ? ex.sets.length : 0;
+    return sets * MINUTES_PER_SET;
+  }
+
+  // Resting (BMR) burn that would have happened anyway during those minutes, so it can
+  // be subtracted out of a gross activity-calorie estimate to get net burn above resting.
+  function getRestingBurnForMinutes(bmr, minutes) {
+    if (bmr == null || !minutes || minutes <= 0) return 0;
+    return (bmr / 1440) * minutes;
+  }
+
+  // Gross estimate of calories an exercise burned, ignoring the resting burn that
+  // would have happened during that time anyway.
+  function estimateGrossExerciseCalories(ex, weightKg) {
     var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
     if (ex.type === "cardio") {
       var duration = ex.duration || 0;
@@ -573,13 +732,38 @@
     return sets * STRENGTH_MET * w / 60;
   }
 
-  function getCaloriesBurnedBreakdown(date, weightKg, steps) {
+  // Net calories an exercise burned above resting (BMR) burn. Falls back to the gross
+  // estimate when bmr is unavailable (no age/height set in Profile yet), since there's
+  // nothing to net out in that case.
+  function estimateExerciseCalories(ex, weightKg, bmr) {
+    var gross = estimateGrossExerciseCalories(ex, weightKg);
+    if (gross <= 0) return 0;
+    if (bmr == null) return gross;
+    var resting = getRestingBurnForMinutes(bmr, estimateExerciseMinutes(ex));
+    return Math.max(0, gross - resting);
+  }
+
+  var STEPS_MINUTES_PER_STEP = 1 / 100; // ~100 steps/min, used only to net out resting burn
+
+  // Net calories steps burned above resting (BMR) burn, same net-of-resting treatment
+  // as estimateExerciseCalories. Falls back to the gross estimate when bmr is unavailable.
+  function estimateStepsCalories(steps, weightKg, bmr) {
+    if (!steps) return 0;
+    var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
+    var gross = steps * w * STEPS_KCAL_PER_STEP_PER_KG;
+    if (gross <= 0) return 0;
+    if (bmr == null) return gross;
+    var resting = getRestingBurnForMinutes(bmr, steps * STEPS_MINUTES_PER_STEP);
+    return Math.max(0, gross - resting);
+  }
+
+  function getCaloriesBurnedBreakdown(date, weightKg, steps, bmr) {
     var w = weightKg != null ? weightKg : DEFAULT_BODYWEIGHT_KG;
     var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
     var parts = [];
     workouts.forEach(function (wk) {
       wk.exercises.forEach(function (ex) {
-        var kcal = Math.round(estimateExerciseCalories(ex, w));
+        var kcal = Math.round(estimateExerciseCalories(ex, w, bmr));
         if (kcal <= 0) return;
         var detail = ex.type === "cardio"
           ? (ex.duration || 0) + " min"
@@ -588,14 +772,68 @@
       });
     });
     if (steps) {
-      var stepsKcal = Math.round(steps * w * STEPS_KCAL_PER_STEP_PER_KG);
+      var stepsKcal = Math.round(estimateStepsCalories(steps, w, bmr));
       if (stepsKcal > 0) parts.push({ label: steps + " steps", kcal: stepsKcal });
     }
     var total = parts.reduce(function (sum, p) { return sum + p.kcal; }, 0);
     return { total: total, parts: parts };
   }
 
-  function renderDayStatus(entry, date) {
+  var CARDIO_MINUTES_TARGET_DEFAULT = 60;
+  var STEP_TARGET_DEFAULT = 22000;
+
+  function getCardioMinutesTarget() {
+    var settings = loadSettings();
+    return settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : CARDIO_MINUTES_TARGET_DEFAULT;
+  }
+
+  function getStepTarget() {
+    var settings = loadSettings();
+    return settings.stepTarget != null ? settings.stepTarget : STEP_TARGET_DEFAULT;
+  }
+
+  // Minutes of logged cardio on a date, summed straight from that day's workouts'
+  // cardio exercises (actual logged duration, not the net-burn-minutes estimate used
+  // elsewhere for calorie math).
+  function getCardioMinutesForDate(date) {
+    var workouts = loadWorkouts().filter(function (wk) { return wk.date === date; });
+    var minutes = 0;
+    workouts.forEach(function (wk) {
+      wk.exercises.forEach(function (ex) {
+        if (ex.type === "cardio") minutes += ex.duration || 0;
+      });
+    });
+    return minutes;
+  }
+
+  // A day counts as "cardio done" if either logged cardio minutes or steps clear their
+  // respective target -- doing one or the other is enough, not both.
+  function isCardioDoneForDate(date, daily) {
+    var entry = (daily || loadDaily())[date];
+    var minutes = getCardioMinutesForDate(date);
+    var steps = entry && entry.steps != null ? entry.steps : 0;
+    return minutes >= getCardioMinutesTarget() || steps >= getStepTarget();
+  }
+
+  // How many of the last 7 days (ending on date) had cardio done.
+  function getCardioAdherence7Day(date, daily) {
+    daily = daily || loadDaily();
+    var count = 0;
+    for (var i = 0; i < 7; i++) {
+      if (isCardioDoneForDate(addDaysISO(date, -i), daily)) count++;
+    }
+    return count;
+  }
+
+  function renderCardioTarget(date, daily) {
+    var el = document.getElementById("sumCardioTarget");
+    if (!el) return;
+    var done = isCardioDoneForDate(date, daily);
+    var adherence = getCardioAdherence7Day(date, daily);
+    el.textContent = (done ? "✅" : "⬜") + " Cardio done · " + adherence + "/7 this week";
+  }
+
+  function renderDayStatus(entry, date, daily) {
     var el = document.getElementById("dayStatus");
     var parts = [];
 
@@ -603,7 +841,8 @@
       parts.push('<span class="day-badge">' + DAY_TYPE_LABELS[entry.dayType] + "</span>");
     }
 
-    var breakdown = getCaloriesBurnedBreakdown(date, entry.weight, entry.steps);
+    var bmr = computeBMRForDate(date, entry, daily);
+    var breakdown = getCaloriesBurnedBreakdown(date, entry.weight, entry.steps, bmr);
     if (breakdown.total > 0) {
       var usedDefaultWeight = entry.weight == null;
       parts.push("<span>🔥 " + breakdown.total + " kcal burned (est." + (usedDefaultWeight ? ", " + DEFAULT_BODYWEIGHT_KG + " kg assumed" : "") + ")</span>");
@@ -940,9 +1179,9 @@
     dates.forEach(function (d) {
       var entry = daily[d];
       if (entry.calories != null) intakePoints.push({ date: d, value: entry.calories });
-      var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps).total);
-      if (burned > 0) burnedPoints.push({ date: d, value: burned });
       var bmr = computeBMRForDate(d, entry, daily);
+      var burned = Math.round(getCaloriesBurnedBreakdown(d, entry.weight, entry.steps, bmr).total);
+      if (burned > 0) burnedPoints.push({ date: d, value: burned });
       if (bmr != null) bmrPoints.push({ date: d, value: bmr });
       var maintenance = getMaintenanceForDay(d, entry, daily);
       if (maintenance != null) maintenancePoints.push({ date: d, value: maintenance });
@@ -978,8 +1217,8 @@
     var today = todayISO();
     var todayEntry = daily[today];
     var todayIntake = todayEntry && todayEntry.calories != null ? todayEntry.calories : null;
-    var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps).total);
     var todayBmr = computeBMRForDate(today, todayEntry, daily);
+    var todayBurned = Math.round(getCaloriesBurnedBreakdown(today, todayEntry && todayEntry.weight, todayEntry && todayEntry.steps, todayBmr).total);
     var todayMaintenance = getMaintenanceForDay(today, todayEntry, daily);
 
     document.getElementById("trendsCaloriesIntakeLegendLabel").textContent =
@@ -991,11 +1230,45 @@
     }
     if (maintenancePoints.length > 0) {
       document.getElementById("trendsCaloriesMaintenanceLegendLabel").textContent =
-        todayMaintenance != null ? "Maintenance (" + todayMaintenance + ")" : "Maintenance";
+        todayMaintenance != null ? "Estimated (" + todayMaintenance + ")" : "Estimated";
     }
 
-    renderCalorieAlignment(todayIntake, todayBmr, todayMaintenance);
+    var todayMeasuredTdee = adaptiveTDEE(today, 28);
+    var measuredLegend = document.getElementById("trendsCaloriesMeasuredLegend");
+    if (todayMeasuredTdee != null) {
+      document.getElementById("trendsCaloriesMeasuredLegendLabel").textContent = "Measured (" + todayMeasuredTdee + ")";
+      measuredLegend.style.display = "flex";
+    } else {
+      measuredLegend.style.display = "none";
+    }
+
+    var underLoggedHint = document.getElementById("trendsCaloriesUnderLoggedHint");
+    if (todayMeasuredTdee != null && todayMaintenance != null && (todayMaintenance - todayMeasuredTdee) > 500) {
+      underLoggedHint.textContent = "Possible under-logged food or overestimated burn.";
+      underLoggedHint.style.display = "block";
+    } else {
+      underLoggedHint.style.display = "none";
+    }
+
+    // Prefer the measured TDEE as the deficit badge's maintenance figure once there's
+    // enough logged data to trust it; otherwise fall back to the formula estimate.
+    var badgeMaintenance = todayMeasuredTdee != null ? todayMeasuredTdee : todayMaintenance;
+    renderCalorieAlignment(todayIntake, todayBmr, badgeMaintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
+  }
+
+  var MAINTENANCE_BAND_KCAL = 150; // |maintenance - intake| within this band counts as "at maintenance"
+
+  // Pure classification of a maintenance/intake gap into a badge. No DOM, no rounding --
+  // remaining is maintenance minus intake (positive = under, negative = over).
+  function classifyMaintenanceBand(remaining) {
+    if (Math.abs(remaining) <= MAINTENANCE_BAND_KCAL) {
+      return { icon: "🟡", label: "At maintenance", cls: "status-warn", note: Math.abs(remaining) + " kcal from maintenance" };
+    }
+    if (remaining > 0) {
+      return { icon: "🟢", label: "In deficit", cls: "status-good", note: remaining + " kcal under maintenance" };
+    }
+    return { icon: "🔴", label: "Over maintenance", cls: "status-bad", note: Math.abs(remaining) + " kcal over maintenance" };
   }
 
   function renderCalorieAlignment(todayIntake, bmr, todayMaintenance) {
@@ -1006,21 +1279,378 @@
       return;
     }
     var remaining = todayMaintenance - todayIntake;
-    var icon, label, cls;
-    var notes = [];
-    if (remaining >= 0) {
-      icon = "🟢"; label = "In deficit"; cls = "status-good";
-      notes.push(remaining + " kcal under maintenance");
-    } else {
-      icon = "🔴"; label = "Over maintenance"; cls = "status-bad";
-      notes.push(Math.abs(remaining) + " kcal over maintenance");
-    }
+    var band = classifyMaintenanceBand(remaining);
+    var notes = [band.note];
     if (bmr != null && todayIntake < bmr) {
       notes.push("⚠️ below BMR (" + bmr + ")");
     }
-    el.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + label + "</span>" +
+    el.innerHTML = '<span class="day-badge ' + band.cls + '">' + band.icon + " " + band.label + "</span>" +
       "<span>" + notes.join(" · ") + "</span>";
     el.style.display = "flex";
+  }
+
+  // ---------- goal plan ----------
+
+  var GOAL_DEFAULTS = {
+    startDate: "2026-10-10",
+    startWeight: 107.0,
+    goalWeight: 99,
+    ratePerWeek: 0.8
+  };
+
+  // Not separately editable in the UI (only start/goal/rate are) -- these come from the
+  // user's own plan and don't divide evenly from the rate, so they're kept as given
+  // rather than derived.
+  var GOAL_CHECKPOINTS_DEFAULT = [
+    { date: "2026-10-31", target: 104.8 },
+    { date: "2026-11-21", target: 102.4 },
+    { date: "2026-12-19", target: 99 }
+  ];
+
+  function getGoal() {
+    var settings = loadSettings();
+    var goal = settings.goal || {};
+    return {
+      startDate: goal.startDate || GOAL_DEFAULTS.startDate,
+      startWeight: goal.startWeight != null ? goal.startWeight : GOAL_DEFAULTS.startWeight,
+      goalWeight: goal.goalWeight != null ? goal.goalWeight : GOAL_DEFAULTS.goalWeight,
+      ratePerWeek: goal.ratePerWeek != null ? goal.ratePerWeek : GOAL_DEFAULTS.ratePerWeek,
+      checkpoints: goal.checkpoints || GOAL_CHECKPOINTS_DEFAULT
+    };
+  }
+
+  // The straight target line's implied end date: when goalWeight is reached if
+  // ratePerWeek holds exactly from startDate.
+  function getGoalEndDate(goal) {
+    if (!(goal.ratePerWeek > 0)) return goal.startDate;
+    var weeks = (goal.startWeight - goal.goalWeight) / goal.ratePerWeek;
+    return addDaysISO(goal.startDate, Math.round(weeks * 7));
+  }
+
+  // Simple (non-exponential) trailing N-day mean over an interpolated daily weight series.
+  function computeRollingAverageSeries(series, windowDays) {
+    return series.map(function (pt, i) {
+      var slice = series.slice(Math.max(0, i - windowDays + 1), i + 1);
+      var avg = slice.reduce(function (sum, p) { return sum + p.weight; }, 0) / slice.length;
+      return { date: pt.date, value: avg };
+    });
+  }
+
+  // 7-day rolling average of (interpolated) daily weight from the goal's start date
+  // through endDate. Null if nothing has ever been weighed in.
+  function getGoalRollingAverage(endDate) {
+    var goal = getGoal();
+    var start = goal.startDate < endDate ? goal.startDate : endDate;
+    var series = buildInterpolatedWeightSeries(loadDaily(), start, endDate);
+    if (series == null) return null;
+    return computeRollingAverageSeries(series, 7);
+  }
+
+  // The rolling-average value at, or nearest before, a given date.
+  function rollingAverageValueAt(rollingAvg, date) {
+    var value = null;
+    for (var i = 0; i < rollingAvg.length; i++) {
+      if (rollingAvg[i].date > date) break;
+      value = rollingAvg[i].value;
+    }
+    return value;
+  }
+
+  // Each checkpoint is "upcoming" before its date arrives, else "on-track" when the
+  // rolling average is at or under its target weight, else "behind".
+  function getGoalCheckpointStatuses(today) {
+    var goal = getGoal();
+    var rollingAvg = getGoalRollingAverage(today);
+    return goal.checkpoints.map(function (cp) {
+      if (today < cp.date) return { date: cp.date, target: cp.target, status: "upcoming", value: null };
+      var value = rollingAvg ? rollingAverageValueAt(rollingAvg, cp.date) : null;
+      if (value == null) return { date: cp.date, target: cp.target, status: "upcoming", value: null };
+      return { date: cp.date, target: cp.target, status: value <= cp.target ? "on-track" : "behind", value: value };
+    });
+  }
+
+  // True if the 7-day rolling average has not dropped at all across the last 14
+  // consecutive days (every day-over-day step was flat or up).
+  function isGoalStalled(today) {
+    var rollingAvg = getGoalRollingAverage(today);
+    if (rollingAvg == null || rollingAvg.length < 15) return false;
+    var last15 = rollingAvg.slice(-15);
+    for (var i = 1; i < last15.length; i++) {
+      if (last15[i].value < last15[i - 1].value) return false;
+    }
+    return true;
+  }
+
+  function renderGoalCheckpoints(today) {
+    var listEl = document.getElementById("goalCheckpoints");
+    if (listEl) {
+      var statuses = getGoalCheckpointStatuses(today);
+      listEl.innerHTML = "";
+      statuses.forEach(function (cp) {
+        var row = document.createElement("div");
+        row.className = "day-status";
+        row.style.display = "flex";
+        var icon = cp.status === "on-track" ? "🟢" : cp.status === "behind" ? "🔴" : "⚪";
+        var cls = cp.status === "on-track" ? "status-good" : cp.status === "behind" ? "status-bad" : "";
+        var label = cp.status === "on-track" ? "On track" : cp.status === "behind" ? "Behind" : "Upcoming";
+        row.innerHTML = '<span class="day-badge ' + cls + '">' + icon + " " + formatDateShort(cp.date) + " ≤ " + cp.target + " kg</span>" +
+          "<span>" + label + (cp.value != null ? " (" + roundN(cp.value, 1) + " kg avg)" : "") + "</span>";
+        listEl.appendChild(row);
+      });
+    }
+
+    var stallEl = document.getElementById("goalStallWarning");
+    if (stallEl) {
+      var stalled = isGoalStalled(today);
+      stallEl.style.display = stalled ? "block" : "none";
+      if (stalled) stallEl.textContent = "⚠️ Your 7-day average hasn't dropped in the last 14 days.";
+    }
+  }
+
+  function renderGoalChart() {
+    var goal = getGoal();
+    var today = todayISO();
+    var chartEnd = today > goal.startDate ? today : goal.startDate;
+    var rollingAvg = getGoalRollingAverage(chartEnd);
+    var avgPoints = rollingAvg ? rollingAvg.map(function (p) { return { date: p.date, value: roundN(p.value, 2) }; }) : [];
+
+    var goalEndDate = getGoalEndDate(goal);
+    var series = [];
+    var isDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var accentColor = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || (isDark ? "#5ec2a0" : "#1f8f6c");
+    var textDimColor = getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim() || "#9aa1ac";
+
+    if (avgPoints.length > 0) series.push({ points: avgPoints, color: accentColor });
+    if (goalEndDate !== goal.startDate) {
+      series.push({
+        points: [{ date: goal.startDate, value: goal.startWeight }, { date: goalEndDate, value: goal.goalWeight }],
+        color: textDimColor,
+        dashed: true
+      });
+    }
+    drawMultiLineChart("goalChart", "goalChartEmpty", series);
+    renderGoalCheckpoints(today);
+  }
+
+  // Weight expected on the straight start->goal target line at a given date.
+  function getGoalTargetWeightAt(goal, date) {
+    var endDate = getGoalEndDate(goal);
+    if (date <= goal.startDate || endDate <= goal.startDate) return goal.startWeight;
+    if (date >= endDate) return goal.goalWeight;
+    var toMs = function (iso) { return new Date(iso + "T00:00:00").getTime(); };
+    var frac = (toMs(date) - toMs(goal.startDate)) / (toMs(endDate) - toMs(goal.startDate));
+    return goal.startWeight + (goal.goalWeight - goal.startWeight) * frac;
+  }
+
+  // A condensed snapshot of goal progress for a given date: current rolling-average
+  // weight, how far it is from the straight-line target at that date (positive = behind,
+  // i.e. heavier than planned), the next not-yet-arrived checkpoint, and stall state.
+  // Null before the goal has started or before any weight is logged.
+  function getGoalTodaySummary(today) {
+    var goal = getGoal();
+    if (today < goal.startDate) return null;
+    var rollingAvg = getGoalRollingAverage(today);
+    if (!rollingAvg || rollingAvg.length === 0) return null;
+    var currentAvg = rollingAvg[rollingAvg.length - 1].value;
+    var targetAtToday = getGoalTargetWeightAt(goal, today);
+    var nextCheckpoint = null;
+    getGoalCheckpointStatuses(today).some(function (cp) {
+      if (cp.status === "upcoming") { nextCheckpoint = cp; return true; }
+      return false;
+    });
+    return {
+      currentAvg: currentAvg,
+      targetAtToday: targetAtToday,
+      gapKg: currentAvg - targetAtToday,
+      nextCheckpoint: nextCheckpoint,
+      stalled: isGoalStalled(today)
+    };
+  }
+
+  function renderGoalSummary(today) {
+    var el = document.getElementById("goalTodaySummary");
+    if (!el) return;
+    var summary = getGoalTodaySummary(today);
+    if (!summary) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    var onPace = Math.abs(summary.gapKg) <= 0.15;
+    var behind = summary.gapKg > 0.15;
+    var cls = behind ? "status-bad" : onPace ? "status-warn" : "status-good";
+    var icon = behind ? "🔴" : onPace ? "🟡" : "🟢";
+    var gapText = onPace ? "on pace" : behind
+      ? roundN(summary.gapKg, 1) + " kg behind pace"
+      : roundN(Math.abs(summary.gapKg), 1) + " kg ahead of pace";
+
+    var parts = [];
+    parts.push('<span class="day-badge ' + cls + '">' + icon + " " + roundN(summary.currentAvg, 1) + " kg avg — " + gapText + "</span>");
+    if (summary.nextCheckpoint) {
+      parts.push("<span>Next: " + formatDateShort(summary.nextCheckpoint.date) + " ≤ " + summary.nextCheckpoint.target + " kg</span>");
+    }
+    if (summary.stalled) {
+      parts.push('<span class="day-badge status-bad">⚠️ Stalled 14+ days</span>');
+    }
+    el.innerHTML = parts.join("");
+    el.style.display = "flex";
+  }
+
+  var GOAL_PACE_ADJUSTMENT_KCAL = 150; // how much to tighten/relax today's target by, based on pace
+  var GOAL_PACE_GAP_THRESHOLD_KG = 0.15; // matches the "on pace" band used in the Today summary badge
+
+  // The calorie target pace guidance adjusts from -- the fixed target if one's set,
+  // else the midpoint of the auto-mode's 500-750 kcal deficit range off the editable
+  // maintenance estimate.
+  function getGoalBaseCalorieTarget() {
+    var fixed = getFixedCalorieTarget();
+    if (fixed != null) return fixed;
+    return Math.round((getMaintenanceTdeeForTargets() - 600) / 10) * 10;
+  }
+
+  // Turns today's pace gap into a concrete suggested calorie target and message --
+  // tighter than usual when behind pace (floored at BMR), looser when comfortably
+  // ahead, unchanged when on pace. Null wherever getGoalTodaySummary is (goal not
+  // started yet, or nothing logged).
+  function getGoalPaceGuidance(today) {
+    var summary = getGoalTodaySummary(today);
+    if (!summary) return null;
+    var base = getGoalBaseCalorieTarget();
+    var behind = summary.gapKg > GOAL_PACE_GAP_THRESHOLD_KG;
+    var ahead = summary.gapKg < -GOAL_PACE_GAP_THRESHOLD_KG;
+    var suggested = base;
+    var message;
+    if (behind) {
+      var daily = loadDaily();
+      var bmr = computeBMRForDate(today, daily[today] || {}, daily);
+      suggested = Math.round((base - GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
+      if (bmr != null) suggested = Math.max(suggested, bmr);
+      message = "Behind pace by " + roundN(summary.gapKg, 1) + " kg — aim for " + suggested +
+        " kcal today (or add extra cardio) to work back toward the line.";
+    } else if (ahead) {
+      suggested = Math.round((base + GOAL_PACE_ADJUSTMENT_KCAL) / 10) * 10;
+      message = "Ahead of pace by " + roundN(Math.abs(summary.gapKg), 1) + " kg — " + suggested +
+        " kcal today is plenty, no need to push harder.";
+    } else {
+      message = "Right on pace — keep aiming for " + base + " kcal today.";
+    }
+    return { baseTarget: base, suggestedTarget: suggested, message: message, behind: behind, ahead: ahead };
+  }
+
+  function renderGoalPaceHint(today) {
+    var el = document.getElementById("goalPaceHint");
+    if (!el) return;
+    var guidance = getGoalPaceGuidance(today);
+    if (!guidance) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = guidance.message;
+    el.style.display = "block";
+  }
+
+  // ---------- streaks ----------
+
+  function isCalorieTargetMetForDate(date, daily) {
+    daily = daily || loadDaily();
+    var entry = daily[date];
+    if (!entry || entry.calories == null) return false;
+    var fixed = getFixedCalorieTarget();
+    if (fixed != null) return entry.calories <= fixed;
+    var range = computeSuggestedCalorieRange(date, entry, daily);
+    if (!range) return false;
+    return entry.calories <= range.high;
+  }
+
+  function isProteinTargetMetForDate(date, daily) {
+    daily = daily || loadDaily();
+    var entry = daily[date];
+    return !!(entry && entry.protein != null && entry.protein >= getProteinTarget());
+  }
+
+  var STREAK_DEFS = [
+    { key: "calories", label: "Calorie target", icon: "🍽️", predicate: isCalorieTargetMetForDate },
+    { key: "protein", label: "Protein target", icon: "🥩", predicate: isProteinTargetMetForDate },
+    { key: "cardio", label: "Cardio", icon: "🏃", predicate: isCardioDoneForDate }
+  ];
+
+  // Consecutive days strictly before `date` where predicateFn held. `date` itself
+  // (today) is excluded -- it's still in progress, not a completed streak day yet.
+  function computeStreakBeforeDate(date, predicateFn, daily) {
+    var streak = 0;
+    var d = addDaysISO(date, -1);
+    while (predicateFn(d, daily)) {
+      streak++;
+      d = addDaysISO(d, -1);
+    }
+    return streak;
+  }
+
+  function getStreaks(today, daily) {
+    daily = daily || loadDaily();
+    return STREAK_DEFS.map(function (def) {
+      var priorStreak = computeStreakBeforeDate(today, def.predicate, daily);
+      var metToday = def.predicate(today, daily);
+      return {
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        priorStreak: priorStreak,
+        metToday: metToday,
+        currentStreak: priorStreak + (metToday ? 1 : 0),
+        atRisk: priorStreak > 0 && !metToday
+      };
+    });
+  }
+
+  function renderStreaks(today, daily) {
+    var el = document.getElementById("goalStreaks");
+    if (!el) return;
+    var streaks = getStreaks(today, daily);
+    el.innerHTML = streaks.map(function (s) {
+      return '<span class="day-badge' + (s.currentStreak > 0 ? " status-good" : "") + '">' +
+        s.icon + " " + s.label + " " + s.currentStreak + "d</span>";
+    }).join("");
+  }
+
+  function renderStreakNudge(today, daily) {
+    var el = document.getElementById("goalStreakNudge");
+    if (!el) return;
+    var atRisk = getStreaks(today, daily).filter(function (s) { return s.atRisk; });
+    if (atRisk.length === 0) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    var names = atRisk.map(function (s) { return s.label.toLowerCase() + " (" + s.priorStreak + "d)"; });
+    el.textContent = "⚠️ Keep your streak alive today: " + names.join(", ") + " not done yet.";
+    el.style.display = "block";
+  }
+
+  function fillGoalForm() {
+    var goal = getGoal();
+    document.getElementById("goalStartDateInput").value = goal.startDate;
+    document.getElementById("goalStartWeightInput").value = goal.startWeight;
+    document.getElementById("goalWeightInput").value = goal.goalWeight;
+    document.getElementById("goalRateInput").value = goal.ratePerWeek;
+  }
+
+  function handleGoalFieldChange() {
+    var settings = loadSettings();
+    var startDate = document.getElementById("goalStartDateInput").value || GOAL_DEFAULTS.startDate;
+    var startWeight = parseFloat(document.getElementById("goalStartWeightInput").value);
+    var goalWeight = parseFloat(document.getElementById("goalWeightInput").value);
+    var ratePerWeek = parseFloat(document.getElementById("goalRateInput").value);
+    settings.goal = {
+      startDate: startDate,
+      startWeight: isNaN(startWeight) ? GOAL_DEFAULTS.startWeight : startWeight,
+      goalWeight: isNaN(goalWeight) ? GOAL_DEFAULTS.goalWeight : goalWeight,
+      ratePerWeek: isNaN(ratePerWeek) ? GOAL_DEFAULTS.ratePerWeek : ratePerWeek,
+      checkpoints: (settings.goal && settings.goal.checkpoints) || GOAL_CHECKPOINTS_DEFAULT
+    };
+    saveSettings(settings);
+    renderGoalChart();
   }
 
   function renderTrends() {
@@ -1028,6 +1658,7 @@
     var range = getTrendsRange();
     renderCaloriesTrend(daily, range);
     TREND_METRICS.forEach(function (cfg) { renderMetricTrend(cfg, daily, range); });
+    renderGoalChart();
   }
 
   // ---------- workout builder ----------
@@ -1097,7 +1728,14 @@
           var reps = parseFloat(repsInput.value);
           var weight = parseFloat(weightInput.value);
           if (!reps) { toast("Enter reps"); return; }
-          ex.sets.push({ reps: reps, weight: isNaN(weight) ? 0 : weight });
+          var w = isNaN(weight) ? 0 : weight;
+          var prevBest = getBestWeightSoFar(ex.name, ex.sets);
+          if (prevBest != null && prevBest > 0 && w > prevBest * 1.5) {
+            var ok = confirm(w + " kg for " + ex.name + " is more than 50% above your previous best of " +
+              prevBest + " kg. Save this set anyway?");
+            if (!ok) return;
+          }
+          ex.sets.push({ reps: reps, weight: w });
           renderWorkoutBuilder();
         });
         addSetRow.appendChild(repsInput);
@@ -1109,6 +1747,8 @@
       list.appendChild(block);
     });
   }
+
+  var WALKING_RUNNING_PACE_THRESHOLD_MIN_KM = 7; // below this is running pace, not walking
 
   function buildCardioFields(ex) {
     var wrap = document.createElement("div");
@@ -1130,9 +1770,17 @@
     });
     durationField.appendChild(durationInput);
 
+    var lname = (ex.name || "").toLowerCase();
+    var isWalking = lname === "walking";
+    var isCycling = lname === "cycling";
+    var paceUnit = "minkm"; // 'minkm' | 'kmh' -- UI-only; ex.pace is always stored as min/km
+
     var paceField = document.createElement("div");
     paceField.className = "mini-field";
-    paceField.innerHTML = '<label>Pace (min/km)</label>';
+    var paceLabel = document.createElement("label");
+    paceLabel.textContent = "Pace (min/km)";
+    paceField.appendChild(paceLabel);
+
     var paceInput = document.createElement("input");
     paceInput.type = "number";
     paceInput.inputMode = "decimal";
@@ -1140,11 +1788,65 @@
     paceInput.step = "0.1";
     paceInput.placeholder = "e.g. 5.5";
     paceInput.value = ex.pace != null ? ex.pace : "";
-    paceInput.addEventListener("change", function () {
+
+    var paceWarning = document.createElement("div");
+    paceWarning.className = "field-warning";
+    paceWarning.textContent = "That's running pace — check the value.";
+    paceWarning.style.display = "none";
+
+    function applyPaceInput() {
       var val = parseFloat(paceInput.value);
-      ex.pace = isNaN(val) ? null : val;
-    });
+      if (isNaN(val)) {
+        ex.pace = null;
+        paceWarning.style.display = "none";
+        return;
+      }
+      var paceMinKm = paceUnit === "kmh" ? (val > 0 ? 60 / val : null) : val;
+      ex.pace = paceMinKm;
+      paceWarning.style.display =
+        isWalking && paceMinKm != null && paceMinKm < WALKING_RUNNING_PACE_THRESHOLD_MIN_KM ? "block" : "none";
+    }
+    paceInput.addEventListener("change", applyPaceInput);
     paceField.appendChild(paceInput);
+
+    if (isCycling) {
+      var unitToggle = document.createElement("div");
+      unitToggle.className = "segmented";
+      unitToggle.style.marginTop = "6px";
+      var minKmBtn = document.createElement("button");
+      minKmBtn.type = "button";
+      minKmBtn.className = "segment active";
+      minKmBtn.textContent = "min/km";
+      var kmhBtn = document.createElement("button");
+      kmhBtn.type = "button";
+      kmhBtn.className = "segment";
+      kmhBtn.textContent = "km/h";
+
+      // Converts the currently-displayed value to the other unit (both are just 60/x of
+      // each other) when switching, so the stored min/km value doesn't jump.
+      function switchPaceUnit(unit, activeBtn, inactiveBtn, label, placeholder) {
+        if (paceUnit === unit) return;
+        paceUnit = unit;
+        activeBtn.classList.add("active");
+        inactiveBtn.classList.remove("active");
+        paceLabel.textContent = label;
+        paceInput.placeholder = placeholder;
+        var val = parseFloat(paceInput.value);
+        paceInput.value = !isNaN(val) && val > 0 ? roundN(60 / val, 1) : "";
+        applyPaceInput();
+      }
+      minKmBtn.addEventListener("click", function () {
+        switchPaceUnit("minkm", minKmBtn, kmhBtn, "Pace (min/km)", "e.g. 5.5");
+      });
+      kmhBtn.addEventListener("click", function () {
+        switchPaceUnit("kmh", kmhBtn, minKmBtn, "Speed (km/h)", "e.g. 20");
+      });
+      unitToggle.appendChild(minKmBtn);
+      unitToggle.appendChild(kmhBtn);
+      paceField.appendChild(unitToggle);
+    }
+
+    paceField.appendChild(paceWarning);
 
     wrap.appendChild(durationField);
     wrap.appendChild(paceField);
@@ -1417,128 +2119,6 @@
     toast("Workout deleted");
   }
 
-  // ---------- fasting ----------
-  //
-  // A fast starts when the user taps "Start Fast" and runs until they log any food,
-  // which is what actually breaks it -- it can span multiple calendar days (e.g.
-  // an extended fast), so it's tracked as its own timer rather than a per-day field.
-  // No "cancel" escape hatch is offered once started: the only way out is logging
-  // food, matching a fast being a real commitment rather than a toggle.
-
-  var fastingTimerInterval = null;
-
-  function loadFasting() {
-    try {
-      var data = JSON.parse(localStorage.getItem(STORAGE.fasting) || "{}");
-      return { current: data.current || null, log: data.log || [] };
-    } catch (e) {
-      return { current: null, log: [] };
-    }
-  }
-
-  function saveFasting(data) {
-    localStorage.setItem(STORAGE.fasting, JSON.stringify(data));
-  }
-
-  // If a fast is still running and has already crossed one or more midnights,
-  // retroactively saves "hours fasted" for each full calendar day it's fully spanned
-  // into that day's daily entry -- so History shows fasting progress for every day of a
-  // multi-day fast, not just the day it's eventually broken. There's no way to run this
-  // exactly at midnight while the app is closed, so it runs on app open/foreground and
-  // catches up on any days that elapsed in the meantime.
-  function snapshotFastingDays() {
-    var fasting = loadFasting();
-    if (!fasting.current) return;
-    var startMs = new Date(fasting.current.start).getTime();
-    var startDate = localDateISO(new Date(startMs));
-    var today = todayISO();
-    if (startDate >= today) return;
-
-    var daily = loadDaily();
-    var d = startDate;
-    while (d < today) {
-      var dayEndMs = new Date(addDaysISO(d, 1) + "T00:00:00").getTime();
-      var dayStartMs = new Date(d + "T00:00:00").getTime();
-      var segmentStart = Math.max(startMs, dayStartMs);
-      var hours = Math.round(((dayEndMs - segmentStart) / 3600000) * 10) / 10;
-      var entry = daily[d] || {};
-      entry.fastedHours = hours;
-      daily[d] = entry;
-      d = addDaysISO(d, 1);
-    }
-    saveDaily(daily);
-  }
-
-  function startFast() {
-    var fasting = loadFasting();
-    fasting.current = { start: new Date().toISOString() };
-    saveFasting(fasting);
-    renderFastingStatus();
-  }
-
-  // Ends the active fast (if any) right now and logs its duration -- called
-  // whenever real food gets logged, since eating is what breaks a fast.
-  function breakFastNow() {
-    var fasting = loadFasting();
-    if (!fasting.current) return;
-    var startMs = new Date(fasting.current.start).getTime();
-    var end = new Date();
-    var hours = Math.round(((end.getTime() - startMs) / 3600000) * 10) / 10;
-    fasting.log.push({ id: makeId(), start: fasting.current.start, end: end.toISOString(), hours: hours });
-    fasting.current = null;
-    saveFasting(fasting);
-    renderFastingStatus();
-    renderHistory();
-  }
-
-  function formatFastingDuration(hours) {
-    var h = Math.floor(hours);
-    var m = Math.round((hours - h) * 60);
-    if (m === 60) { h += 1; m = 0; }
-    return h + "h " + m + "m";
-  }
-
-  function formatClockTime(iso) {
-    var d = new Date(iso);
-    var h = d.getHours();
-    var m = d.getMinutes();
-    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
-  }
-
-  function renderFastingStatus() {
-    snapshotFastingDays();
-    var fasting = loadFasting();
-    var timerEl = document.getElementById("fastingTimer");
-    var labelEl = document.getElementById("fastingLabel");
-    var startBtn = document.getElementById("startFastBtn");
-    if (!timerEl) return;
-
-    clearInterval(fastingTimerInterval);
-    fastingTimerInterval = null;
-
-    if (fasting.current) {
-      // No button shown at all while a fast is active -- the only way out is
-      // logging food, which breaks it automatically.
-      startBtn.style.display = "none";
-      // Always include the date, not just the clock time -- a fast can run past
-      // midnight (even several days), so "since 07:04" alone would be ambiguous
-      // about which day it actually started.
-      labelEl.textContent = "Fasting since " + formatDateShort(localDateISO(new Date(fasting.current.start))) +
-        ", " + formatClockTime(fasting.current.start);
-      var update = function () {
-        var hours = (Date.now() - new Date(fasting.current.start).getTime()) / 3600000;
-        timerEl.textContent = formatFastingDuration(hours);
-      };
-      update();
-      fastingTimerInterval = setInterval(update, 60000);
-    } else {
-      startBtn.style.display = "inline-block";
-      var lastFast = fasting.log[fasting.log.length - 1];
-      timerEl.textContent = lastFast ? formatFastingDuration(lastFast.hours) : "—";
-      labelEl.textContent = lastFast ? "Last fast" : "Not fasting";
-    }
-  }
-
   // ---------- food log ----------
 
   function clearFoodSearchState() {
@@ -1634,7 +2214,7 @@
     var matches = loadCustomFoods()
       .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
       .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100 };
+        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat, basis: f.basis };
       });
     return Promise.resolve(matches);
   }
@@ -1711,8 +2291,9 @@
 
       var name = document.createElement("div");
       name.className = "food-result-name";
-      name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>";
-      name.appendChild(document.createTextNode(p.name));
+      name.innerHTML = '<span class="food-source-tag">' + sourceTag + "</span>" +
+        (p.isTreat ? '<span class="food-treat-tag">🍬 TREAT</span>' : "");
+      name.appendChild(document.createTextNode(p.name + (p.basis ? " (" + p.basis + ")" : "")));
 
       var meta = document.createElement("div");
       meta.className = "food-result-meta";
@@ -1780,7 +2361,8 @@
       calories: Math.round(selectedFoodProduct.per100.calories * factor),
       protein: Math.round(selectedFoodProduct.per100.protein * factor),
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
-      fat: Math.round(selectedFoodProduct.per100.fat * factor)
+      fat: Math.round(selectedFoodProduct.per100.fat * factor),
+      isTreat: !!selectedFoodProduct.isTreat
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -1795,7 +2377,6 @@
       updated.id = makeId();
       updated.name = selectedFoodProduct.name;
       addFoodEntry(date, updated);
-      breakFastNow();
     }
 
     selectedFoodProduct = null;
@@ -1898,18 +2479,22 @@
       fat: Math.round(parseFloat(document.getElementById("newFoodFat").value) || 0)
     };
 
+    var isTreat = document.getElementById("newFoodIsTreat").checked;
+    var basis = document.getElementById("newFoodBasis").value || undefined;
     var customFoods = loadCustomFoods();
-    customFoods.push({ id: makeId(), name: name, per100: per100 });
+    customFoods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat, basis: basis });
     saveCustomFoods(customFoods);
     renderCustomFoodList();
 
     ["newFoodName", "newFoodCalories", "newFoodProtein", "newFoodCarbs", "newFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("newFoodIsTreat").checked = false;
+    document.getElementById("newFoodBasis").value = "";
     document.getElementById("newFoodCard").style.display = "none";
 
     toast("Saved to My Foods");
-    selectFoodProduct({ name: name, per100: per100 });
+    selectFoodProduct({ name: name, per100: per100, isTreat: isTreat, basis: basis });
   }
 
   function addFoodEntry(date, entry) {
@@ -2054,9 +2639,6 @@
     dayFoods[key] = checkbox.checked;
     foods[date] = dayFoods;
     saveFoods(foods);
-    // Checking anything off today -- including water or black coffee -- breaks an
-    // active fast, same as adding a food-log entry does.
-    if (checkbox.checked && date === todayISO()) breakFastNow();
   }
 
   // ---------- history view ----------
@@ -2067,18 +2649,9 @@
     var foods = loadFoods();
     var list = document.getElementById("historyList");
 
-    // Completed fasts are attributed to the date they ended on -- the day the
-    // fast was actually broken, which is when its duration became known.
-    var fastsByDate = {};
-    loadFasting().log.forEach(function (f) {
-      var d = localDateISO(new Date(f.end));
-      (fastsByDate[d] = fastsByDate[d] || []).push(f);
-    });
-
     var dates = {};
     Object.keys(daily).forEach(function (d) { dates[d] = true; });
     workouts.forEach(function (w) { dates[w.date] = true; });
-    Object.keys(fastsByDate).forEach(function (d) { dates[d] = true; });
     Object.keys(foods).forEach(function (d) {
       if (FOOD_ITEMS.some(function (f) { return foods[d][f.key]; })) dates[d] = true;
     });
@@ -2138,21 +2711,6 @@
         wrap.appendChild(line);
       }
 
-      (fastsByDate[date] || []).forEach(function (f) {
-        var fastLine = document.createElement("div");
-        fastLine.className = "h-line";
-        fastLine.innerHTML = "<span>⏱️ Fasted " + formatFastingDuration(f.hours) + " (" +
-          formatClockTime(f.start) + " → " + formatClockTime(f.end) + ")</span>";
-        wrap.appendChild(fastLine);
-      });
-
-      if (entry && entry.fastedHours != null) {
-        var fastSnapshotLine = document.createElement("div");
-        fastSnapshotLine.className = "h-line";
-        fastSnapshotLine.innerHTML = "<span>⏱️ Fasted " + formatFastingDuration(entry.fastedHours) + " (fast continued past midnight)</span>";
-        wrap.appendChild(fastSnapshotLine);
-      }
-
       var dayFoods = foods[date] || {};
       var eaten = FOOD_ITEMS.filter(function (f) { return dayFoods[f.key]; }).map(function (f) { return f.label; });
       if (eaten.length) {
@@ -2163,6 +2721,7 @@
       }
 
       var dayWeight = entry ? entry.weight : null;
+      var dayBmr = computeBMRForDate(date, entry, daily);
       workouts.filter(function (w) { return w.date === date; }).forEach(function (w) {
         var wDiv = document.createElement("div");
         wDiv.className = "h-workout";
@@ -2171,7 +2730,7 @@
         }, 0);
         var cardioCount = w.exercises.filter(function (ex) { return ex.type === "cardio"; }).length;
         var workoutKcal = Math.round(w.exercises.reduce(function (sum, ex) {
-          return sum + estimateExerciseCalories(ex, dayWeight);
+          return sum + estimateExerciseCalories(ex, dayWeight, dayBmr);
         }, 0));
         var summaryParts = [];
         if (totalSets > 0) summaryParts.push(totalSets + " sets");
@@ -2206,7 +2765,7 @@
         var exList = document.createElement("ul");
         exList.className = "ex-list";
         w.exercises.forEach(function (ex) {
-          var exKcal = Math.round(estimateExerciseCalories(ex, dayWeight));
+          var exKcal = Math.round(estimateExerciseCalories(ex, dayWeight, dayBmr));
           var exLi = document.createElement("li");
           var exName = document.createElement("div");
           exName.className = "ex-name";
@@ -2245,18 +2804,29 @@
 
   // ---------- data export / import / clear ----------
 
+  // Settings minus usdaApiKey -- that key stays local-only and is never written into a
+  // backup, so a shared/synced export can't leak it. Import still accepts it from older
+  // backups that have it (nothing to migrate away from; it just keeps working).
+  function getExportableSettings() {
+    var settings = loadSettings();
+    var copy = {};
+    Object.keys(settings).forEach(function (key) {
+      if (key !== "usdaApiKey") copy[key] = settings[key];
+    });
+    return copy;
+  }
+
   async function handleExport() {
     var payload = {
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
       workouts: loadWorkouts(),
-      settings: loadSettings(),
+      settings: getExportableSettings(),
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
       foods: loadFoods(),
       customExercises: loadCustomExercises(),
-      customWorkoutTemplates: loadWorkoutTemplates(),
-      fasting: loadFasting()
+      customWorkoutTemplates: loadWorkoutTemplates()
     };
     var json = JSON.stringify(payload, null, 2);
     var filename = "gymlog-backup-" + todayISO() + ".json";
@@ -2327,9 +2897,9 @@
     if (payload.foods) saveFoods(payload.foods);
     if (payload.customExercises) saveCustomExercises(payload.customExercises);
     if (payload.customWorkoutTemplates) saveWorkoutTemplates(payload.customWorkoutTemplates);
-    if (payload.fasting) { saveFasting(payload.fasting); renderFastingStatus(); }
     toast("Import complete");
     fillProfileForm();
+    fillGoalForm();
     fillFormFromDate(document.getElementById("logDate").value || todayISO());
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
@@ -2354,17 +2924,16 @@
     localStorage.removeItem(STORAGE.foods);
     localStorage.removeItem(STORAGE.customExercises);
     localStorage.removeItem(STORAGE.customWorkoutTemplates);
-    localStorage.removeItem(STORAGE.fasting);
     currentExercises = [];
     editingWorkoutId = null;
     handleCancelEditMyFood();
     fillProfileForm();
+    fillGoalForm();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
     renderToday();
     renderHistory();
     renderTrends();
-    renderFastingStatus();
     renderWorkoutBuilder();
     updateWorkoutFormMode();
     populateExerciseSelect(currentExerciseType);
@@ -2401,12 +2970,101 @@
     });
   }
 
+  var currentTargetMode = "auto"; // 'auto' | 'fixed', for the Profile's calorie-target toggle
+
+  function setTargetModeToggle(mode) {
+    currentTargetMode = mode;
+    document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.targetMode === mode);
+    });
+    document.getElementById("fixedTargetFields").style.display = mode === "fixed" ? "flex" : "none";
+  }
+
+  // Migrates a pre-existing rest/training pair (from before the calorie target was
+  // collapsed to one value) into the new single calorieTarget field, once, the first
+  // time settings are loaded with the old shape still present. Doesn't touch the old
+  // fields so older backups/exports of this same device stay meaningful.
+  function migrateLegacyFixedTarget(settings) {
+    if (settings.calorieTarget == null && settings.fixedTargetRest != null) {
+      settings.calorieTarget = settings.fixedTargetRest;
+      saveSettings(settings);
+    }
+    return settings;
+  }
+
   function fillProfileForm() {
-    var settings = loadSettings();
+    var settings = migrateLegacyFixedTarget(loadSettings());
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     setSexToggle(settings.sex || "male");
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
+    setTargetModeToggle(settings.fixedTargetsEnabled ? "fixed" : "auto");
+    document.getElementById("calorieTargetInput").value = settings.calorieTarget != null ? settings.calorieTarget : "";
+    document.getElementById("proteinTargetInput").value = settings.proteinTarget != null ? settings.proteinTarget : "";
+    document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
+    document.getElementById("treatBudgetInput").value = settings.treatBudget != null ? settings.treatBudget : "";
+    document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget != null ? settings.cardioMinutesTarget : "";
+    document.getElementById("stepTargetInput").value = settings.stepTarget != null ? settings.stepTarget : "";
+  }
+
+  function handleTargetModeChange(mode) {
+    setTargetModeToggle(mode);
+    var settings = loadSettings();
+    settings.fixedTargetsEnabled = mode === "fixed";
+    if (mode === "fixed" && settings.calorieTarget == null) {
+      settings.calorieTarget = CALORIE_TARGET_DEFAULT;
+    }
+    saveSettings(settings);
+    fillProfileForm();
+    renderToday();
+  }
+
+  function handleFixedTargetChange() {
+    var value = document.getElementById("calorieTargetInput").value;
+    var settings = loadSettings();
+    settings.calorieTarget = value !== "" ? Math.round(parseFloat(value)) : CALORIE_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleProteinTargetChange() {
+    var value = document.getElementById("proteinTargetInput").value;
+    var settings = loadSettings();
+    settings.proteinTarget = value !== "" ? Math.round(parseFloat(value)) : PROTEIN_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleMaintenanceTdeeChange() {
+    var value = document.getElementById("maintenanceTdeeInput").value;
+    var settings = loadSettings();
+    settings.maintenanceTdeeForTargets = value !== "" ? Math.round(parseFloat(value)) : MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleTreatBudgetChange() {
+    var value = document.getElementById("treatBudgetInput").value;
+    var settings = loadSettings();
+    settings.treatBudget = value !== "" ? Math.round(parseFloat(value)) : TREAT_BUDGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleCardioMinutesTargetChange() {
+    var value = document.getElementById("cardioMinutesTargetInput").value;
+    var settings = loadSettings();
+    settings.cardioMinutesTarget = value !== "" ? Math.round(parseFloat(value)) : CARDIO_MINUTES_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleStepTargetChange() {
+    var value = document.getElementById("stepTargetInput").value;
+    var settings = loadSettings();
+    settings.stepTarget = value !== "" ? Math.round(parseFloat(value)) : STEP_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
   }
 
   function handleUsdaKeyChange() {
@@ -2453,18 +3111,108 @@
     return computeBMRForWeight(resolveWeightForDate(date, entry, daily));
   }
 
-  // Total expenditure for a specific day: resting burn (BMR, using that day's weight) + that day's activity burn.
+  var TEF_RATE = 0.1; // thermic effect of food: ~10% of intake is burned digesting it
+
+  // Thermic effect of food for a day's logged intake. 0 when nothing is logged --
+  // there's nothing to have a thermic effect yet.
+  function computeTEF(calories) {
+    if (calories == null || calories <= 0) return 0;
+    return Math.round(calories * TEF_RATE);
+  }
+
+  // Total expenditure for a specific day: resting burn (BMR, using that day's weight) +
+  // net activity burn (workouts/steps, already excluding resting burn) + thermic effect
+  // of that day's logged food.
   function getMaintenanceForDay(date, entry, daily) {
     var bmr = computeBMRForDate(date, entry, daily);
     if (bmr == null) return null;
-    var burned = Math.round(getCaloriesBurnedBreakdown(date, entry && entry.weight, entry && entry.steps).total);
-    return bmr + burned;
+    var burned = Math.round(getCaloriesBurnedBreakdown(date, entry && entry.weight, entry && entry.steps, bmr).total);
+    var tef = computeTEF(entry && entry.calories);
+    return bmr + burned + tef;
+  }
+
+  // ---------- adaptive TDEE (measured from logged data) ----------
+
+  var ADAPTIVE_TDEE_MIN_LOGGED_DAYS = 21; // of the window's days, how many need both intake and weight logged to trust the result
+  var WEIGHT_EMA_ALPHA = 0.1;
+  var KCAL_PER_KG = 7700; // rough energy-density-of-bodyweight-change constant
+
+  // Builds a day-by-day weight value for every date in [startDate, endDate], linearly
+  // interpolating between the two nearest real weigh-ins (which may fall outside the
+  // window, for an accurate value right at the edges) and flat-carrying the nearest
+  // logged weight for dates before the first or after the last weigh-in in the whole log.
+  // Returns null if nothing has ever been weighed in.
+  function buildInterpolatedWeightSeries(daily, startDate, endDate) {
+    var loggedDates = Object.keys(daily).filter(function (d) { return daily[d].weight != null; }).sort();
+    if (loggedDates.length === 0) return null;
+
+    function toMs(iso) { return new Date(iso + "T00:00:00").getTime(); }
+
+    var series = [];
+    for (var d = startDate; d <= endDate; d = addDaysISO(d, 1)) {
+      var prevDate = null, nextDate = null;
+      for (var i = 0; i < loggedDates.length; i++) {
+        if (loggedDates[i] <= d) prevDate = loggedDates[i];
+        if (nextDate == null && loggedDates[i] >= d) nextDate = loggedDates[i];
+      }
+      var weight;
+      if (prevDate != null && nextDate != null && prevDate !== nextDate) {
+        var frac = (toMs(d) - toMs(prevDate)) / (toMs(nextDate) - toMs(prevDate));
+        weight = daily[prevDate].weight + (daily[nextDate].weight - daily[prevDate].weight) * frac;
+      } else {
+        weight = daily[prevDate != null ? prevDate : nextDate].weight;
+      }
+      series.push({ date: d, weight: weight });
+    }
+    return series;
+  }
+
+  // Exponential moving average (given alpha) over a { date, weight } series, in date order.
+  function computeWeightEMA(series, alpha) {
+    var ema = [];
+    var prev = null;
+    series.forEach(function (pt, i) {
+      var value = i === 0 ? pt.weight : alpha * pt.weight + (1 - alpha) * prev;
+      ema.push({ date: pt.date, value: value });
+      prev = value;
+    });
+    return ema;
+  }
+
+  // TDEE measured from actually-logged intake and weight change, rather than the BMR
+  // formula + activity estimate. Only trustworthy with enough real data points, so it
+  // returns null below ADAPTIVE_TDEE_MIN_LOGGED_DAYS days of combined intake+weight logs.
+  function adaptiveTDEE(endDate, windowDays) {
+    windowDays = windowDays || 28;
+    var daily = loadDaily();
+    var startDate = addDaysISO(endDate, -(windowDays - 1));
+
+    var loggedBothCount = 0;
+    var intakeSum = 0, intakeCount = 0;
+    for (var d = startDate; d <= endDate; d = addDaysISO(d, 1)) {
+      var entry = daily[d];
+      if (!entry) continue;
+      if (entry.calories != null) { intakeSum += entry.calories; intakeCount++; }
+      if (entry.calories != null && entry.weight != null) loggedBothCount++;
+    }
+    if (loggedBothCount < ADAPTIVE_TDEE_MIN_LOGGED_DAYS) return null;
+
+    var weightSeries = buildInterpolatedWeightSeries(daily, startDate, endDate);
+    if (weightSeries == null) return null;
+    var ema = computeWeightEMA(weightSeries, WEIGHT_EMA_ALPHA);
+    var trendStart = ema[0].value;
+    var trendEnd = ema[ema.length - 1].value;
+
+    var avgIntake = intakeSum / intakeCount;
+    var tdee = avgIntake + (trendStart - trendEnd) * KCAL_PER_KG / windowDays;
+    return Math.round(tdee / 10) * 10;
   }
 
   // ---------- init ----------
 
   function init() {
     seedCustomFoodsIfNeeded();
+    migrateDefaultTreatsIfNeeded();
     seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
@@ -2484,8 +3232,6 @@
     });
 
     document.getElementById("dailyForm").addEventListener("submit", handleDailySubmit);
-    document.getElementById("startFastBtn").addEventListener("click", startFast);
-    renderFastingStatus();
     document.getElementById("logDate").addEventListener("change", function (e) {
       fillFormFromDate(e.target.value);
     });
@@ -2512,6 +3258,20 @@
     document.getElementById("ageInput").addEventListener("change", handleProfileChange);
     document.getElementById("heightInput").addEventListener("change", handleProfileChange);
     document.getElementById("usdaApiKeyInput").addEventListener("change", handleUsdaKeyChange);
+    document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
+      btn.addEventListener("click", function () { handleTargetModeChange(btn.dataset.targetMode); });
+    });
+    document.getElementById("calorieTargetInput").addEventListener("change", handleFixedTargetChange);
+    document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
+    document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
+    document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
+    document.getElementById("cardioMinutesTargetInput").addEventListener("change", handleCardioMinutesTargetChange);
+    document.getElementById("stepTargetInput").addEventListener("change", handleStepTargetChange);
+
+    fillGoalForm();
+    ["goalStartDateInput", "goalStartWeightInput", "goalWeightInput", "goalRateInput"].forEach(function (id) {
+      document.getElementById(id).addEventListener("change", handleGoalFieldChange);
+    });
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
@@ -2584,11 +3344,6 @@
     });
 
     window.addEventListener("resize", function () { renderToday(); renderTrends(); });
-    // Refresh the fasting timer's display immediately on foregrounding, so it
-    // doesn't look stale for up to a minute after the app was backgrounded.
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) renderFastingStatus();
-    });
 
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
@@ -2601,6 +3356,36 @@
     renderFoodLog(todayISO());
     renderFoodChecklist(todayISO());
     renderTrends();
+  }
+
+  // Exposes a handful of pure(ish) calorie-model functions for tests/calorie-model.test.html.
+  // Never read by the app itself -- additive only, no behavior change.
+  if (typeof window !== "undefined") {
+    window.__gymLogTestHooks = {
+      computeBMRForWeight: computeBMRForWeight,
+      estimateExerciseCalories: estimateExerciseCalories,
+      estimateStepsCalories: estimateStepsCalories,
+      computeTEF: computeTEF,
+      classifyMaintenanceBand: classifyMaintenanceBand,
+      adaptiveTDEE: adaptiveTDEE,
+      loadSettings: loadSettings,
+      saveSettings: saveSettings,
+      loadDaily: loadDaily,
+      saveDaily: saveDaily,
+      getGoalEndDate: getGoalEndDate,
+      getGoalCheckpointStatuses: getGoalCheckpointStatuses,
+      isGoalStalled: isGoalStalled,
+      getBestWeightSoFar: getBestWeightSoFar,
+      saveWorkouts: saveWorkouts,
+      getExportableSettings: getExportableSettings,
+      getGoalTargetWeightAt: getGoalTargetWeightAt,
+      getGoalTodaySummary: getGoalTodaySummary,
+      getGoalBaseCalorieTarget: getGoalBaseCalorieTarget,
+      getGoalPaceGuidance: getGoalPaceGuidance,
+      isCalorieTargetMetForDate: isCalorieTargetMetForDate,
+      isProteinTargetMetForDate: isProteinTargetMetForDate,
+      getStreaks: getStreaks
+    };
   }
 
   document.addEventListener("DOMContentLoaded", init);

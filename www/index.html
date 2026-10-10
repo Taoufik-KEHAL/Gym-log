@@ -26,12 +26,11 @@
   <!-- TODAY VIEW -->
   <section class="view active" id="view-today">
     <div class="card">
-      <h2>Fasting</h2>
-      <div class="fasting-status">
-        <div class="value" id="fastingTimer">—</div>
-        <div class="label" id="fastingLabel">Not fasting</div>
-      </div>
-      <button type="button" class="secondary" id="startFastBtn">Start Fast</button>
+      <h2>Goal</h2>
+      <div class="day-status" id="goalTodaySummary" style="display:none;"></div>
+      <p class="hint hint--tight" id="goalPaceHint" style="display:none;"></p>
+      <div class="day-status" id="goalStreaks"></div>
+      <p class="hint hint--tight" id="goalStreakNudge" style="display:none; color:var(--danger);"></p>
     </div>
 
     <div class="card">
@@ -39,9 +38,9 @@
       <div class="summary-grid">
         <div class="stat"><div class="value" id="sumWeight">—</div><div class="label">Weight (kg)</div></div>
         <div class="stat"><div class="value" id="sumSleep">—</div><div class="label">Sleep (h)</div></div>
-        <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div><div class="stat-sub" id="sumCaloriesGoal"></div><div class="stat-sub" id="sumCaloriesTarget"></div></div>
-        <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div></div>
-        <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div></div>
+        <div class="stat"><div class="value" id="sumCalories">—</div><div class="label">Calories</div><div class="stat-sub" id="sumCaloriesGoal"></div><div class="stat-sub" id="sumCaloriesTarget"></div><div class="stat-sub" id="sumTreatBudget"></div></div>
+        <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div><div class="stat-sub" id="sumCardioTarget"></div></div>
+        <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div><div class="stat-sub" id="sumProteinTarget"></div></div>
         <div class="stat"><div class="value" id="sumCarbs">—</div><div class="label">Carbs (g)</div></div>
         <div class="stat"><div class="value" id="sumFat">—</div><div class="label">Fat (g)</div></div>
       </div>
@@ -140,6 +139,15 @@
         <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
           <div class="mini-field"><label>Carbs / 100g</label><input type="number" id="newFoodCarbs" min="0" step="0.1" inputmode="decimal" /></div>
           <div class="mini-field"><label>Fat / 100g</label><input type="number" id="newFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
+        </div>
+        <label class="food-check-row" style="margin-top:8px;"><input type="checkbox" id="newFoodIsTreat" /> Treat</label>
+        <div class="field" style="margin-top:8px;">
+          <label for="newFoodBasis">Basis (optional)</label>
+          <select id="newFoodBasis">
+            <option value="">—</option>
+            <option value="cooked">Cooked</option>
+            <option value="dry">Dry</option>
+          </select>
         </div>
         <button type="button" class="primary" id="saveNewFoodBtn" style="margin-top:10px;">Save &amp; Log</button>
       </div>
@@ -291,11 +299,13 @@
         <span class="legend-item"><span class="legend-dot legend-dot--a"></span><span id="trendsCaloriesIntakeLegendLabel">Intake</span></span>
         <span class="legend-item"><span class="legend-dot legend-dot--b"></span><span id="trendsCaloriesBurnedLegendLabel">Burned</span></span>
         <span class="legend-item" id="trendsCaloriesBmrLegend" style="display:none;"><span class="legend-dot legend-dot--c"></span><span id="trendsCaloriesBmrLegendLabel">BMR</span></span>
-        <span class="legend-item" id="trendsCaloriesMaintenanceLegend" style="display:none;"><span class="legend-dot legend-dot--d"></span><span id="trendsCaloriesMaintenanceLegendLabel">Maintenance</span></span>
+        <span class="legend-item" id="trendsCaloriesMaintenanceLegend" style="display:none;"><span class="legend-dot legend-dot--d"></span><span id="trendsCaloriesMaintenanceLegendLabel">Estimated</span></span>
+        <span class="legend-item" id="trendsCaloriesMeasuredLegend" style="display:none;"><span id="trendsCaloriesMeasuredLegendLabel">Measured</span></span>
       </div>
       <canvas id="trendsCaloriesChart"></canvas>
       <div class="empty-state" id="trendsCaloriesEmpty" style="display:none;">Log calories, workouts, or steps on a few days to see a trend.</div>
       <div class="day-status" id="trendsCaloriesAlignment" style="display:none;"></div>
+      <p class="hint hint--tight" id="trendsCaloriesUnderLoggedHint" style="display:none;"></p>
     </div>
 
     <div class="card">
@@ -327,6 +337,15 @@
       <canvas id="trendsFatChart"></canvas>
       <div class="empty-state" id="trendsFatEmpty" style="display:none;">Log fat on a few days to see a trend.</div>
     </div>
+
+    <div class="card">
+      <h2>Goal Plan</h2>
+      <p class="hint hint--tight">Solid line: 7-day rolling average weight. Dashed line: straight-line target from start to goal.</p>
+      <canvas id="goalChart"></canvas>
+      <div class="empty-state" id="goalChartEmpty" style="display:none;">Log your weight on a few days to see your goal trend.</div>
+      <div id="goalCheckpoints"></div>
+      <p class="hint hint--tight" id="goalStallWarning" style="display:none; color:var(--danger);"></p>
+    </div>
   </section>
 
   <!-- DATA VIEW -->
@@ -344,6 +363,41 @@
           <button type="button" class="segment" data-sex="male">Male</button>
           <button type="button" class="segment" data-sex="female">Female</button>
         </div>
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>Calorie target</label>
+        <div class="segmented" id="calorieTargetModeToggle">
+          <button type="button" class="segment active" data-target-mode="auto">Auto</button>
+          <button type="button" class="segment" data-target-mode="fixed">Fixed</button>
+        </div>
+      </div>
+      <div class="field" id="fixedTargetFields" style="display:none;">
+        <label for="calorieTargetInput">Daily calorie target (kcal)</label>
+        <input type="number" id="calorieTargetInput" step="10" min="0" inputmode="numeric" placeholder="e.g. 2000" />
+      </div>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:10px;">
+        <div class="mini-field"><label for="proteinTargetInput">Protein target (g)</label><input type="number" id="proteinTargetInput" step="5" min="0" inputmode="numeric" placeholder="e.g. 190" /></div>
+        <div class="mini-field"><label for="maintenanceTdeeInput">Maintenance estimate (kcal)</label><input type="number" id="maintenanceTdeeInput" step="10" min="0" inputmode="numeric" placeholder="e.g. 2500" /></div>
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label for="treatBudgetInput">Daily treat budget (kcal)</label>
+        <input type="number" id="treatBudgetInput" step="10" min="0" inputmode="numeric" placeholder="e.g. 150" />
+      </div>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:10px;">
+        <div class="mini-field"><label for="cardioMinutesTargetInput">Daily cardio target (min)</label><input type="number" id="cardioMinutesTargetInput" step="5" min="0" inputmode="numeric" placeholder="e.g. 60" /></div>
+        <div class="mini-field"><label for="stepTargetInput">Alternative step target</label><input type="number" id="stepTargetInput" step="500" min="0" inputmode="numeric" placeholder="e.g. 22000" /></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Goal Plan</h2>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:0;">
+        <div class="mini-field"><label for="goalStartDateInput">Start date</label><input type="date" id="goalStartDateInput" /></div>
+        <div class="mini-field"><label for="goalStartWeightInput">Start weight (kg)</label><input type="number" id="goalStartWeightInput" step="0.1" min="0" inputmode="decimal" /></div>
+      </div>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
+        <div class="mini-field"><label for="goalWeightInput">Goal weight (kg)</label><input type="number" id="goalWeightInput" step="0.1" min="0" inputmode="decimal" /></div>
+        <div class="mini-field"><label for="goalRateInput">Planned rate (kg/week)</label><input type="number" id="goalRateInput" step="0.1" min="0" inputmode="decimal" /></div>
       </div>
     </div>
 
@@ -372,6 +426,15 @@
       <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:8px;">
         <div class="mini-field"><label>Carbs / 100g</label><input type="number" id="myFoodCarbs" min="0" step="0.1" inputmode="decimal" /></div>
         <div class="mini-field"><label>Fat / 100g</label><input type="number" id="myFoodFat" min="0" step="0.1" inputmode="decimal" /></div>
+      </div>
+      <label class="food-check-row" style="margin-top:8px;"><input type="checkbox" id="myFoodIsTreat" /> Treat</label>
+      <div class="field" style="margin-top:8px;">
+        <label for="myFoodBasis">Basis (optional)</label>
+        <select id="myFoodBasis">
+          <option value="">—</option>
+          <option value="cooked">Cooked</option>
+          <option value="dry">Dry</option>
+        </select>
       </div>
       <button type="button" class="secondary" id="addMyFoodBtn" style="margin-top:10px;">Add to My Foods</button>
       <button type="button" class="secondary" id="cancelEditMyFoodBtn" style="display:none; margin-top:8px;">Cancel edit</button>

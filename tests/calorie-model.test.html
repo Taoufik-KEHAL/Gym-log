@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Calorie model v2 -- unit tests</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; background: #0f1115; color: #f2f3f5; }
+  h1 { font-size: 1.3rem; }
+  #summary { font-weight: 600; margin: 12px 0; }
+  .case { padding: 8px 10px; border-radius: 8px; margin-bottom: 6px; font-size: 0.9rem; }
+  .pass { background: rgba(94, 194, 160, 0.12); color: #5ec2a0; }
+  .fail { background: rgba(224, 100, 90, 0.12); color: #e0645a; }
+  .case code { opacity: 0.8; }
+</style>
+</head>
+<body>
+<h1>Calorie model v2 -- unit tests</h1>
+<p>Loads <code>www/js/app.js</code> directly (same code the app runs) and exercises the pure
+functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a browser to run.</p>
+<div id="summary">Running…</div>
+<div id="results"></div>
+
+<!-- Loads the real app code under test; window.__gymLogTestHooks is set synchronously at
+     parse time (before DOMContentLoaded), so it's ready as soon as this script tag loads.
+     app.js's own init() will fire later on DOMContentLoaded and throw trying to find this
+     page's (nonexistent) app elements -- harmless and unrelated to the tests below, which
+     have already run by then. -->
+<script src="../www/js/app.js"></script>
+<script>
+(function () {
+  "use strict";
+  var hooks = window.__gymLogTestHooks;
+  var results = [];
+
+  function approx(a, b, tolerance) {
+    return Math.abs(a - b) <= tolerance;
+  }
+
+  function test(name, fn) {
+    try {
+      fn();
+      results.push({ name: name, pass: true });
+    } catch (e) {
+      results.push({ name: name, pass: false, error: e.message });
+    }
+  }
+
+  function assert(cond, message) {
+    if (!cond) throw new Error(message || "assertion failed");
+  }
+
+  function clearStorage() {
+    localStorage.removeItem("gymlog.settings");
+    localStorage.removeItem("gymlog.daily");
+  }
+
+  // ---------- computeBMRForWeight ----------
+
+  test("computeBMRForWeight: male, Mifflin-St Jeor", function () {
+    clearStorage();
+    hooks.saveSettings({ age: 30, heightCm: 180, sex: "male" });
+    var bmr = hooks.computeBMRForWeight(80);
+    // 10*80 + 6.25*180 - 5*30 + 5 = 1780
+    assert(bmr === 1780, "expected 1780, got " + bmr);
+  });
+
+  test("computeBMRForWeight: female, Mifflin-St Jeor", function () {
+    clearStorage();
+    hooks.saveSettings({ age: 30, heightCm: 165, sex: "female" });
+    var bmr = hooks.computeBMRForWeight(60);
+    // 10*60 + 6.25*165 - 5*30 - 161 = 1320.25 -> rounds to nearest 10 -> 1320
+    assert(bmr === 1320, "expected 1320, got " + bmr);
+  });
+
+  test("computeBMRForWeight: null without a profile (age/height missing)", function () {
+    clearStorage();
+    hooks.saveSettings({});
+    assert(hooks.computeBMRForWeight(80) === null, "expected null with no profile set");
+  });
+
+  // ---------- net burn: workouts ----------
+
+  test("estimateExerciseCalories: strength net = gross - resting burn", function () {
+    var ex = { type: "strength", sets: [{ reps: 8, weight: 20 }, { reps: 8, weight: 20 }, { reps: 8, weight: 20 }, { reps: 8, weight: 20 }] };
+    var weightKg = 80, bmr = 1780;
+    // gross = 4 sets * 6.0 MET * 80kg / 60 = 32
+    // minutes = 4 * 1.5 = 6; resting = 1780/1440*6 = 7.4167
+    var net = hooks.estimateExerciseCalories(ex, weightKg, bmr);
+    assert(approx(net, 32 - (1780 / 1440) * 6, 0.01), "expected ~24.58, got " + net);
+    assert(net < 32, "net burn should be less than gross burn");
+  });
+
+  test("estimateExerciseCalories: cardio net = gross - resting burn", function () {
+    var ex = { type: "cardio", name: "Cycling", duration: 30, pace: null };
+    var weightKg = 80, bmr = 1780;
+    // gross = 7.5 MET * 80kg * 0.5h = 300; minutes = 30; resting = 1780/1440*30 = 37.08
+    var net = hooks.estimateExerciseCalories(ex, weightKg, bmr);
+    assert(approx(net, 300 - (1780 / 1440) * 30, 0.01), "expected ~262.9, got " + net);
+  });
+
+  test("estimateExerciseCalories: falls back to gross when bmr is unavailable", function () {
+    var ex = { type: "strength", sets: [{ reps: 8, weight: 20 }] };
+    var net = hooks.estimateExerciseCalories(ex, 80, null);
+    assert(net === 8, "expected gross-equal 8 (1 set * 6.0 MET * 80 / 60), got " + net);
+  });
+
+  test("estimateExerciseCalories: never negative (floored at 0)", function () {
+    var ex = { type: "strength", sets: [{ reps: 8, weight: 10 }] };
+    // Deliberately absurd bmr so resting burn swamps the tiny gross estimate --
+    // this is a pure arithmetic floor check, not a realistic physiological case.
+    var net = hooks.estimateExerciseCalories(ex, 40, 100000);
+    assert(net === 0, "expected 0, got " + net);
+  });
+
+  // ---------- net burn: steps ----------
+
+  test("estimateStepsCalories: net = gross - resting burn", function () {
+    var steps = 8000, weightKg = 80, bmr = 1780;
+    // gross = 8000 * 80 * 0.0005 = 320; minutes = 8000/100 = 80; resting = 1780/1440*80 = 98.9
+    var net = hooks.estimateStepsCalories(steps, weightKg, bmr);
+    assert(approx(net, 320 - (1780 / 1440) * 80, 0.01), "expected ~221.1, got " + net);
+  });
+
+  test("estimateStepsCalories: 0 steps -> 0, never negative", function () {
+    assert(hooks.estimateStepsCalories(0, 80, 1780) === 0, "expected 0 for 0 steps");
+    assert(hooks.estimateStepsCalories(50, 80, 100000) === 0, "expected floor at 0 for absurd bmr");
+  });
+
+  // ---------- TEF ----------
+
+  test("computeTEF: 10% of intake", function () {
+    assert(hooks.computeTEF(2430) === 243, "expected 243, got " + hooks.computeTEF(2430));
+  });
+
+  test("computeTEF: 0 when nothing logged", function () {
+    assert(hooks.computeTEF(null) === 0, "expected 0 for null intake");
+    assert(hooks.computeTEF(0) === 0, "expected 0 for 0 intake");
+  });
+
+  // ---------- maintenance band thresholds ----------
+
+  test("classifyMaintenanceBand: within +-150 -> At maintenance", function () {
+    assert(hooks.classifyMaintenanceBand(0).label === "At maintenance");
+    assert(hooks.classifyMaintenanceBand(150).label === "At maintenance", "150 should be inclusive");
+    assert(hooks.classifyMaintenanceBand(-150).label === "At maintenance", "-150 should be inclusive");
+  });
+
+  test("classifyMaintenanceBand: beyond 150 under -> In deficit", function () {
+    assert(hooks.classifyMaintenanceBand(151).label === "In deficit");
+  });
+
+  test("classifyMaintenanceBand: beyond 150 over -> Over maintenance", function () {
+    assert(hooks.classifyMaintenanceBand(-151).label === "Over maintenance");
+  });
+
+  // ---------- adaptive TDEE ----------
+
+  test("adaptiveTDEE formula: given avgIntake 2430, trend 107.3 -> 106.9kg, 28 days ~= 2540", function () {
+    // Direct check of the formula/constant the task specifies, independent of how
+    // adaptiveTDEE's own EMA/interpolation derives trendStart/trendEnd from raw logs
+    // (covered separately by the integration case below).
+    var avgIntake = 2430, trendStart = 107.3, trendEnd = 106.9, days = 28;
+    var tdee = avgIntake + (trendStart - trendEnd) * 7700 / days;
+    assert(approx(tdee, 2540, 1), "expected ~2540, got " + tdee);
+  });
+
+  test("adaptiveTDEE: integration case, 28 days of logs declining ~107.3 -> 106.9kg at 2430 kcal/day", function () {
+    clearStorage();
+    var daily = {};
+    var endDate = "2026-09-28";
+    var startWeight = 107.3, endWeight = 106.9;
+    for (var i = 0; i < 28; i++) {
+      var d = new Date(endDate + "T00:00:00");
+      d.setDate(d.getDate() - (27 - i));
+      var iso = d.toISOString().slice(0, 10);
+      var entry = { calories: 2430 };
+      // Skip a few scattered weigh-ins so the interpolation path is exercised too,
+      // while staying well above the >=21-days-with-both validity threshold.
+      if (i % 6 !== 3) {
+        entry.weight = Math.round((startWeight + (endWeight - startWeight) * (i / 27)) * 10) / 10;
+      }
+      daily[iso] = entry;
+    }
+    hooks.saveDaily(daily);
+    var tdee = hooks.adaptiveTDEE(endDate, 28);
+    assert(tdee != null, "expected a numeric result, got null (check validity gate)");
+    // Weight is declining while eating 2430/day, so true TDEE must read higher than
+    // that -- generous band around the ~2540 figure from the task, not an exact match,
+    // since the realistic EMA-smoothed path doesn't reproduce 107.3/106.9 as literal
+    // endpoints (see the formula-level case above for that exact check).
+    assert(tdee > 2430, "expected TDEE above avgIntake for a weight-losing window, got " + tdee);
+    assert(approx(tdee, 2540, 120), "expected roughly ~2540 (+-120), got " + tdee);
+  });
+
+  test("adaptiveTDEE: null when fewer than 21 days have both intake and weight logged", function () {
+    clearStorage();
+    var daily = {};
+    var endDate = "2026-09-28";
+    for (var i = 0; i < 28; i++) {
+      var d = new Date(endDate + "T00:00:00");
+      d.setDate(d.getDate() - (27 - i));
+      var iso = d.toISOString().slice(0, 10);
+      // Only 10 of the 28 days get both fields logged -- below the 21-day threshold.
+      daily[iso] = i < 10 ? { calories: 2400, weight: 90 } : {};
+    }
+    hooks.saveDaily(daily);
+    assert(hooks.adaptiveTDEE(endDate, 28) === null, "expected null below the validity threshold");
+  });
+
+  test("adaptiveTDEE: null with no logged weight at all", function () {
+    clearStorage();
+    hooks.saveDaily({ "2026-09-28": { calories: 2400 } });
+    assert(hooks.adaptiveTDEE("2026-09-28", 28) === null, "expected null with zero weigh-ins");
+  });
+
+  // ---------- goal plan ----------
+
+  test("getGoalEndDate: 8kg at 0.8kg/week implies 70 days (matches the given checkpoints)", function () {
+    clearStorage();
+    var end = hooks.getGoalEndDate({ startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 });
+    assert(end === "2026-12-19", "expected 2026-12-19, got " + end);
+  });
+
+  test("getGoalCheckpointStatuses: before start date, all checkpoints are upcoming", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    hooks.saveDaily({ "2026-10-10": { weight: 107 } });
+    var statuses = hooks.getGoalCheckpointStatuses("2026-10-15");
+    assert(statuses.length === 3, "expected 3 checkpoints, got " + statuses.length);
+    assert(statuses.every(function (s) { return s.status === "upcoming"; }), "expected all upcoming before any checkpoint date");
+  });
+
+  test("getGoalCheckpointStatuses: on-track once the rolling average clears a checkpoint", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    // A steady decline from 107 -> well under 104.8 by the first checkpoint (2026-10-31).
+    for (var i = 0; i <= 25; i++) {
+      var d = new Date("2026-10-10T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.15 };
+    }
+    hooks.saveDaily(daily);
+    var statuses = hooks.getGoalCheckpointStatuses("2026-11-05");
+    assert(statuses[0].status === "on-track", "expected checkpoint 1 on-track, got " + statuses[0].status + " (value " + statuses[0].value + ")");
+    assert(statuses[1].status === "upcoming", "expected checkpoint 2 still upcoming, got " + statuses[1].status);
+  });
+
+  test("getGoalCheckpointStatuses: behind when the rolling average is still above target", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    // Barely moving -- nowhere near 104.8 by 2026-10-31.
+    for (var i = 0; i <= 25; i++) {
+      var d = new Date("2026-10-10T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.01 };
+    }
+    hooks.saveDaily(daily);
+    var statuses = hooks.getGoalCheckpointStatuses("2026-11-05");
+    assert(statuses[0].status === "behind", "expected checkpoint 1 behind, got " + statuses[0].status + " (value " + statuses[0].value + ")");
+  });
+
+  test("isGoalStalled: true when the 7-day average never drops over 14 days", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-01", startWeight: 100, goalWeight: 95, ratePerWeek: 0.5 } });
+    var daily = {};
+    // Flat weight for a month straight -> the rolling average never decreases.
+    for (var i = 0; i <= 30; i++) {
+      var d = new Date("2026-10-01T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 100 };
+    }
+    hooks.saveDaily(daily);
+    assert(hooks.isGoalStalled("2026-10-31") === true, "expected stalled on a flat 30-day weight series");
+  });
+
+  test("isGoalStalled: false when the average is still trending down", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-01", startWeight: 100, goalWeight: 95, ratePerWeek: 0.5 } });
+    var daily = {};
+    for (var i = 0; i <= 30; i++) {
+      var d = new Date("2026-10-01T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 100 - i * 0.1 };
+    }
+    hooks.saveDaily(daily);
+    assert(hooks.isGoalStalled("2026-10-31") === false, "expected not stalled on a steadily-declining series");
+  });
+
+  // ---------- data quality: previous-best weight check ----------
+
+  test("getBestWeightSoFar: finds the max weight across saved workouts for that exercise", function () {
+    clearStorage();
+    hooks.saveWorkouts([
+      { id: "w1", date: "2026-09-01", name: "A", exercises: [{ name: "Concentration Curl", type: "strength", sets: [{ reps: 10, weight: 12 }, { reps: 8, weight: 14 }] }] },
+      { id: "w2", date: "2026-09-08", name: "B", exercises: [{ name: "concentration curl", type: "strength", sets: [{ reps: 6, weight: 16 }] }] },
+      { id: "w3", date: "2026-09-15", name: "C", exercises: [{ name: "Barbell Row", type: "strength", sets: [{ reps: 5, weight: 60 }] }] }
+    ]);
+    var best = hooks.getBestWeightSoFar("Concentration Curl", []);
+    assert(best === 16, "expected 16 (case-insensitive match across workouts), got " + best);
+  });
+
+  test("getBestWeightSoFar: also considers sets already added this session", function () {
+    clearStorage();
+    hooks.saveWorkouts([]);
+    var best = hooks.getBestWeightSoFar("Concentration Curl", [{ reps: 10, weight: 14 }, { reps: 8, weight: 18 }]);
+    assert(best === 18, "expected 18 from the in-progress session sets, got " + best);
+  });
+
+  test("getBestWeightSoFar: null when the exercise has never been logged", function () {
+    clearStorage();
+    hooks.saveWorkouts([]);
+    assert(hooks.getBestWeightSoFar("Deadlift", []) === null, "expected null for a never-logged exercise");
+  });
+
+  // ---------- security: usdaApiKey excluded from export ----------
+
+  test("getExportableSettings: strips usdaApiKey but keeps everything else", function () {
+    clearStorage();
+    hooks.saveSettings({ age: 30, heightCm: 180, sex: "male", usdaApiKey: "super-secret-key" });
+    var exportable = hooks.getExportableSettings();
+    assert(exportable.usdaApiKey === undefined, "expected usdaApiKey stripped, got " + exportable.usdaApiKey);
+    assert(exportable.age === 30 && exportable.heightCm === 180 && exportable.sex === "male", "expected other settings preserved");
+    // The real localStorage copy is untouched -- only the export payload is filtered.
+    assert(hooks.loadSettings().usdaApiKey === "super-secret-key", "expected the stored key to be unaffected");
+  });
+
+  // ---------- goal: surfaced on Today ----------
+
+  test("getGoalTargetWeightAt: linear interpolation along the straight target line", function () {
+    var goal = { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 };
+    // End date is 2026-12-19 (70 days). Halfway (35 days in) should be halfway in weight.
+    var halfway = hooks.getGoalTargetWeightAt(goal, "2026-11-14");
+    assert(approx(halfway, 103, 0.3), "expected ~103 kg halfway, got " + halfway);
+    assert(hooks.getGoalTargetWeightAt(goal, "2026-10-10") === 107, "expected startWeight at startDate");
+    assert(hooks.getGoalTargetWeightAt(goal, "2026-12-19") === 99, "expected goalWeight at the implied end date");
+    assert(hooks.getGoalTargetWeightAt(goal, "2027-01-01") === 99, "expected goalWeight to hold past the end date");
+  });
+
+  test("getGoalTodaySummary: flags behind pace when the rolling average trails the target line", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-09-20", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    for (var i = 0; i <= 20; i++) {
+      var d = new Date("2026-09-20T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.05 }; // slow decline, well under the 0.8kg/week pace
+    }
+    hooks.saveDaily(daily);
+    var summary = hooks.getGoalTodaySummary("2026-10-10");
+    assert(summary != null, "expected a summary once the goal has started and weight is logged");
+    assert(summary.gapKg > 0.5, "expected a meaningfully positive (behind-pace) gap, got " + summary.gapKg);
+    assert(summary.nextCheckpoint && summary.nextCheckpoint.date === "2026-10-31", "expected the first checkpoint as next, got " + JSON.stringify(summary.nextCheckpoint));
+  });
+
+  test("getGoalTodaySummary: null before the goal's start date", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    hooks.saveDaily({ "2026-10-01": { weight: 108 } });
+    assert(hooks.getGoalTodaySummary("2026-10-05") === null, "expected null before the goal has started");
+  });
+
+  test("getGoalBaseCalorieTarget: fixed target when enabled, else derived from maintenance TDEE", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2200 });
+    assert(hooks.getGoalBaseCalorieTarget() === 2200, "expected the fixed target to win when enabled");
+
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: false, maintenanceTdeeForTargets: 2500 });
+    assert(hooks.getGoalBaseCalorieTarget() === 1900, "expected maintenance - 600 kcal when no fixed target is set");
+  });
+
+  test("getGoalPaceGuidance: behind pace suggests a lower target, floored to BMR", function () {
+    clearStorage();
+    hooks.saveSettings({
+      goal: { startDate: "2026-09-20", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 },
+      age: 30, heightCm: 180, sex: "male"
+    });
+    var daily = {};
+    for (var i = 0; i <= 20; i++) {
+      var d = new Date("2026-09-20T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.05 };
+    }
+    hooks.saveDaily(daily);
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance != null, "expected guidance once the goal has started and weight is logged");
+    assert(guidance.behind === true, "expected behind pace");
+    assert(guidance.suggestedTarget === 2040, "expected the BMR floor (2040) to win over base - 150, got " + guidance.suggestedTarget);
+    assert(guidance.message.indexOf("Behind pace") === 0, "expected a behind-pace message, got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: ahead of pace suggests a higher target", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-09-20", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    var daily = {};
+    for (var i = 0; i <= 20; i++) {
+      var d = new Date("2026-09-20T00:00:00"); d.setDate(d.getDate() + i);
+      daily[d.toISOString().slice(0, 10)] = { weight: 107 - i * 0.2 };
+    }
+    hooks.saveDaily(daily);
+    var guidance = hooks.getGoalPaceGuidance("2026-10-10");
+    assert(guidance != null, "expected guidance once the goal has started and weight is logged");
+    assert(guidance.ahead === true, "expected ahead of pace");
+    assert(guidance.suggestedTarget === 2050, "expected base + 150 (2050), got " + guidance.suggestedTarget);
+    assert(guidance.message.indexOf("Ahead of pace") === 0, "expected an ahead-of-pace message, got: " + guidance.message);
+  });
+
+  test("getGoalPaceGuidance: null before the goal's start date", function () {
+    clearStorage();
+    hooks.saveSettings({ goal: { startDate: "2026-10-10", startWeight: 107, goalWeight: 99, ratePerWeek: 0.8 } });
+    hooks.saveDaily({ "2026-10-01": { weight: 108 } });
+    assert(hooks.getGoalPaceGuidance("2026-10-05") === null, "expected null before the goal has started");
+  });
+
+  test("isCalorieTargetMetForDate: fixed target, and false with no data logged", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({ "2026-10-01": { calories: 1900 }, "2026-10-02": { calories: 2100 } });
+    assert(hooks.isCalorieTargetMetForDate("2026-10-01") === true, "expected 1900 <= 2000 to be met");
+    assert(hooks.isCalorieTargetMetForDate("2026-10-02") === false, "expected 2100 > 2000 to be unmet");
+    assert(hooks.isCalorieTargetMetForDate("2026-10-03") === false, "expected an unlogged day to be unmet, not a free pass");
+  });
+
+  test("isProteinTargetMetForDate: hits vs misses the protein target", function () {
+    clearStorage();
+    hooks.saveSettings({ proteinTarget: 150 });
+    hooks.saveDaily({ "2026-10-01": { protein: 160 }, "2026-10-02": { protein: 100 } });
+    assert(hooks.isProteinTargetMetForDate("2026-10-01") === true, "expected 160 >= 150 to be met");
+    assert(hooks.isProteinTargetMetForDate("2026-10-02") === false, "expected 100 < 150 to be unmet");
+  });
+
+  test("getStreaks: counts a prior streak and flags it at-risk when today hasn't met it yet", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({
+      "2026-10-05": { calories: 1900 },
+      "2026-10-06": { calories: 1950 },
+      "2026-10-07": { calories: 1800 }
+    });
+    var streaks = hooks.getStreaks("2026-10-08");
+    var calorieStreak = streaks.filter(function (s) { return s.key === "calories"; })[0];
+    assert(calorieStreak.priorStreak === 3, "expected a 3-day prior streak, got " + calorieStreak.priorStreak);
+    assert(calorieStreak.metToday === false, "expected today (unlogged) to not meet the target");
+    assert(calorieStreak.currentStreak === 3, "expected currentStreak to equal the prior streak when today is unmet");
+    assert(calorieStreak.atRisk === true, "expected the streak to be flagged at-risk");
+  });
+
+  test("getStreaks: streak extends and is no longer at-risk once today also meets it", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({
+      "2026-10-05": { calories: 1900 },
+      "2026-10-06": { calories: 1950 },
+      "2026-10-07": { calories: 1800 },
+      "2026-10-08": { calories: 1850 }
+    });
+    var streaks = hooks.getStreaks("2026-10-08");
+    var calorieStreak = streaks.filter(function (s) { return s.key === "calories"; })[0];
+    assert(calorieStreak.priorStreak === 3, "expected the prior streak to still be 3");
+    assert(calorieStreak.metToday === true, "expected today to meet the target");
+    assert(calorieStreak.currentStreak === 4, "expected currentStreak to include today, got " + calorieStreak.currentStreak);
+    assert(calorieStreak.atRisk === false, "expected no at-risk flag once today is met");
+  });
+
+  test("getStreaks: a missed day resets the prior streak", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({
+      "2026-10-05": { calories: 1900 },
+      "2026-10-06": { calories: 2500 },
+      "2026-10-07": { calories: 1800 }
+    });
+    var streaks = hooks.getStreaks("2026-10-08");
+    var calorieStreak = streaks.filter(function (s) { return s.key === "calories"; })[0];
+    assert(calorieStreak.priorStreak === 1, "expected the streak to reset after the missed day on 10-06, got " + calorieStreak.priorStreak);
+  });
+
+  clearStorage();
+
+  // ---------- render ----------
+
+  var passCount = results.filter(function (r) { return r.pass; }).length;
+  var summary = document.getElementById("summary");
+  summary.textContent = passCount + " / " + results.length + " passed";
+  summary.style.color = passCount === results.length ? "#5ec2a0" : "#e0645a";
+
+  var container = document.getElementById("results");
+  results.forEach(function (r) {
+    var div = document.createElement("div");
+    div.className = "case " + (r.pass ? "pass" : "fail");
+    div.innerHTML = (r.pass ? "PASS -- " : "FAIL -- ") + r.name + (r.error ? " <code>(" + r.error + ")</code>" : "");
+    container.appendChild(div);
+  });
+})();
+</script>
+</body>
+</html>
