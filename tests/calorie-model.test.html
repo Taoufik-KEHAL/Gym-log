@@ -310,6 +310,18 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.getBestWeightSoFar("Deadlift", []) === null, "expected null for a never-logged exercise");
   });
 
+  // ---------- security: usdaApiKey excluded from export ----------
+
+  test("getExportableSettings: strips usdaApiKey but keeps everything else", function () {
+    clearStorage();
+    hooks.saveSettings({ age: 30, heightCm: 180, sex: "male", usdaApiKey: "super-secret-key" });
+    var exportable = hooks.getExportableSettings();
+    assert(exportable.usdaApiKey === undefined, "expected usdaApiKey stripped, got " + exportable.usdaApiKey);
+    assert(exportable.age === 30 && exportable.heightCm === 180 && exportable.sex === "male", "expected other settings preserved");
+    // The real localStorage copy is untouched -- only the export payload is filtered.
+    assert(hooks.loadSettings().usdaApiKey === "super-secret-key", "expected the stored key to be unaffected");
+  });
+
   clearStorage();
 
   // ---------- render ----------

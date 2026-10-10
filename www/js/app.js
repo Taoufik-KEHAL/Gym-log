@@ -2754,12 +2754,24 @@
 
   // ---------- data export / import / clear ----------
 
+  // Settings minus usdaApiKey -- that key stays local-only and is never written into a
+  // backup, so a shared/synced export can't leak it. Import still accepts it from older
+  // backups that have it (nothing to migrate away from; it just keeps working).
+  function getExportableSettings() {
+    var settings = loadSettings();
+    var copy = {};
+    Object.keys(settings).forEach(function (key) {
+      if (key !== "usdaApiKey") copy[key] = settings[key];
+    });
+    return copy;
+  }
+
   async function handleExport() {
     var payload = {
       exportedAt: new Date().toISOString(),
       daily: loadDaily(),
       workouts: loadWorkouts(),
-      settings: loadSettings(),
+      settings: getExportableSettings(),
       foodlog: loadFoodLog(),
       customFoods: loadCustomFoods(),
       foods: loadFoods(),
@@ -3325,7 +3337,8 @@
       getGoalCheckpointStatuses: getGoalCheckpointStatuses,
       isGoalStalled: isGoalStalled,
       getBestWeightSoFar: getBestWeightSoFar,
-      saveWorkouts: saveWorkouts
+      saveWorkouts: saveWorkouts,
+      getExportableSettings: getExportableSettings
     };
   }
 
