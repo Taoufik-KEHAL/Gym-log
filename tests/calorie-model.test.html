@@ -408,6 +408,69 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.getGoalPaceGuidance("2026-10-05") === null, "expected null before the goal has started");
   });
 
+  test("isCalorieTargetMetForDate: fixed target, and false with no data logged", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({ "2026-10-01": { calories: 1900 }, "2026-10-02": { calories: 2100 } });
+    assert(hooks.isCalorieTargetMetForDate("2026-10-01") === true, "expected 1900 <= 2000 to be met");
+    assert(hooks.isCalorieTargetMetForDate("2026-10-02") === false, "expected 2100 > 2000 to be unmet");
+    assert(hooks.isCalorieTargetMetForDate("2026-10-03") === false, "expected an unlogged day to be unmet, not a free pass");
+  });
+
+  test("isProteinTargetMetForDate: hits vs misses the protein target", function () {
+    clearStorage();
+    hooks.saveSettings({ proteinTarget: 150 });
+    hooks.saveDaily({ "2026-10-01": { protein: 160 }, "2026-10-02": { protein: 100 } });
+    assert(hooks.isProteinTargetMetForDate("2026-10-01") === true, "expected 160 >= 150 to be met");
+    assert(hooks.isProteinTargetMetForDate("2026-10-02") === false, "expected 100 < 150 to be unmet");
+  });
+
+  test("getStreaks: counts a prior streak and flags it at-risk when today hasn't met it yet", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({
+      "2026-10-05": { calories: 1900 },
+      "2026-10-06": { calories: 1950 },
+      "2026-10-07": { calories: 1800 }
+    });
+    var streaks = hooks.getStreaks("2026-10-08");
+    var calorieStreak = streaks.filter(function (s) { return s.key === "calories"; })[0];
+    assert(calorieStreak.priorStreak === 3, "expected a 3-day prior streak, got " + calorieStreak.priorStreak);
+    assert(calorieStreak.metToday === false, "expected today (unlogged) to not meet the target");
+    assert(calorieStreak.currentStreak === 3, "expected currentStreak to equal the prior streak when today is unmet");
+    assert(calorieStreak.atRisk === true, "expected the streak to be flagged at-risk");
+  });
+
+  test("getStreaks: streak extends and is no longer at-risk once today also meets it", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({
+      "2026-10-05": { calories: 1900 },
+      "2026-10-06": { calories: 1950 },
+      "2026-10-07": { calories: 1800 },
+      "2026-10-08": { calories: 1850 }
+    });
+    var streaks = hooks.getStreaks("2026-10-08");
+    var calorieStreak = streaks.filter(function (s) { return s.key === "calories"; })[0];
+    assert(calorieStreak.priorStreak === 3, "expected the prior streak to still be 3");
+    assert(calorieStreak.metToday === true, "expected today to meet the target");
+    assert(calorieStreak.currentStreak === 4, "expected currentStreak to include today, got " + calorieStreak.currentStreak);
+    assert(calorieStreak.atRisk === false, "expected no at-risk flag once today is met");
+  });
+
+  test("getStreaks: a missed day resets the prior streak", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, calorieTarget: 2000 });
+    hooks.saveDaily({
+      "2026-10-05": { calories: 1900 },
+      "2026-10-06": { calories: 2500 },
+      "2026-10-07": { calories: 1800 }
+    });
+    var streaks = hooks.getStreaks("2026-10-08");
+    var calorieStreak = streaks.filter(function (s) { return s.key === "calories"; })[0];
+    assert(calorieStreak.priorStreak === 1, "expected the streak to reset after the missed day on 10-06, got " + calorieStreak.priorStreak);
+  });
+
   clearStorage();
 
   // ---------- render ----------

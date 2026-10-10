@@ -575,6 +575,8 @@
     renderCardioTarget(today, daily);
     renderGoalSummary(today);
     renderGoalPaceHint(today);
+    renderStreaks(today, daily);
+    renderStreakNudge(today, daily);
     renderDayStatus(entry, today, daily);
     renderWeightTrend(daily);
   }
@@ -1545,6 +1547,84 @@
       return;
     }
     el.textContent = guidance.message;
+    el.style.display = "block";
+  }
+
+  // ---------- streaks ----------
+
+  function isCalorieTargetMetForDate(date, daily) {
+    daily = daily || loadDaily();
+    var entry = daily[date];
+    if (!entry || entry.calories == null) return false;
+    var fixed = getFixedCalorieTarget();
+    if (fixed != null) return entry.calories <= fixed;
+    var range = computeSuggestedCalorieRange(date, entry, daily);
+    if (!range) return false;
+    return entry.calories <= range.high;
+  }
+
+  function isProteinTargetMetForDate(date, daily) {
+    daily = daily || loadDaily();
+    var entry = daily[date];
+    return !!(entry && entry.protein != null && entry.protein >= getProteinTarget());
+  }
+
+  var STREAK_DEFS = [
+    { key: "calories", label: "Calorie target", icon: "🍽️", predicate: isCalorieTargetMetForDate },
+    { key: "protein", label: "Protein target", icon: "🥩", predicate: isProteinTargetMetForDate },
+    { key: "cardio", label: "Cardio", icon: "🏃", predicate: isCardioDoneForDate }
+  ];
+
+  // Consecutive days strictly before `date` where predicateFn held. `date` itself
+  // (today) is excluded -- it's still in progress, not a completed streak day yet.
+  function computeStreakBeforeDate(date, predicateFn, daily) {
+    var streak = 0;
+    var d = addDaysISO(date, -1);
+    while (predicateFn(d, daily)) {
+      streak++;
+      d = addDaysISO(d, -1);
+    }
+    return streak;
+  }
+
+  function getStreaks(today, daily) {
+    daily = daily || loadDaily();
+    return STREAK_DEFS.map(function (def) {
+      var priorStreak = computeStreakBeforeDate(today, def.predicate, daily);
+      var metToday = def.predicate(today, daily);
+      return {
+        key: def.key,
+        label: def.label,
+        icon: def.icon,
+        priorStreak: priorStreak,
+        metToday: metToday,
+        currentStreak: priorStreak + (metToday ? 1 : 0),
+        atRisk: priorStreak > 0 && !metToday
+      };
+    });
+  }
+
+  function renderStreaks(today, daily) {
+    var el = document.getElementById("goalStreaks");
+    if (!el) return;
+    var streaks = getStreaks(today, daily);
+    el.innerHTML = streaks.map(function (s) {
+      return '<span class="day-badge' + (s.currentStreak > 0 ? " status-good" : "") + '">' +
+        s.icon + " " + s.label + " " + s.currentStreak + "d</span>";
+    }).join("");
+  }
+
+  function renderStreakNudge(today, daily) {
+    var el = document.getElementById("goalStreakNudge");
+    if (!el) return;
+    var atRisk = getStreaks(today, daily).filter(function (s) { return s.atRisk; });
+    if (atRisk.length === 0) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    var names = atRisk.map(function (s) { return s.label.toLowerCase() + " (" + s.priorStreak + "d)"; });
+    el.textContent = "⚠️ Keep your streak alive today: " + names.join(", ") + " not done yet.";
     el.style.display = "block";
   }
 
@@ -3301,7 +3381,10 @@
       getGoalTargetWeightAt: getGoalTargetWeightAt,
       getGoalTodaySummary: getGoalTodaySummary,
       getGoalBaseCalorieTarget: getGoalBaseCalorieTarget,
-      getGoalPaceGuidance: getGoalPaceGuidance
+      getGoalPaceGuidance: getGoalPaceGuidance,
+      isCalorieTargetMetForDate: isCalorieTargetMetForDate,
+      isProteinTargetMetForDate: isProteinTargetMetForDate,
+      getStreaks: getStreaks
     };
   }
 
