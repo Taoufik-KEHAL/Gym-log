@@ -216,6 +216,97 @@
     return best;
   }
 
+  // The best set (by reps x weight) for a strength exercise from the most recent
+  // *saved* session strictly before `beforeDate` that included it -- "last time you
+  // did this exercise", not the all-time best. Null if there's no prior session.
+  function getLastSessionBestForExercise(exerciseName, beforeDate) {
+    var lname = exerciseName.toLowerCase();
+    var lastDate = null;
+    var best = null;
+    loadWorkouts().forEach(function (w) {
+      if (beforeDate != null && w.date >= beforeDate) return;
+      var hasExercise = w.exercises.some(function (ex) { return ex.type === "strength" && ex.name.toLowerCase() === lname; });
+      if (!hasExercise) return;
+      if (lastDate == null || w.date > lastDate) { lastDate = w.date; best = null; }
+      if (w.date !== lastDate) return;
+      w.exercises.forEach(function (ex) {
+        if (ex.type !== "strength" || ex.name.toLowerCase() !== lname) return;
+        ex.sets.forEach(function (s) {
+          if (best == null || s.weight * s.reps > best.weight * best.reps) best = { weight: s.weight, reps: s.reps };
+        });
+      });
+    });
+    return best;
+  }
+
+  // Compares the best set logged so far in this in-progress session to the best set
+  // from the last time this exercise was trained. Null until there's both a prior
+  // session to compare against and at least one set logged today.
+  function getProgressiveOverloadStatus(exerciseName, currentSets, beforeDate) {
+    if (!currentSets || currentSets.length === 0) return null;
+    var prev = getLastSessionBestForExercise(exerciseName, beforeDate);
+    if (!prev) return null;
+    var current = null;
+    currentSets.forEach(function (s) {
+      if (current == null || s.weight * s.reps > current.weight * current.reps) current = { weight: s.weight, reps: s.reps };
+    });
+    var currentVolume = current.weight * current.reps;
+    var prevVolume = prev.weight * prev.reps;
+    var status = currentVolume > prevVolume ? "beat" : currentVolume === prevVolume ? "matched" : "regressed";
+    return { status: status, prev: prev, current: current };
+  }
+
+  // ---------- rest-day awareness ----------
+
+  function isTrainingDay(date, workouts) {
+    return (workouts || loadWorkouts()).some(function (w) {
+      if (w.date !== date) return false;
+      return w.exercises.some(function (ex) { return ex.type === "cardio" ? ex.duration > 0 : ex.sets.length > 0; });
+    });
+  }
+
+  function getConsecutiveTrainingDaysBefore(date, workouts) {
+    workouts = workouts || loadWorkouts();
+    var streak = 0;
+    var d = addDaysISO(date, -1);
+    while (isTrainingDay(d, workouts)) {
+      streak++;
+      d = addDaysISO(d, -1);
+    }
+    return streak;
+  }
+
+  var REST_DAY_WARNING_THRESHOLD = 6; // consecutive training days before suggesting a rest day
+
+  // Null unless there's a long training streak going into `date` and `date` itself
+  // hasn't already been logged as a training day (recovery is already reduced on a
+  // deficit, so a long unbroken streak is a real signal, not just enthusiasm).
+  function getRestDayAdvice(date) {
+    var workouts = loadWorkouts();
+    var consecutiveDays = getConsecutiveTrainingDaysBefore(date, workouts);
+    if (consecutiveDays < REST_DAY_WARNING_THRESHOLD) return null;
+    if (isTrainingDay(date, workouts)) return null;
+    return {
+      consecutiveDays: consecutiveDays,
+      message: "You've trained " + consecutiveDays + " days in a row — consider a rest day today. " +
+        "Recovery capacity is already lower on a calorie deficit."
+    };
+  }
+
+  function renderRestDayHint() {
+    var el = document.getElementById("restDayHint");
+    if (!el) return;
+    var date = document.getElementById("workoutDate").value || todayISO();
+    var advice = getRestDayAdvice(date);
+    if (!advice) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = "⚠️ " + advice.message;
+    el.style.display = "block";
+  }
+
   function loadSettings() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.settings) || "{}");
@@ -544,7 +635,7 @@
     });
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
-    if (name === "workout") { renderWorkoutBuilder(); populateWorkoutTemplateSelect(); }
+    if (name === "workout") { renderWorkoutBuilder(); populateWorkoutTemplateSelect(); renderRestDayHint(); }
     if (name === "food") {
       var foodDate = document.getElementById("foodDate").value || todayISO();
       renderFoodLog(foodDate);
@@ -1699,6 +1790,20 @@
       if (ex.type === "cardio") {
         block.appendChild(buildCardioFields(ex));
       } else {
+        var workoutDate = document.getElementById("workoutDate").value || todayISO();
+        var overload = getProgressiveOverloadStatus(ex.name, ex.sets, workoutDate);
+        if (overload) {
+          var overloadLabel = {
+            beat: "✅ Beat last time (" + overload.prev.weight + " kg × " + overload.prev.reps + ")",
+            matched: "➖ Matched last time (" + overload.prev.weight + " kg × " + overload.prev.reps + ")",
+            regressed: "⚠️ Below last time (" + overload.prev.weight + " kg × " + overload.prev.reps + ")"
+          }[overload.status];
+          var overloadCls = { beat: "status-good", matched: "status-warn", regressed: "status-bad" }[overload.status];
+          var overloadEl = document.createElement("div");
+          overloadEl.className = "day-status";
+          overloadEl.innerHTML = '<span class="day-badge ' + overloadCls + '">' + overloadLabel + "</span>";
+          block.appendChild(overloadEl);
+        }
         ex.sets.forEach(function (set, setIdx) {
           var row = document.createElement("div");
           row.className = "set-row";
@@ -1956,6 +2061,8 @@
     if (nameInput.value === lastAutoWorkoutName) {
       setDefaultWorkoutName(document.getElementById("workoutDate").value || todayISO());
     }
+    renderRestDayHint();
+    renderWorkoutBuilder();
   }
 
   function handleSaveWorkout() {
@@ -3439,7 +3546,12 @@
       isProteinTargetMetForDate: isProteinTargetMetForDate,
       getStreaks: getStreaks,
       guessMealForTime: guessMealForTime,
-      groupFoodLogByMeal: groupFoodLogByMeal
+      groupFoodLogByMeal: groupFoodLogByMeal,
+      getLastSessionBestForExercise: getLastSessionBestForExercise,
+      getProgressiveOverloadStatus: getProgressiveOverloadStatus,
+      isTrainingDay: isTrainingDay,
+      getConsecutiveTrainingDaysBefore: getConsecutiveTrainingDaysBefore,
+      getRestDayAdvice: getRestDayAdvice
     };
   }
 

@@ -508,6 +508,71 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(lunchGroup.entries.length === 0, "expected lunch to be empty");
   });
 
+  test("getLastSessionBestForExercise: finds the highest-volume set from the most recent prior session only", function () {
+    clearStorage();
+    hooks.saveWorkouts([
+      { id: "w1", date: "2026-10-01", name: "Push", exercises: [{ name: "Bench Press", type: "strength", sets: [{ reps: 8, weight: 60 }] }] },
+      { id: "w2", date: "2026-10-05", name: "Push", exercises: [{ name: "Bench Press", type: "strength", sets: [{ reps: 6, weight: 70 }, { reps: 8, weight: 65 }] }] }
+    ]);
+    // 10-05's sets: 70kg x 6 = 420 volume vs 65kg x 8 = 520 volume -- the latter wins.
+    var best = hooks.getLastSessionBestForExercise("Bench Press", "2026-10-10");
+    assert(best != null && best.weight === 65 && best.reps === 8, "expected the 10-05 session's highest-volume set (65kg x 8), got " + JSON.stringify(best));
+  });
+
+  test("getLastSessionBestForExercise: null when no prior session included the exercise", function () {
+    clearStorage();
+    hooks.saveWorkouts([{ id: "w1", date: "2026-10-01", name: "Push", exercises: [{ name: "Squat", type: "strength", sets: [{ reps: 5, weight: 100 }] }] }]);
+    assert(hooks.getLastSessionBestForExercise("Bench Press", "2026-10-10") === null, "expected null for an exercise never trained before");
+  });
+
+  test("getProgressiveOverloadStatus: beat/matched/regressed vs the last session's best", function () {
+    clearStorage();
+    hooks.saveWorkouts([{ id: "w1", date: "2026-10-01", name: "Push", exercises: [{ name: "Bench Press", type: "strength", sets: [{ reps: 8, weight: 60 }] }] }]);
+    var beat = hooks.getProgressiveOverloadStatus("Bench Press", [{ reps: 8, weight: 65 }], "2026-10-05");
+    assert(beat.status === "beat", "expected beat, got " + JSON.stringify(beat));
+    var matched = hooks.getProgressiveOverloadStatus("Bench Press", [{ reps: 8, weight: 60 }], "2026-10-05");
+    assert(matched.status === "matched", "expected matched, got " + JSON.stringify(matched));
+    var regressed = hooks.getProgressiveOverloadStatus("Bench Press", [{ reps: 8, weight: 50 }], "2026-10-05");
+    assert(regressed.status === "regressed", "expected regressed, got " + JSON.stringify(regressed));
+  });
+
+  test("getProgressiveOverloadStatus: null with no sets logged yet or no prior session", function () {
+    clearStorage();
+    hooks.saveWorkouts([{ id: "w1", date: "2026-10-01", name: "Bench Press", exercises: [{ name: "Bench Press", type: "strength", sets: [{ reps: 8, weight: 60 }] }] }]);
+    assert(hooks.getProgressiveOverloadStatus("Bench Press", [], "2026-10-05") === null, "expected null with no sets logged today");
+    assert(hooks.getProgressiveOverloadStatus("Squat", [{ reps: 5, weight: 100 }], "2026-10-05") === null, "expected null with no prior session for this exercise");
+  });
+
+  test("isTrainingDay / getConsecutiveTrainingDaysBefore: counts a streak and stops at a gap", function () {
+    clearStorage();
+    hooks.saveWorkouts([
+      { id: "w1", date: "2026-10-05", name: "Day1", exercises: [{ name: "Squat", type: "strength", sets: [{ reps: 5, weight: 100 }] }] },
+      { id: "w2", date: "2026-10-06", name: "Day2", exercises: [{ name: "Run", type: "cardio", duration: 30 }] },
+      { id: "w3", date: "2026-10-07", name: "RestLoggedEmpty", exercises: [{ name: "Squat", type: "strength", sets: [] }] }
+    ]);
+    assert(hooks.isTrainingDay("2026-10-05") === true, "expected 10-05 (strength sets) to be a training day");
+    assert(hooks.isTrainingDay("2026-10-06") === true, "expected 10-06 (cardio) to be a training day");
+    assert(hooks.isTrainingDay("2026-10-07") === false, "expected 10-07 (no sets, no duration) to not count");
+    assert(hooks.getConsecutiveTrainingDaysBefore("2026-10-07") === 2, "expected a 2-day streak ending 10-06, got " + hooks.getConsecutiveTrainingDaysBefore("2026-10-07"));
+  });
+
+  test("getRestDayAdvice: suggests rest after a long streak, stays quiet otherwise", function () {
+    clearStorage();
+    var workouts = [];
+    for (var i = 0; i < 6; i++) {
+      var d = new Date("2026-10-01T00:00:00"); d.setDate(d.getDate() + i);
+      workouts.push({ id: "w" + i, date: d.toISOString().slice(0, 10), name: "Day", exercises: [{ name: "Squat", type: "strength", sets: [{ reps: 5, weight: 100 }] }] });
+    }
+    hooks.saveWorkouts(workouts);
+    var advice = hooks.getRestDayAdvice("2026-10-07");
+    assert(advice != null && advice.consecutiveDays === 6, "expected rest advice after a 6-day streak, got " + JSON.stringify(advice));
+    assert(hooks.getRestDayAdvice("2026-10-04") === null, "expected no advice before the streak threshold is reached");
+
+    workouts.push({ id: "w6", date: "2026-10-07", name: "Day7", exercises: [{ name: "Squat", type: "strength", sets: [{ reps: 5, weight: 100 }] }] });
+    hooks.saveWorkouts(workouts);
+    assert(hooks.getRestDayAdvice("2026-10-07") === null, "expected no advice once the day itself is already a training day");
+  });
+
   clearStorage();
 
   // ---------- render ----------
