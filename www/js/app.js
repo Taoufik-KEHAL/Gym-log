@@ -88,7 +88,8 @@
     { key: "seaFish", label: "Sea fish (some)" },
     { key: "pigeon", label: "Pigeon" },
     { key: "quail", label: "Quail" },
-    { key: "rabbit", label: "Rabbit" }
+    { key: "rabbit", label: "Rabbit" },
+    { key: "cigarettes", label: "Cigarettes" }
   ];
 
   var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
