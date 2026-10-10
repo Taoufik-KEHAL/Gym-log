@@ -428,6 +428,19 @@ button:active { transform: scale(0.98); }
   font-weight: 600;
 }
 
+.food-meal-header {
+  margin: 14px 0 4px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.food-meal-header:first-child {
+  margin-top: 0;
+}
+
 .food-checklist {
   display: flex;
   flex-direction: column;

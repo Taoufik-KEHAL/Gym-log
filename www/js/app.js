@@ -2,7 +2,7 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, waterLiters, cigarettesCount, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
     settings: "gymlog.settings", // reserved for future use; currently unused
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
@@ -60,7 +60,6 @@
   // A separate, simpler "did you have this today" checklist -- no quantities, no
   // nutrients -- that coexists with the searchable/quantified food log above.
   var FOOD_ITEMS = [
-    { key: "water", label: "Water" },
     { key: "blackCoffee", label: "Black coffee" },
     { key: "corn", label: "Corn (all forms)" },
     { key: "potatoes", label: "Potatoes" },
@@ -88,8 +87,7 @@
     { key: "seaFish", label: "Sea fish (some)" },
     { key: "pigeon", label: "Pigeon" },
     { key: "quail", label: "Quail" },
-    { key: "rabbit", label: "Rabbit" },
-    { key: "cigarettes", label: "Cigarettes" }
+    { key: "rabbit", label: "Rabbit" }
   ];
 
   var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
@@ -216,6 +214,97 @@
     });
     (currentSessionSets || []).forEach(function (s) { if (best == null || s.weight > best) best = s.weight; });
     return best;
+  }
+
+  // The best set (by reps x weight) for a strength exercise from the most recent
+  // *saved* session strictly before `beforeDate` that included it -- "last time you
+  // did this exercise", not the all-time best. Null if there's no prior session.
+  function getLastSessionBestForExercise(exerciseName, beforeDate) {
+    var lname = exerciseName.toLowerCase();
+    var lastDate = null;
+    var best = null;
+    loadWorkouts().forEach(function (w) {
+      if (beforeDate != null && w.date >= beforeDate) return;
+      var hasExercise = w.exercises.some(function (ex) { return ex.type === "strength" && ex.name.toLowerCase() === lname; });
+      if (!hasExercise) return;
+      if (lastDate == null || w.date > lastDate) { lastDate = w.date; best = null; }
+      if (w.date !== lastDate) return;
+      w.exercises.forEach(function (ex) {
+        if (ex.type !== "strength" || ex.name.toLowerCase() !== lname) return;
+        ex.sets.forEach(function (s) {
+          if (best == null || s.weight * s.reps > best.weight * best.reps) best = { weight: s.weight, reps: s.reps };
+        });
+      });
+    });
+    return best;
+  }
+
+  // Compares the best set logged so far in this in-progress session to the best set
+  // from the last time this exercise was trained. Null until there's both a prior
+  // session to compare against and at least one set logged today.
+  function getProgressiveOverloadStatus(exerciseName, currentSets, beforeDate) {
+    if (!currentSets || currentSets.length === 0) return null;
+    var prev = getLastSessionBestForExercise(exerciseName, beforeDate);
+    if (!prev) return null;
+    var current = null;
+    currentSets.forEach(function (s) {
+      if (current == null || s.weight * s.reps > current.weight * current.reps) current = { weight: s.weight, reps: s.reps };
+    });
+    var currentVolume = current.weight * current.reps;
+    var prevVolume = prev.weight * prev.reps;
+    var status = currentVolume > prevVolume ? "beat" : currentVolume === prevVolume ? "matched" : "regressed";
+    return { status: status, prev: prev, current: current };
+  }
+
+  // ---------- rest-day awareness ----------
+
+  function isTrainingDay(date, workouts) {
+    return (workouts || loadWorkouts()).some(function (w) {
+      if (w.date !== date) return false;
+      return w.exercises.some(function (ex) { return ex.type === "cardio" ? ex.duration > 0 : ex.sets.length > 0; });
+    });
+  }
+
+  function getConsecutiveTrainingDaysBefore(date, workouts) {
+    workouts = workouts || loadWorkouts();
+    var streak = 0;
+    var d = addDaysISO(date, -1);
+    while (isTrainingDay(d, workouts)) {
+      streak++;
+      d = addDaysISO(d, -1);
+    }
+    return streak;
+  }
+
+  var REST_DAY_WARNING_THRESHOLD = 6; // consecutive training days before suggesting a rest day
+
+  // Null unless there's a long training streak going into `date` and `date` itself
+  // hasn't already been logged as a training day (recovery is already reduced on a
+  // deficit, so a long unbroken streak is a real signal, not just enthusiasm).
+  function getRestDayAdvice(date) {
+    var workouts = loadWorkouts();
+    var consecutiveDays = getConsecutiveTrainingDaysBefore(date, workouts);
+    if (consecutiveDays < REST_DAY_WARNING_THRESHOLD) return null;
+    if (isTrainingDay(date, workouts)) return null;
+    return {
+      consecutiveDays: consecutiveDays,
+      message: "You've trained " + consecutiveDays + " days in a row — consider a rest day today. " +
+        "Recovery capacity is already lower on a calorie deficit."
+    };
+  }
+
+  function renderRestDayHint() {
+    var el = document.getElementById("restDayHint");
+    if (!el) return;
+    var date = document.getElementById("workoutDate").value || todayISO();
+    var advice = getRestDayAdvice(date);
+    if (!advice) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = "⚠️ " + advice.message;
+    el.style.display = "block";
   }
 
   function loadSettings() {
@@ -546,7 +635,7 @@
     });
     if (name === "today") renderToday();
     if (name === "history") renderHistory();
-    if (name === "workout") { renderWorkoutBuilder(); populateWorkoutTemplateSelect(); }
+    if (name === "workout") { renderWorkoutBuilder(); populateWorkoutTemplateSelect(); renderRestDayHint(); }
     if (name === "food") {
       var foodDate = document.getElementById("foodDate").value || todayISO();
       renderFoodLog(foodDate);
@@ -564,6 +653,8 @@
     var entry = daily[today] || {};
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
+    document.getElementById("sumWater").textContent = entry.waterLiters != null ? entry.waterLiters : "—";
+    document.getElementById("sumCigarettes").textContent = entry.cigarettesCount != null ? entry.cigarettesCount : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
@@ -923,6 +1014,8 @@
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
+    document.getElementById("waterInput").value = entry.waterLiters != null ? entry.waterLiters : "";
+    document.getElementById("cigarettesInput").value = entry.cigarettesCount != null ? entry.cigarettesCount : "";
     setDayTypeToggle(entry.dayType || null);
   }
 
@@ -932,6 +1025,8 @@
     var weight = document.getElementById("weightInput").value;
     var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
+    var waterLiters = document.getElementById("waterInput").value;
+    var cigarettesCount = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
     var existing = daily[date] || {};
@@ -944,6 +1039,8 @@
     if (existing.carbs != null) entry.carbs = existing.carbs;
     if (existing.fat != null) entry.fat = existing.fat;
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
+    if (waterLiters !== "") entry.waterLiters = parseFloat(waterLiters);
+    if (cigarettesCount !== "") entry.cigarettesCount = Math.round(parseFloat(cigarettesCount));
     if (currentDayType) entry.dayType = currentDayType;
 
     if (Object.keys(entry).length === 0) {
@@ -1157,6 +1254,8 @@
 
   var TREND_METRICS = [
     { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" },
+    { key: "waterLiters", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty" },
+    { key: "cigarettesCount", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty" },
     { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty" },
     { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty" },
     { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty" },
@@ -1691,6 +1790,20 @@
       if (ex.type === "cardio") {
         block.appendChild(buildCardioFields(ex));
       } else {
+        var workoutDate = document.getElementById("workoutDate").value || todayISO();
+        var overload = getProgressiveOverloadStatus(ex.name, ex.sets, workoutDate);
+        if (overload) {
+          var overloadLabel = {
+            beat: "✅ Beat last time (" + overload.prev.weight + " kg × " + overload.prev.reps + ")",
+            matched: "➖ Matched last time (" + overload.prev.weight + " kg × " + overload.prev.reps + ")",
+            regressed: "⚠️ Below last time (" + overload.prev.weight + " kg × " + overload.prev.reps + ")"
+          }[overload.status];
+          var overloadCls = { beat: "status-good", matched: "status-warn", regressed: "status-bad" }[overload.status];
+          var overloadEl = document.createElement("div");
+          overloadEl.className = "day-status";
+          overloadEl.innerHTML = '<span class="day-badge ' + overloadCls + '">' + overloadLabel + "</span>";
+          block.appendChild(overloadEl);
+        }
         ex.sets.forEach(function (set, setIdx) {
           var row = document.createElement("div");
           row.className = "set-row";
@@ -1948,6 +2061,8 @@
     if (nameInput.value === lastAutoWorkoutName) {
       setDefaultWorkoutName(document.getElementById("workoutDate").value || todayISO());
     }
+    renderRestDayHint();
+    renderWorkoutBuilder();
   }
 
   function handleSaveWorkout() {
@@ -2121,6 +2236,21 @@
   }
 
   // ---------- food log ----------
+
+  var MEAL_TYPES = [
+    { key: "breakfast", label: "Breakfast", icon: "🌅" },
+    { key: "lunch", label: "Lunch", icon: "🍲" },
+    { key: "dinner", label: "Dinner", icon: "🌙" },
+    { key: "snack", label: "Snack", icon: "🍪" }
+  ];
+
+  // Default meal suggestion when logging food, based on the time of day.
+  function guessMealForTime(hour) {
+    if (hour < 11) return "breakfast";
+    if (hour < 15) return "lunch";
+    if (hour < 18) return "snack";
+    return "dinner";
+  }
 
   function clearFoodSearchState() {
     clearTimeout(foodSearchDebounceTimer);
@@ -2333,6 +2463,7 @@
     document.getElementById("foodUnitsInput").value = 1;
     document.getElementById("foodUnitGramsInput").value = 50;
     document.getElementById("foodQuantityCard").style.display = "block";
+    document.getElementById("foodMealSelect").value = guessMealForTime(new Date().getHours());
     clearFoodSearchState();
     setQtyMode("grams");
   }
@@ -2363,7 +2494,8 @@
       protein: Math.round(selectedFoodProduct.per100.protein * factor),
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
       fat: Math.round(selectedFoodProduct.per100.fat * factor),
-      isTreat: !!selectedFoodProduct.isTreat
+      isTreat: !!selectedFoodProduct.isTreat,
+      meal: document.getElementById("foodMealSelect").value
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -2408,6 +2540,7 @@
 
     document.getElementById("foodQuantityName").textContent = "Edit: " + entry.name;
     document.getElementById("foodQuantityCard").style.display = "block";
+    document.getElementById("foodMealSelect").value = entry.meal || guessMealForTime(new Date().getHours());
     document.getElementById("addFoodBtn").textContent = "Update log entry";
     document.getElementById("cancelEditFoodLogBtn").style.display = "inline-block";
     document.getElementById("foodSearchInput").value = "";
@@ -2446,7 +2579,8 @@
       calories: updated.calories,
       protein: updated.protein,
       carbs: updated.carbs,
-      fat: updated.fat
+      fat: updated.fat,
+      meal: updated.meal != null ? updated.meal : old.meal
     };
     if (updated.units != null) {
       next.units = updated.units;
@@ -2553,6 +2687,58 @@
     }
   }
 
+  function renderFoodLogItem(list, date, entry) {
+    var item = document.createElement("div");
+    item.className = "food-log-item";
+
+    var info = document.createElement("div");
+    var nameEl = document.createElement("div");
+    nameEl.className = "food-log-name";
+    var qtyLabel = entry.units != null
+      ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
+      : (entry.grams != null ? " (" + entry.grams + " g)" : "");
+    nameEl.textContent = entry.name + qtyLabel;
+    var macrosEl = document.createElement("div");
+    macrosEl.className = "food-log-macros";
+    macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
+    info.appendChild(nameEl);
+    info.appendChild(macrosEl);
+
+    var actions = document.createElement("div");
+    actions.className = "food-log-actions";
+
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "icon-btn";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", function () { startEditFoodLogEntry(date, entry.id); });
+
+    var removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "remove";
+    removeBtn.textContent = "✕";
+    removeBtn.addEventListener("click", function () { removeFoodEntry(date, entry.id); });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(removeBtn);
+
+    item.appendChild(info);
+    item.appendChild(actions);
+    list.appendChild(item);
+  }
+
+  // Groups entries by meal in a fixed daily order; entries logged before this
+  // feature existed have no `meal` and fall into a trailing "Other" group.
+  function groupFoodLogByMeal(entries) {
+    var groups = MEAL_TYPES.map(function (m) { return { key: m.key, label: m.label, icon: m.icon, entries: [] }; });
+    var other = { key: null, label: "Other", icon: "🍽️", entries: [] };
+    entries.forEach(function (entry) {
+      var group = groups.filter(function (g) { return g.key === entry.meal; })[0];
+      (group || other).entries.push(entry);
+    });
+    return groups.concat(other.entries.length > 0 ? [other] : []);
+  }
+
   function renderFoodLog(date) {
     var list = document.getElementById("foodLogList");
     var totalsEl = document.getElementById("foodLogTotals");
@@ -2566,49 +2752,20 @@
 
     list.innerHTML = "";
     var totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-    entries.forEach(function (entry) {
-      totals.calories += entry.calories;
-      totals.protein += entry.protein;
-      totals.carbs += entry.carbs;
-      totals.fat += entry.fat;
-
-      var item = document.createElement("div");
-      item.className = "food-log-item";
-
-      var info = document.createElement("div");
-      var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
-      var qtyLabel = entry.units != null
-        ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
-        : (entry.grams != null ? " (" + entry.grams + " g)" : "");
-      nameEl.textContent = entry.name + qtyLabel;
-      var macrosEl = document.createElement("div");
-      macrosEl.className = "food-log-macros";
-      macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
-      info.appendChild(nameEl);
-      info.appendChild(macrosEl);
-
-      var actions = document.createElement("div");
-      actions.className = "food-log-actions";
-
-      var editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "icon-btn";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", function () { startEditFoodLogEntry(date, entry.id); });
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "remove";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { removeFoodEntry(date, entry.id); });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(removeBtn);
-
-      item.appendChild(info);
-      item.appendChild(actions);
-      list.appendChild(item);
+    groupFoodLogByMeal(entries).forEach(function (group) {
+      if (group.entries.length === 0) return;
+      var header = document.createElement("div");
+      header.className = "food-meal-header";
+      var groupProtein = group.entries.reduce(function (sum, e) { return sum + e.protein; }, 0);
+      header.textContent = group.icon + " " + group.label + " · " + groupProtein + " g protein";
+      list.appendChild(header);
+      group.entries.forEach(function (entry) {
+        totals.calories += entry.calories;
+        totals.protein += entry.protein;
+        totals.carbs += entry.carbs;
+        totals.fat += entry.fat;
+        renderFoodLogItem(list, date, entry);
+      });
     });
 
     totalsEl.innerHTML = '<span class="day-badge">Total</span>' +
@@ -2703,6 +2860,8 @@
           parts.push(weightPart);
         }
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
+        if (entry.waterLiters != null) parts.push(entry.waterLiters + " L water");
+        if (entry.cigarettesCount != null) parts.push(entry.cigarettesCount + " cigarettes");
         if (entry.calories != null) parts.push(entry.calories + " kcal");
         if (entry.protein != null) parts.push(entry.protein + " g protein");
         if (entry.carbs != null) parts.push(entry.carbs + " g carbs");
@@ -3385,7 +3544,14 @@
       getGoalPaceGuidance: getGoalPaceGuidance,
       isCalorieTargetMetForDate: isCalorieTargetMetForDate,
       isProteinTargetMetForDate: isProteinTargetMetForDate,
-      getStreaks: getStreaks
+      getStreaks: getStreaks,
+      guessMealForTime: guessMealForTime,
+      groupFoodLogByMeal: groupFoodLogByMeal,
+      getLastSessionBestForExercise: getLastSessionBestForExercise,
+      getProgressiveOverloadStatus: getProgressiveOverloadStatus,
+      isTrainingDay: isTrainingDay,
+      getConsecutiveTrainingDaysBefore: getConsecutiveTrainingDaysBefore,
+      getRestDayAdvice: getRestDayAdvice
     };
   }
 
