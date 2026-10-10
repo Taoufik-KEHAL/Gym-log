@@ -172,6 +172,8 @@ canvas {
   min-height: 1em;
 }
 
+.stat-sub.status-bad { color: var(--danger); }
+
 .trend-legend {
   display: flex;
   flex-wrap: wrap;

@@ -48,6 +48,16 @@
     { name: "Nuts (mixed, raw)", per100: { calories: 600, protein: 20.0, carbs: 20.0, fat: 54.0 } }
   ];
 
+  // Foods marked as treats by default (case-insensitive name match), the first time
+  // each is seen without an explicit isTreat already set -- covers both the seed above
+  // and any custom foods already saved on this device.
+  var DEFAULT_TREAT_NAMES = [
+    "Chocolat aiguebelle 55 cacao", "Milka nut", "Milka Tablette Noisette", "Maruja",
+    "Snickers bar", "Snikers peanut butter", "Mood almond", "Mood hazelnut", "Bounty",
+    "Mars", "Chocolat jouven", "KitKat", "Pringles Original", "Snik snack",
+    "Mille-feuille (pastry)", "Sugar", "Confiture cerise", "Honey", "Dates"
+  ];
+
   // A separate, simpler "did you have this today" checklist -- no quantities, no
   // nutrients -- that coexists with the searchable/quantified food log above.
   var FOOD_ITEMS = [
@@ -279,6 +289,23 @@
     saveCustomFoods(seeded);
   }
 
+  // Marks any custom food matching DEFAULT_TREAT_NAMES (case-insensitive) as a treat,
+  // but only the first time each food is seen with isTreat not yet set -- so a user who
+  // explicitly un-treats one of these foods later isn't overridden back on every load.
+  function migrateDefaultTreatsIfNeeded() {
+    var foods = loadCustomFoods();
+    var lowerTreatNames = DEFAULT_TREAT_NAMES.map(function (n) { return n.toLowerCase(); });
+    var changed = false;
+    foods.forEach(function (f) {
+      if (f.isTreat != null) return;
+      if (lowerTreatNames.indexOf(f.name.toLowerCase()) !== -1) {
+        f.isTreat = true;
+        changed = true;
+      }
+    });
+    if (changed) saveCustomFoods(foods);
+  }
+
   function loadWorkoutTemplates() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE.customWorkoutTemplates) || "[]");
@@ -324,6 +351,17 @@
       info.appendChild(nameEl);
       info.appendChild(macrosEl);
 
+      var treatLabel = document.createElement("label");
+      treatLabel.className = "food-check-row";
+      treatLabel.style.marginTop = "4px";
+      var treatCheckbox = document.createElement("input");
+      treatCheckbox.type = "checkbox";
+      treatCheckbox.checked = !!f.isTreat;
+      treatCheckbox.addEventListener("change", function () { handleToggleMyFoodTreat(f.id, treatCheckbox.checked); });
+      treatLabel.appendChild(treatCheckbox);
+      treatLabel.appendChild(document.createTextNode(" Treat"));
+      info.appendChild(treatLabel);
+
       var actions = document.createElement("div");
       actions.className = "food-log-actions";
 
@@ -357,11 +395,12 @@
       carbs: parseFloat(document.getElementById("myFoodCarbs").value) || 0,
       fat: parseFloat(document.getElementById("myFoodFat").value) || 0
     };
+    var isTreat = document.getElementById("myFoodIsTreat").checked;
     var foods = loadCustomFoods();
 
     if (editingMyFoodId) {
       var idx = foods.findIndex(function (f) { return f.id === editingMyFoodId; });
-      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100 };
+      if (idx !== -1) foods[idx] = { id: editingMyFoodId, name: name, per100: per100, isTreat: isTreat };
       saveCustomFoods(foods);
       handleCancelEditMyFood();
       renderCustomFoodList();
@@ -369,14 +408,23 @@
       return;
     }
 
-    foods.push({ id: makeId(), name: name, per100: per100 });
+    foods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat });
     saveCustomFoods(foods);
 
     ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("myFoodIsTreat").checked = false;
     renderCustomFoodList();
     toast("Added to My Foods");
+  }
+
+  function handleToggleMyFoodTreat(id, isTreat) {
+    var foods = loadCustomFoods();
+    var food = foods.find(function (f) { return f.id === id; });
+    if (!food) return;
+    food.isTreat = isTreat;
+    saveCustomFoods(foods);
   }
 
   function handleEditMyFood(id) {
@@ -388,6 +436,7 @@
     document.getElementById("myFoodProtein").value = food.per100.protein;
     document.getElementById("myFoodCarbs").value = food.per100.carbs;
     document.getElementById("myFoodFat").value = food.per100.fat;
+    document.getElementById("myFoodIsTreat").checked = !!food.isTreat;
     document.getElementById("addMyFoodBtn").textContent = "Update food";
     document.getElementById("cancelEditMyFoodBtn").style.display = "inline-block";
     document.getElementById("myFoodName").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -398,6 +447,7 @@
     ["myFoodName", "myFoodCalories", "myFoodProtein", "myFoodCarbs", "myFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("myFoodIsTreat").checked = false;
     document.getElementById("addMyFoodBtn").textContent = "Add to My Foods";
     document.getElementById("cancelEditMyFoodBtn").style.display = "none";
   }
@@ -496,6 +546,7 @@
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
+    renderTreatBudget(today);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     renderProteinTarget(entry);
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
@@ -562,6 +613,30 @@
     var target = getProteinTarget();
     var protein = entry.protein != null ? entry.protein : 0;
     el.textContent = protein + " / " + target + " g";
+  }
+
+  var TREAT_BUDGET_DEFAULT = 150;
+
+  function getTreatBudget() {
+    var settings = loadSettings();
+    return settings.treatBudget != null ? settings.treatBudget : TREAT_BUDGET_DEFAULT;
+  }
+
+  // Treat calories logged on a date -- summed straight from that day's food log entries
+  // (each snapshots isTreat at the time it was logged), not from the live My Foods list,
+  // so changing a food's treat status later doesn't rewrite past days.
+  function getTreatCaloriesForDate(date) {
+    var entries = loadFoodLog()[date] || [];
+    return entries.reduce(function (sum, e) { return sum + (e.isTreat ? e.calories : 0); }, 0);
+  }
+
+  function renderTreatBudget(date) {
+    var el = document.getElementById("sumTreatBudget");
+    if (!el) return;
+    var used = getTreatCaloriesForDate(date);
+    var budget = getTreatBudget();
+    el.textContent = "Treats " + used + " / " + budget + " kcal";
+    el.classList.toggle("status-bad", used > budget);
   }
 
   function renderCalorieTarget(date, entry, daily) {
@@ -1810,7 +1885,7 @@
     var matches = loadCustomFoods()
       .filter(function (f) { return f.name.toLowerCase().indexOf(q) !== -1; })
       .map(function (f) {
-        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100 };
+        return { name: f.name, brand: "", source: "My Foods", servingGrams: null, per100: f.per100, isTreat: !!f.isTreat };
       });
     return Promise.resolve(matches);
   }
@@ -1956,7 +2031,8 @@
       calories: Math.round(selectedFoodProduct.per100.calories * factor),
       protein: Math.round(selectedFoodProduct.per100.protein * factor),
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
-      fat: Math.round(selectedFoodProduct.per100.fat * factor)
+      fat: Math.round(selectedFoodProduct.per100.fat * factor),
+      isTreat: !!selectedFoodProduct.isTreat
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -2074,18 +2150,20 @@
       fat: Math.round(parseFloat(document.getElementById("newFoodFat").value) || 0)
     };
 
+    var isTreat = document.getElementById("newFoodIsTreat").checked;
     var customFoods = loadCustomFoods();
-    customFoods.push({ id: makeId(), name: name, per100: per100 });
+    customFoods.push({ id: makeId(), name: name, per100: per100, isTreat: isTreat });
     saveCustomFoods(customFoods);
     renderCustomFoodList();
 
     ["newFoodName", "newFoodCalories", "newFoodProtein", "newFoodCarbs", "newFoodFat"].forEach(function (id) {
       document.getElementById(id).value = "";
     });
+    document.getElementById("newFoodIsTreat").checked = false;
     document.getElementById("newFoodCard").style.display = "none";
 
     toast("Saved to My Foods");
-    selectFoodProduct({ name: name, per100: per100 });
+    selectFoodProduct({ name: name, per100: per100, isTreat: isTreat });
   }
 
   function addFoodEntry(date, entry) {
@@ -2610,6 +2688,7 @@
     document.getElementById("calorieTargetInput").value = settings.calorieTarget != null ? settings.calorieTarget : "";
     document.getElementById("proteinTargetInput").value = settings.proteinTarget != null ? settings.proteinTarget : "";
     document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
+    document.getElementById("treatBudgetInput").value = settings.treatBudget != null ? settings.treatBudget : "";
   }
 
   function handleTargetModeChange(mode) {
@@ -2644,6 +2723,14 @@
     var value = document.getElementById("maintenanceTdeeInput").value;
     var settings = loadSettings();
     settings.maintenanceTdeeForTargets = value !== "" ? Math.round(parseFloat(value)) : MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleTreatBudgetChange() {
+    var value = document.getElementById("treatBudgetInput").value;
+    var settings = loadSettings();
+    settings.treatBudget = value !== "" ? Math.round(parseFloat(value)) : TREAT_BUDGET_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -2793,6 +2880,7 @@
 
   function init() {
     seedCustomFoodsIfNeeded();
+    migrateDefaultTreatsIfNeeded();
     seedWorkoutTemplatesIfNeeded();
 
     document.getElementById("headerDate").textContent = formatDateLong(todayISO());
@@ -2846,6 +2934,7 @@
     document.getElementById("calorieTargetInput").addEventListener("change", handleFixedTargetChange);
     document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
     document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
+    document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
