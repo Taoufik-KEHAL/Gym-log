@@ -2130,6 +2130,21 @@
 
   // ---------- food log ----------
 
+  var MEAL_TYPES = [
+    { key: "breakfast", label: "Breakfast", icon: "🌅" },
+    { key: "lunch", label: "Lunch", icon: "🍲" },
+    { key: "dinner", label: "Dinner", icon: "🌙" },
+    { key: "snack", label: "Snack", icon: "🍪" }
+  ];
+
+  // Default meal suggestion when logging food, based on the time of day.
+  function guessMealForTime(hour) {
+    if (hour < 11) return "breakfast";
+    if (hour < 15) return "lunch";
+    if (hour < 18) return "snack";
+    return "dinner";
+  }
+
   function clearFoodSearchState() {
     clearTimeout(foodSearchDebounceTimer);
     foodSearchAbortControllers.forEach(function (c) { c.abort(); });
@@ -2341,6 +2356,7 @@
     document.getElementById("foodUnitsInput").value = 1;
     document.getElementById("foodUnitGramsInput").value = 50;
     document.getElementById("foodQuantityCard").style.display = "block";
+    document.getElementById("foodMealSelect").value = guessMealForTime(new Date().getHours());
     clearFoodSearchState();
     setQtyMode("grams");
   }
@@ -2371,7 +2387,8 @@
       protein: Math.round(selectedFoodProduct.per100.protein * factor),
       carbs: Math.round(selectedFoodProduct.per100.carbs * factor),
       fat: Math.round(selectedFoodProduct.per100.fat * factor),
-      isTreat: !!selectedFoodProduct.isTreat
+      isTreat: !!selectedFoodProduct.isTreat,
+      meal: document.getElementById("foodMealSelect").value
     };
     if (currentQtyMode === "units") {
       updated.units = parseFloat(document.getElementById("foodUnitsInput").value) || 0;
@@ -2416,6 +2433,7 @@
 
     document.getElementById("foodQuantityName").textContent = "Edit: " + entry.name;
     document.getElementById("foodQuantityCard").style.display = "block";
+    document.getElementById("foodMealSelect").value = entry.meal || guessMealForTime(new Date().getHours());
     document.getElementById("addFoodBtn").textContent = "Update log entry";
     document.getElementById("cancelEditFoodLogBtn").style.display = "inline-block";
     document.getElementById("foodSearchInput").value = "";
@@ -2454,7 +2472,8 @@
       calories: updated.calories,
       protein: updated.protein,
       carbs: updated.carbs,
-      fat: updated.fat
+      fat: updated.fat,
+      meal: updated.meal != null ? updated.meal : old.meal
     };
     if (updated.units != null) {
       next.units = updated.units;
@@ -2561,6 +2580,58 @@
     }
   }
 
+  function renderFoodLogItem(list, date, entry) {
+    var item = document.createElement("div");
+    item.className = "food-log-item";
+
+    var info = document.createElement("div");
+    var nameEl = document.createElement("div");
+    nameEl.className = "food-log-name";
+    var qtyLabel = entry.units != null
+      ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
+      : (entry.grams != null ? " (" + entry.grams + " g)" : "");
+    nameEl.textContent = entry.name + qtyLabel;
+    var macrosEl = document.createElement("div");
+    macrosEl.className = "food-log-macros";
+    macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
+    info.appendChild(nameEl);
+    info.appendChild(macrosEl);
+
+    var actions = document.createElement("div");
+    actions.className = "food-log-actions";
+
+    var editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "icon-btn";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", function () { startEditFoodLogEntry(date, entry.id); });
+
+    var removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "remove";
+    removeBtn.textContent = "✕";
+    removeBtn.addEventListener("click", function () { removeFoodEntry(date, entry.id); });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(removeBtn);
+
+    item.appendChild(info);
+    item.appendChild(actions);
+    list.appendChild(item);
+  }
+
+  // Groups entries by meal in a fixed daily order; entries logged before this
+  // feature existed have no `meal` and fall into a trailing "Other" group.
+  function groupFoodLogByMeal(entries) {
+    var groups = MEAL_TYPES.map(function (m) { return { key: m.key, label: m.label, icon: m.icon, entries: [] }; });
+    var other = { key: null, label: "Other", icon: "🍽️", entries: [] };
+    entries.forEach(function (entry) {
+      var group = groups.filter(function (g) { return g.key === entry.meal; })[0];
+      (group || other).entries.push(entry);
+    });
+    return groups.concat(other.entries.length > 0 ? [other] : []);
+  }
+
   function renderFoodLog(date) {
     var list = document.getElementById("foodLogList");
     var totalsEl = document.getElementById("foodLogTotals");
@@ -2574,49 +2645,20 @@
 
     list.innerHTML = "";
     var totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-    entries.forEach(function (entry) {
-      totals.calories += entry.calories;
-      totals.protein += entry.protein;
-      totals.carbs += entry.carbs;
-      totals.fat += entry.fat;
-
-      var item = document.createElement("div");
-      item.className = "food-log-item";
-
-      var info = document.createElement("div");
-      var nameEl = document.createElement("div");
-      nameEl.className = "food-log-name";
-      var qtyLabel = entry.units != null
-        ? " (" + entry.units + " × " + entry.unitGrams + " g = " + entry.grams + " g)"
-        : (entry.grams != null ? " (" + entry.grams + " g)" : "");
-      nameEl.textContent = entry.name + qtyLabel;
-      var macrosEl = document.createElement("div");
-      macrosEl.className = "food-log-macros";
-      macrosEl.textContent = entry.calories + " kcal · " + entry.protein + " g protein · " + entry.carbs + " g carbs · " + entry.fat + " g fat";
-      info.appendChild(nameEl);
-      info.appendChild(macrosEl);
-
-      var actions = document.createElement("div");
-      actions.className = "food-log-actions";
-
-      var editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "icon-btn";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", function () { startEditFoodLogEntry(date, entry.id); });
-
-      var removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "remove";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", function () { removeFoodEntry(date, entry.id); });
-
-      actions.appendChild(editBtn);
-      actions.appendChild(removeBtn);
-
-      item.appendChild(info);
-      item.appendChild(actions);
-      list.appendChild(item);
+    groupFoodLogByMeal(entries).forEach(function (group) {
+      if (group.entries.length === 0) return;
+      var header = document.createElement("div");
+      header.className = "food-meal-header";
+      var groupProtein = group.entries.reduce(function (sum, e) { return sum + e.protein; }, 0);
+      header.textContent = group.icon + " " + group.label + " · " + groupProtein + " g protein";
+      list.appendChild(header);
+      group.entries.forEach(function (entry) {
+        totals.calories += entry.calories;
+        totals.protein += entry.protein;
+        totals.carbs += entry.carbs;
+        totals.fat += entry.fat;
+        renderFoodLogItem(list, date, entry);
+      });
     });
 
     totalsEl.innerHTML = '<span class="day-badge">Total</span>' +
@@ -3395,7 +3437,9 @@
       getGoalPaceGuidance: getGoalPaceGuidance,
       isCalorieTargetMetForDate: isCalorieTargetMetForDate,
       isProteinTargetMetForDate: isProteinTargetMetForDate,
-      getStreaks: getStreaks
+      getStreaks: getStreaks,
+      guessMealForTime: guessMealForTime,
+      groupFoodLogByMeal: groupFoodLogByMeal
     };
   }
 

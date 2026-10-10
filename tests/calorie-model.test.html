@@ -471,6 +471,43 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(calorieStreak.priorStreak === 1, "expected the streak to reset after the missed day on 10-06, got " + calorieStreak.priorStreak);
   });
 
+  test("guessMealForTime: buckets hours into breakfast/lunch/snack/dinner", function () {
+    assert(hooks.guessMealForTime(7) === "breakfast", "expected 7am to be breakfast");
+    assert(hooks.guessMealForTime(10) === "breakfast", "expected 10am to still be breakfast");
+    assert(hooks.guessMealForTime(11) === "lunch", "expected 11am to be lunch");
+    assert(hooks.guessMealForTime(14) === "lunch", "expected 2pm to still be lunch");
+    assert(hooks.guessMealForTime(15) === "snack", "expected 3pm to be snack");
+    assert(hooks.guessMealForTime(17) === "snack", "expected 5pm to still be snack");
+    assert(hooks.guessMealForTime(18) === "dinner", "expected 6pm to be dinner");
+    assert(hooks.guessMealForTime(22) === "dinner", "expected 10pm to still be dinner");
+  });
+
+  test("groupFoodLogByMeal: groups in a fixed order and buckets legacy entries with no meal into Other", function () {
+    var entries = [
+      { id: "1", name: "Snack bar", protein: 5, meal: "snack" },
+      { id: "2", name: "Oats", protein: 10, meal: "breakfast" },
+      { id: "3", name: "Old entry", protein: 20 } // logged before meal tagging existed
+    ];
+    var groups = hooks.groupFoodLogByMeal(entries);
+    var keys = groups.map(function (g) { return g.key; });
+    assert(keys.indexOf("breakfast") < keys.indexOf("snack"), "expected breakfast before snack regardless of entry order");
+    assert(groups[groups.length - 1].label === "Other", "expected the no-meal group last, got: " + JSON.stringify(keys));
+    assert(groups[groups.length - 1].entries.length === 1 && groups[groups.length - 1].entries[0].id === "3",
+      "expected the legacy entry with no meal in the Other group");
+    var breakfastGroup = groups.filter(function (g) { return g.key === "breakfast"; })[0];
+    assert(breakfastGroup.entries.length === 1 && breakfastGroup.entries[0].id === "2", "expected Oats in breakfast");
+  });
+
+  test("groupFoodLogByMeal: always returns all four meal groups, empty ones included, with no trailing Other when nothing is unmealed", function () {
+    var groups = hooks.groupFoodLogByMeal([{ id: "1", name: "Eggs", protein: 12, meal: "breakfast" }]);
+    var keys = groups.map(function (g) { return g.key; });
+    assert(keys.length === 4 && keys.indexOf(null) === -1, "expected all 4 meal groups and no Other group, got: " + JSON.stringify(keys));
+    var breakfastGroup = groups.filter(function (g) { return g.key === "breakfast"; })[0];
+    assert(breakfastGroup.entries.length === 1, "expected 1 entry in breakfast");
+    var lunchGroup = groups.filter(function (g) { return g.key === "lunch"; })[0];
+    assert(lunchGroup.entries.length === 0, "expected lunch to be empty");
+  });
+
   clearStorage();
 
   // ---------- render ----------
