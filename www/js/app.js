@@ -497,6 +497,7 @@
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
+    renderProteinTarget(entry);
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
@@ -517,9 +518,17 @@
     el.className = "stat-sub";
   }
 
-  // Suggested intake for a day: Maintenance minus a 500-750 kcal deficit, never below BMR.
+  // Suggested intake for a day: the Profile's editable maintenance estimate minus a
+  // 500-750 kcal deficit, never below BMR. Uses a flat, user-set maintenance figure
+  // rather than the computed BMR+burn+TEF estimate, since that one can swing widely
+  // day to day and isn't meant for target-setting.
+  function getMaintenanceTdeeForTargets() {
+    var settings = loadSettings();
+    return settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT;
+  }
+
   function computeSuggestedCalorieRange(date, entry, daily) {
-    var maintenance = getMaintenanceForDay(date, entry, daily);
+    var maintenance = getMaintenanceTdeeForTargets();
     var bmr = computeBMRForDate(date, entry, daily);
     if (maintenance == null || bmr == null) return null;
     var high = Math.round((maintenance - 500) / 10) * 10;
@@ -530,22 +539,34 @@
     return { low: low, high: high };
   }
 
-  var FIXED_TARGET_REST_DEFAULT = 2370;
-  var FIXED_TARGET_TRAINING_DEFAULT = 2700;
+  var CALORIE_TARGET_DEFAULT = 2000;
+  var PROTEIN_TARGET_DEFAULT = 190;
+  var MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT = 2500;
 
-  // The Profile's fixed rest/training-day target, if enabled -- rest day (or no day
-  // type logged yet) uses the rest value, workout/cardio days use the training value.
-  function getFixedCalorieTarget(entry) {
+  // The Profile's single fixed calorie target, if enabled -- same value for every day
+  // type (rest, workout, cardio); no training-day bump.
+  function getFixedCalorieTarget() {
     var settings = loadSettings();
     if (!settings.fixedTargetsEnabled) return null;
-    var isTraining = !!(entry && (entry.dayType === "workout" || entry.dayType === "cardio"));
-    var target = isTraining ? settings.fixedTargetTraining : settings.fixedTargetRest;
-    return target != null ? target : null;
+    return settings.calorieTarget != null ? settings.calorieTarget : CALORIE_TARGET_DEFAULT;
+  }
+
+  function getProteinTarget() {
+    var settings = loadSettings();
+    return settings.proteinTarget != null ? settings.proteinTarget : PROTEIN_TARGET_DEFAULT;
+  }
+
+  function renderProteinTarget(entry) {
+    var el = document.getElementById("sumProteinTarget");
+    if (!el) return;
+    var target = getProteinTarget();
+    var protein = entry.protein != null ? entry.protein : 0;
+    el.textContent = protein + " / " + target + " g";
   }
 
   function renderCalorieTarget(date, entry, daily) {
     var el = document.getElementById("sumCaloriesTarget");
-    var fixed = getFixedCalorieTarget(entry);
+    var fixed = getFixedCalorieTarget();
     if (fixed != null) {
       el.textContent = "Target " + fixed + " (fixed)";
       return;
@@ -2564,27 +2585,39 @@
     document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.targetMode === mode);
     });
-    document.getElementById("fixedTargetFields").style.display = mode === "fixed" ? "grid" : "none";
+    document.getElementById("fixedTargetFields").style.display = mode === "fixed" ? "flex" : "none";
+  }
+
+  // Migrates a pre-existing rest/training pair (from before the calorie target was
+  // collapsed to one value) into the new single calorieTarget field, once, the first
+  // time settings are loaded with the old shape still present. Doesn't touch the old
+  // fields so older backups/exports of this same device stay meaningful.
+  function migrateLegacyFixedTarget(settings) {
+    if (settings.calorieTarget == null && settings.fixedTargetRest != null) {
+      settings.calorieTarget = settings.fixedTargetRest;
+      saveSettings(settings);
+    }
+    return settings;
   }
 
   function fillProfileForm() {
-    var settings = loadSettings();
+    var settings = migrateLegacyFixedTarget(loadSettings());
     document.getElementById("ageInput").value = settings.age != null ? settings.age : "";
     document.getElementById("heightInput").value = settings.heightCm != null ? settings.heightCm : "";
     setSexToggle(settings.sex || "male");
     document.getElementById("usdaApiKeyInput").value = settings.usdaApiKey || "";
     setTargetModeToggle(settings.fixedTargetsEnabled ? "fixed" : "auto");
-    document.getElementById("fixedTargetRestInput").value = settings.fixedTargetRest != null ? settings.fixedTargetRest : "";
-    document.getElementById("fixedTargetTrainingInput").value = settings.fixedTargetTraining != null ? settings.fixedTargetTraining : "";
+    document.getElementById("calorieTargetInput").value = settings.calorieTarget != null ? settings.calorieTarget : "";
+    document.getElementById("proteinTargetInput").value = settings.proteinTarget != null ? settings.proteinTarget : "";
+    document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
   }
 
   function handleTargetModeChange(mode) {
     setTargetModeToggle(mode);
     var settings = loadSettings();
     settings.fixedTargetsEnabled = mode === "fixed";
-    if (mode === "fixed") {
-      if (settings.fixedTargetRest == null) settings.fixedTargetRest = FIXED_TARGET_REST_DEFAULT;
-      if (settings.fixedTargetTraining == null) settings.fixedTargetTraining = FIXED_TARGET_TRAINING_DEFAULT;
+    if (mode === "fixed" && settings.calorieTarget == null) {
+      settings.calorieTarget = CALORIE_TARGET_DEFAULT;
     }
     saveSettings(settings);
     fillProfileForm();
@@ -2592,11 +2625,25 @@
   }
 
   function handleFixedTargetChange() {
-    var rest = document.getElementById("fixedTargetRestInput").value;
-    var training = document.getElementById("fixedTargetTrainingInput").value;
+    var value = document.getElementById("calorieTargetInput").value;
     var settings = loadSettings();
-    settings.fixedTargetRest = rest !== "" ? Math.round(parseFloat(rest)) : FIXED_TARGET_REST_DEFAULT;
-    settings.fixedTargetTraining = training !== "" ? Math.round(parseFloat(training)) : FIXED_TARGET_TRAINING_DEFAULT;
+    settings.calorieTarget = value !== "" ? Math.round(parseFloat(value)) : CALORIE_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleProteinTargetChange() {
+    var value = document.getElementById("proteinTargetInput").value;
+    var settings = loadSettings();
+    settings.proteinTarget = value !== "" ? Math.round(parseFloat(value)) : PROTEIN_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleMaintenanceTdeeChange() {
+    var value = document.getElementById("maintenanceTdeeInput").value;
+    var settings = loadSettings();
+    settings.maintenanceTdeeForTargets = value !== "" ? Math.round(parseFloat(value)) : MAINTENANCE_TDEE_FOR_TARGETS_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -2796,8 +2843,9 @@
     document.querySelectorAll("#calorieTargetModeToggle .segment").forEach(function (btn) {
       btn.addEventListener("click", function () { handleTargetModeChange(btn.dataset.targetMode); });
     });
-    document.getElementById("fixedTargetRestInput").addEventListener("change", handleFixedTargetChange);
-    document.getElementById("fixedTargetTrainingInput").addEventListener("change", handleFixedTargetChange);
+    document.getElementById("calorieTargetInput").addEventListener("change", handleFixedTargetChange);
+    document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
+    document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
 
     renderCustomFoodList();
     document.getElementById("addMyFoodBtn").addEventListener("click", handleAddMyFood);
