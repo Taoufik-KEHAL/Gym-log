@@ -2,7 +2,7 @@
   "use strict";
 
   var STORAGE = {
-    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, calories, protein, carbs, fat, steps, dayType } }
+    daily: "gymlog.daily",       // { "2026-07-27": { weight, sleepHours, waterLiters, cigarettesCount, calories, protein, carbs, fat, steps, dayType } }
     workouts: "gymlog.workouts", // [ { id, date, name, exercises: [{name, sets:[{reps,weight}]}] } ]
     settings: "gymlog.settings", // reserved for future use; currently unused
     foodlog: "gymlog.foodlog",   // { "2026-07-27": [ {id, name, grams, calories, protein, carbs, fat} ] }
@@ -60,7 +60,6 @@
   // A separate, simpler "did you have this today" checklist -- no quantities, no
   // nutrients -- that coexists with the searchable/quantified food log above.
   var FOOD_ITEMS = [
-    { key: "water", label: "Water" },
     { key: "blackCoffee", label: "Black coffee" },
     { key: "corn", label: "Corn (all forms)" },
     { key: "potatoes", label: "Potatoes" },
@@ -88,8 +87,7 @@
     { key: "seaFish", label: "Sea fish (some)" },
     { key: "pigeon", label: "Pigeon" },
     { key: "quail", label: "Quail" },
-    { key: "rabbit", label: "Rabbit" },
-    { key: "cigarettes", label: "Cigarettes" }
+    { key: "rabbit", label: "Rabbit" }
   ];
 
   var selectedFoodProduct = null; // { name, per100: { calories, protein, carbs, fat } }
@@ -564,6 +562,8 @@
     var entry = daily[today] || {};
     document.getElementById("sumWeight").textContent = entry.weight != null ? entry.weight : "—";
     document.getElementById("sumSleep").textContent = entry.sleepHours != null ? entry.sleepHours : "—";
+    document.getElementById("sumWater").textContent = entry.waterLiters != null ? entry.waterLiters : "—";
+    document.getElementById("sumCigarettes").textContent = entry.cigarettesCount != null ? entry.cigarettesCount : "—";
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
@@ -923,6 +923,8 @@
     document.getElementById("weightInput").value = entry.weight != null ? entry.weight : "";
     document.getElementById("sleepInput").value = entry.sleepHours != null ? entry.sleepHours : "";
     document.getElementById("stepsInput").value = entry.steps != null ? entry.steps : "";
+    document.getElementById("waterInput").value = entry.waterLiters != null ? entry.waterLiters : "";
+    document.getElementById("cigarettesInput").value = entry.cigarettesCount != null ? entry.cigarettesCount : "";
     setDayTypeToggle(entry.dayType || null);
   }
 
@@ -932,6 +934,8 @@
     var weight = document.getElementById("weightInput").value;
     var sleepHours = document.getElementById("sleepInput").value;
     var steps = document.getElementById("stepsInput").value;
+    var waterLiters = document.getElementById("waterInput").value;
+    var cigarettesCount = document.getElementById("cigarettesInput").value;
 
     var daily = loadDaily();
     var existing = daily[date] || {};
@@ -944,6 +948,8 @@
     if (existing.carbs != null) entry.carbs = existing.carbs;
     if (existing.fat != null) entry.fat = existing.fat;
     if (steps !== "") entry.steps = Math.round(parseFloat(steps));
+    if (waterLiters !== "") entry.waterLiters = parseFloat(waterLiters);
+    if (cigarettesCount !== "") entry.cigarettesCount = Math.round(parseFloat(cigarettesCount));
     if (currentDayType) entry.dayType = currentDayType;
 
     if (Object.keys(entry).length === 0) {
@@ -1157,6 +1163,8 @@
 
   var TREND_METRICS = [
     { key: "sleepHours", canvasId: "trendsSleepChart", emptyId: "trendsSleepEmpty" },
+    { key: "waterLiters", canvasId: "trendsWaterChart", emptyId: "trendsWaterEmpty" },
+    { key: "cigarettesCount", canvasId: "trendsCigarettesChart", emptyId: "trendsCigarettesEmpty" },
     { key: "protein", canvasId: "trendsProteinChart", emptyId: "trendsProteinEmpty" },
     { key: "carbs", canvasId: "trendsCarbsChart", emptyId: "trendsCarbsEmpty" },
     { key: "fat", canvasId: "trendsFatChart", emptyId: "trendsFatEmpty" },
@@ -2703,6 +2711,8 @@
           parts.push(weightPart);
         }
         if (entry.sleepHours != null) parts.push(entry.sleepHours + " h sleep");
+        if (entry.waterLiters != null) parts.push(entry.waterLiters + " L water");
+        if (entry.cigarettesCount != null) parts.push(entry.cigarettesCount + " cigarettes");
         if (entry.calories != null) parts.push(entry.calories + " kcal");
         if (entry.protein != null) parts.push(entry.protein + " g protein");
         if (entry.carbs != null) parts.push(entry.carbs + " g carbs");
