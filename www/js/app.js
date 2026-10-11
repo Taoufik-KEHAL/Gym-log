@@ -692,11 +692,13 @@
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
+    renderRemainingCaloriesNotice(today, entry);
     renderTreatBudget(today);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     renderProteinTarget(entry);
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
+    renderFatTarget(entry);
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     renderCardioTarget(today, daily);
     renderGoalSummary(today);
@@ -772,6 +774,26 @@
     el.textContent = protein + " / " + target + " g";
   }
 
+  var FAT_TARGET_LOW_DEFAULT = 60;
+  var FAT_TARGET_HIGH_DEFAULT = 75;
+
+  function getFatTargetRange() {
+    var settings = loadSettings();
+    return {
+      low: settings.fatTargetLow != null ? settings.fatTargetLow : FAT_TARGET_LOW_DEFAULT,
+      high: settings.fatTargetHigh != null ? settings.fatTargetHigh : FAT_TARGET_HIGH_DEFAULT
+    };
+  }
+
+  function renderFatTarget(entry) {
+    var el = document.getElementById("sumFatTarget");
+    if (!el) return;
+    var range = getFatTargetRange();
+    var fat = entry.fat != null ? entry.fat : 0;
+    el.textContent = fat + " / " + range.low + "–" + range.high + " g";
+    el.classList.toggle("status-bad", fat > range.high);
+  }
+
   var TREAT_BUDGET_DEFAULT = 150;
 
   function getTreatBudget() {
@@ -817,11 +839,17 @@
     el.classList.toggle("status-bad", used > budget);
   }
 
+  // Matches getFixedCalorieTarget's own dayType grouping (workout = lifting, anything
+  // else = cardio/rest) so the label always names the target it's actually showing.
+  function getDayTypeTargetLabel(dayType) {
+    return dayType === "workout" ? "lifting day" : "cardio/rest day";
+  }
+
   function renderCalorieTarget(date, entry, daily) {
     var el = document.getElementById("sumCaloriesTarget");
     var fixed = getFixedCalorieTarget(entry.dayType);
     if (fixed != null) {
-      el.textContent = "Target " + fixed + " (fixed)";
+      el.textContent = "Target " + fixed + " (" + getDayTypeTargetLabel(entry.dayType) + ")";
       return;
     }
     var range = computeSuggestedCalorieRange(date, entry, daily);
@@ -832,6 +860,35 @@
     el.textContent = range.low === range.high
       ? "Target " + range.low
       : "Target " + range.low + "–" + range.high;
+  }
+
+  var REMAINING_CALORIES_NOTICE_PCT = 0.8; // fraction of target that triggers the notice
+  var REMAINING_CALORIES_NOTICE_HOUR_CUTOFF = 15; // only worth flagging with most of the day still ahead
+
+  // Null unless today's logged calories have passed 80% of target before 15:00 --
+  // a heads-up that there isn't much budget left for the rest of the day, while
+  // there's still time to act on it. `now` is injectable for testing.
+  function getRemainingCaloriesNotice(date, entry, now) {
+    now = now || new Date();
+    if (date !== todayISO() || now.getHours() >= REMAINING_CALORIES_NOTICE_HOUR_CUTOFF) return null;
+    if (entry.calories == null) return null;
+    var target = getGoalBaseCalorieTarget(entry.dayType);
+    if (!(target > 0)) return null;
+    if (entry.calories / target < REMAINING_CALORIES_NOTICE_PCT) return null;
+    return Math.max(0, target - entry.calories) + " kcal left for the rest of the day.";
+  }
+
+  function renderRemainingCaloriesNotice(date, entry) {
+    var el = document.getElementById("remainingCaloriesNotice");
+    if (!el) return;
+    var message = getRemainingCaloriesNotice(date, entry);
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = "⏳ " + message;
+    el.style.display = "block";
   }
 
   function getCardioMET(name, pace) {
@@ -981,9 +1038,16 @@
   function renderCardioTarget(date, daily) {
     var el = document.getElementById("sumCardioTarget");
     if (!el) return;
+    daily = daily || loadDaily();
+    var minutes = getCardioMinutesForDate(date);
+    var minutesTarget = getCardioMinutesTarget();
+    var entry = daily[date];
+    var steps = entry && entry.steps != null ? entry.steps : 0;
+    var stepsTarget = getStepTarget();
     var done = isCardioDoneForDate(date, daily);
     var adherence = getCardioAdherence7Day(date, daily);
-    el.textContent = (done ? "✅" : "⬜") + " Cardio done · " + adherence + "/7 this week";
+    el.textContent = (done ? "✅" : "⬜") + " " + minutes + "/" + minutesTarget + " min · " +
+      steps + "/" + stepsTarget + " steps · " + adherence + "/7 this week";
   }
 
   function renderDayStatus(entry, date, daily) {
@@ -1015,58 +1079,6 @@
     document.querySelectorAll("#dayTypeToggle .segment").forEach(function (btn) {
       btn.classList.toggle("active", btn.dataset.dayType === dayType);
     });
-  }
-
-  function nativeStepsAvailable() {
-    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() &&
-      window.Capacitor.Plugins && window.Capacitor.Plugins.Steps);
-  }
-
-  // Persists a freshly-read step count into today's entry and, if the Today form is
-  // currently showing today's date, reflects it in the UI immediately. Called both from
-  // the initial getTodaySteps() read and from every live "stepsUpdate" push event, so the
-  // step count stays in sync automatically without any manual sync action.
-  function applyStepsUpdate(steps) {
-    var today = todayISO();
-    var daily = loadDaily();
-    var entry = daily[today] || {};
-    entry.steps = steps;
-    daily[today] = entry;
-    saveDaily(daily);
-
-    var shownDate = document.getElementById("logDate").value || today;
-    if (shownDate === today) {
-      document.getElementById("stepsInput").value = steps;
-      document.getElementById("sumSteps").textContent = steps;
-    }
-  }
-
-  function startStepsSync() {
-    if (!nativeStepsAvailable()) return;
-    var Steps = window.Capacitor.Plugins.Steps;
-    Steps.addListener("stepsUpdate", function (data) {
-      applyStepsUpdate(data.steps);
-    });
-    Steps.getTodaySteps().then(function (result) {
-      applyStepsUpdate(result.steps);
-    }).catch(function () {});
-  }
-
-  // Recalibrates the native baseline so future sensor reads (auto-fill, the periodic
-  // background updates) report the given "steps so far today" value plus whatever new
-  // steps happen from now on, instead of the device's own possibly-stale baseline
-  // overwriting it.
-  function recalibrateNativeSteps(stepsValue) {
-    if (!nativeStepsAvailable()) return;
-    window.Capacitor.Plugins.Steps.setTodaySteps({ steps: stepsValue }).catch(function () {});
-  }
-
-  // If the imported backup includes today's step count, treat it as the accurate
-  // "steps so far" reference point.
-  function recalibrateStepsFromImport(daily) {
-    var entry = daily[todayISO()];
-    if (!entry || entry.steps == null) return;
-    recalibrateNativeSteps(entry.steps);
   }
 
   function fillFormFromDate(iso) {
@@ -1113,10 +1125,6 @@
       daily[date] = entry;
     }
     saveDaily(daily);
-    // A manually-entered steps count for today is the user's authoritative "steps so
-    // far" figure -- recalibrate the native baseline so it's the new reference point
-    // instead of being silently overwritten by the next sync/auto-fill.
-    if (date === todayISO() && entry.steps != null) recalibrateNativeSteps(entry.steps);
     toast("Saved " + formatDateLong(date));
     fillFormFromDate(date);
     renderToday();
@@ -1397,26 +1405,30 @@
         todayMaintenance != null ? "Estimated (" + todayMaintenance + ")" : "Estimated";
     }
 
-    var todayMeasuredTdee = adaptiveTDEE(today, 28);
+    var measured = getMeasuredMaintenance(today);
     var measuredLegend = document.getElementById("trendsCaloriesMeasuredLegend");
-    if (todayMeasuredTdee != null) {
-      document.getElementById("trendsCaloriesMeasuredLegendLabel").textContent = "Measured (" + todayMeasuredTdee + ")";
-      measuredLegend.style.display = "flex";
-    } else {
-      measuredLegend.style.display = "none";
+    document.getElementById("trendsCaloriesMeasuredLegendLabel").textContent =
+      "Measured (" + measured.value + ")" + (measured.source === "settings" ? " — from settings" : "");
+    measuredLegend.style.display = "flex";
+
+    var measuredWindowHint = document.getElementById("trendsMeasuredWindowHint");
+    if (measuredWindowHint) {
+      measuredWindowHint.textContent = "last " + measured.window + " days, " + measured.loggedDays + " logged";
+      measuredWindowHint.style.display = "block";
     }
 
     var underLoggedHint = document.getElementById("trendsCaloriesUnderLoggedHint");
-    if (todayMeasuredTdee != null && todayMaintenance != null && (todayMaintenance - todayMeasuredTdee) > 500) {
+    if (measured.source === "measured" && todayMaintenance != null && (todayMaintenance - measured.value) > 500) {
       underLoggedHint.textContent = "Possible under-logged food or overestimated burn.";
       underLoggedHint.style.display = "block";
     } else {
       underLoggedHint.style.display = "none";
     }
 
-    // Prefer the measured TDEE as the deficit badge's maintenance figure once there's
-    // enough logged data to trust it; otherwise fall back to the formula estimate.
-    var badgeMaintenance = todayMeasuredTdee != null ? todayMeasuredTdee : todayMaintenance;
+    // The deficit badge always uses the measured figure -- the rolling 28-day window,
+    // never the formula estimate directly, since getMeasuredMaintenance already falls
+    // back to it (labeled) when there isn't enough logged data.
+    var badgeMaintenance = measured.value;
     renderCalorieAlignment(todayIntake, todayBmr, badgeMaintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
   }
@@ -2672,11 +2684,24 @@
       "<span><strong>" + fat + "</strong> g fat</span>";
   }
 
+  var BIG_PORTION_CALORIE_THRESHOLD = 700;
+  var BIG_PORTION_FAT_THRESHOLD_G = 40;
+
+  // Null for a normal-sized entry; otherwise a confirmation message for one that's
+  // unusually large by calories or fat -- a common place for a typo'd quantity to slip
+  // through unnoticed.
+  function getBigPortionWarning(entryCalories, entryFat, targetCalories) {
+    if (entryCalories <= BIG_PORTION_CALORIE_THRESHOLD && entryFat <= BIG_PORTION_FAT_THRESHOLD_G) return null;
+    var pctPart = targetCalories > 0 ? " (" + Math.round((entryCalories / targetCalories) * 100) + "% of today's target)" : "";
+    return "This entry is " + entryCalories + " kcal" + pctPart + ". Log it?";
+  }
+
   function handleAddFoodFromSearch() {
     if (!selectedFoodProduct) return;
     var grams = getEffectiveGrams();
     if (grams <= 0) { toast("Enter a quantity"); return; }
     var factor = grams / 100;
+    var date = document.getElementById("foodDate").value || todayISO();
     var updated = {
       grams: Math.round(grams),
       calories: Math.round(selectedFoodProduct.per100.calories * factor),
@@ -2693,11 +2718,15 @@
       updated.unitGrams = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
     }
 
+    var dayType = (loadDaily()[date] || {}).dayType;
+    var target = getGoalBaseCalorieTarget(dayType);
+    var warning = getBigPortionWarning(updated.calories, updated.fat, target);
+    if (warning && !confirm(warning)) return;
+
     if (editingFoodLogEntry) {
       updateFoodLogEntryQuantity(editingFoodLogEntry.date, editingFoodLogEntry.id, updated);
       editingFoodLogEntry = null;
     } else {
-      var date = document.getElementById("foodDate").value || todayISO();
       updated.id = makeId();
       updated.name = selectedFoodProduct.name;
       addFoodEntry(date, updated);
@@ -3392,7 +3421,7 @@
       toast("Invalid JSON");
       return;
     }
-    if (payload.daily) { saveDaily(payload.daily); recalibrateStepsFromImport(payload.daily); }
+    if (payload.daily) saveDaily(payload.daily);
     if (payload.workouts) saveWorkouts(payload.workouts);
     if (payload.settings) saveSettings(payload.settings);
     if (payload.foodlog) saveFoodLog(payload.foodlog);
@@ -3520,6 +3549,8 @@
     if (settings.stepTarget == null) { settings.stepTarget = STEP_TARGET_DEFAULT; changed = true; }
     if (settings.liftingDayTarget == null) { settings.liftingDayTarget = LIFTING_DAY_TARGET_DEFAULT; changed = true; }
     if (settings.cardioRestDayTarget == null) { settings.cardioRestDayTarget = CARDIO_REST_DAY_TARGET_DEFAULT; changed = true; }
+    if (settings.fatTargetLow == null) { settings.fatTargetLow = FAT_TARGET_LOW_DEFAULT; changed = true; }
+    if (settings.fatTargetHigh == null) { settings.fatTargetHigh = FAT_TARGET_HIGH_DEFAULT; changed = true; }
     if (changed) saveSettings(settings);
     return settings;
   }
@@ -3535,6 +3566,8 @@
     document.getElementById("cardioRestDayTargetInput").value = settings.cardioRestDayTarget;
     document.getElementById("proteinTargetInput").value = settings.proteinTarget;
     document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
+    document.getElementById("fatTargetLowInput").value = settings.fatTargetLow;
+    document.getElementById("fatTargetHighInput").value = settings.fatTargetHigh;
     document.getElementById("treatBudgetInput").value = settings.treatBudget;
     document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget;
     document.getElementById("stepTargetInput").value = settings.stepTarget;
@@ -3569,6 +3602,22 @@
     var value = document.getElementById("proteinTargetInput").value;
     var settings = loadSettings();
     settings.proteinTarget = value !== "" ? Math.round(parseFloat(value)) : PROTEIN_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleFatTargetLowChange() {
+    var value = document.getElementById("fatTargetLowInput").value;
+    var settings = loadSettings();
+    settings.fatTargetLow = value !== "" ? Math.round(parseFloat(value)) : FAT_TARGET_LOW_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleFatTargetHighChange() {
+    var value = document.getElementById("fatTargetHighInput").value;
+    var settings = loadSettings();
+    settings.fatTargetHigh = value !== "" ? Math.round(parseFloat(value)) : FAT_TARGET_HIGH_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -3669,10 +3718,10 @@
     return bmr + burned + tef;
   }
 
-  // ---------- adaptive TDEE (measured from logged data) ----------
+  // ---------- measured maintenance (from logged data) ----------
 
-  var ADAPTIVE_TDEE_MIN_LOGGED_DAYS = 21; // of the window's days, how many need both intake and weight logged to trust the result
-  var WEIGHT_EMA_ALPHA = 0.1;
+  var MEASURED_MAINTENANCE_WINDOW_DAYS = 28;
+  var MEASURED_MAINTENANCE_MIN_LOGGED_DAYS = 21; // of the window's days, how many need food logged to trust the result
   var KCAL_PER_KG = 7700; // rough energy-density-of-bodyweight-change constant
 
   // Builds a day-by-day weight value for every date in [startDate, endDate], linearly
@@ -3705,45 +3754,59 @@
     return series;
   }
 
-  // Exponential moving average (given alpha) over a { date, weight } series, in date order.
-  function computeWeightEMA(series, alpha) {
-    var ema = [];
-    var prev = null;
-    series.forEach(function (pt, i) {
-      var value = i === 0 ? pt.weight : alpha * pt.weight + (1 - alpha) * prev;
-      ema.push({ date: pt.date, value: value });
-      prev = value;
-    });
-    return ema;
+  function average(nums) {
+    return nums.reduce(function (a, b) { return a + b; }, 0) / nums.length;
   }
 
-  // TDEE measured from actually-logged intake and weight change, rather than the BMR
-  // formula + activity estimate. Only trustworthy with enough real data points, so it
-  // returns null below ADAPTIVE_TDEE_MIN_LOGGED_DAYS days of combined intake+weight logs.
-  function adaptiveTDEE(endDate, windowDays) {
-    windowDays = windowDays || 28;
+  // The actually-logged weight values (no interpolation) on each date in [start, end].
+  function getLoggedWeightsInRange(daily, start, end) {
+    var weights = [];
+    for (var d = start; d <= end; d = addDaysISO(d, 1)) {
+      var entry = daily[d];
+      if (entry && entry.weight != null) weights.push(entry.weight);
+    }
+    return weights;
+  }
+
+  // Maintenance measured from actually-logged intake and weight change over a rolling
+  // 28-day window ending on `endDate`, independent of whatever period a chart is
+  // showing: avgIntake is the mean of every day in the window with food logged; the
+  // weight-change term compares the average of real weigh-ins (never a single one) in
+  // the window's first 7 days to its last 7 days. Falls back to the Profile's
+  // maintenance estimate (source: "settings") when there isn't enough logged data to
+  // trust a measured figure -- fewer than MEASURED_MAINTENANCE_MIN_LOGGED_DAYS days with
+  // food logged, or no real weigh-in in either edge week.
+  function getMeasuredMaintenance(endDate) {
+    var windowDays = MEASURED_MAINTENANCE_WINDOW_DAYS;
     var daily = loadDaily();
     var startDate = addDaysISO(endDate, -(windowDays - 1));
 
-    var loggedBothCount = 0;
-    var intakeSum = 0, intakeCount = 0;
+    var intakeSum = 0, loggedDays = 0;
     for (var d = startDate; d <= endDate; d = addDaysISO(d, 1)) {
       var entry = daily[d];
-      if (!entry) continue;
-      if (entry.calories != null) { intakeSum += entry.calories; intakeCount++; }
-      if (entry.calories != null && entry.weight != null) loggedBothCount++;
+      if (entry && entry.calories != null) { intakeSum += entry.calories; loggedDays++; }
     }
-    if (loggedBothCount < ADAPTIVE_TDEE_MIN_LOGGED_DAYS) return null;
 
-    var weightSeries = buildInterpolatedWeightSeries(daily, startDate, endDate);
-    if (weightSeries == null) return null;
-    var ema = computeWeightEMA(weightSeries, WEIGHT_EMA_ALPHA);
-    var trendStart = ema[0].value;
-    var trendEnd = ema[ema.length - 1].value;
+    var result = { value: null, source: "settings", window: windowDays, loggedDays: loggedDays };
+    if (loggedDays < MEASURED_MAINTENANCE_MIN_LOGGED_DAYS) {
+      result.value = getMaintenanceTdeeForTargets();
+      return result;
+    }
 
-    var avgIntake = intakeSum / intakeCount;
-    var tdee = avgIntake + (trendStart - trendEnd) * KCAL_PER_KG / windowDays;
-    return Math.round(tdee / 10) * 10;
+    var firstWeekWeights = getLoggedWeightsInRange(daily, startDate, addDaysISO(startDate, 6));
+    var lastWeekWeights = getLoggedWeightsInRange(daily, addDaysISO(endDate, -6), endDate);
+    if (firstWeekWeights.length === 0 || lastWeekWeights.length === 0) {
+      result.value = getMaintenanceTdeeForTargets();
+      return result;
+    }
+
+    var avgIntake = intakeSum / loggedDays;
+    var avgFirstWeight = average(firstWeekWeights);
+    var avgLastWeight = average(lastWeekWeights);
+    var maintenance = avgIntake + (KCAL_PER_KG * (avgFirstWeight - avgLastWeight)) / windowDays;
+    result.value = Math.round(maintenance / 10) * 10;
+    result.source = "measured";
+    return result;
   }
 
   // ---------- init ----------
@@ -3761,8 +3824,6 @@
     document.getElementById("foodDate").value = todayISO();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
-
-    startStepsSync();
 
     fillFormFromDate(todayISO());
 
@@ -3804,6 +3865,8 @@
     document.getElementById("cardioRestDayTargetInput").addEventListener("change", handleCardioRestDayTargetChange);
     document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
     document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
+    document.getElementById("fatTargetLowInput").addEventListener("change", handleFatTargetLowChange);
+    document.getElementById("fatTargetHighInput").addEventListener("change", handleFatTargetHighChange);
     document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
     document.getElementById("cardioMinutesTargetInput").addEventListener("change", handleCardioMinutesTargetChange);
     document.getElementById("stepTargetInput").addEventListener("change", handleStepTargetChange);
@@ -3909,7 +3972,7 @@
       estimateStepsCalories: estimateStepsCalories,
       computeTEF: computeTEF,
       classifyMaintenanceBand: classifyMaintenanceBand,
-      adaptiveTDEE: adaptiveTDEE,
+      getMeasuredMaintenance: getMeasuredMaintenance,
       loadSettings: loadSettings,
       saveSettings: saveSettings,
       loadDaily: loadDaily,
@@ -3955,6 +4018,11 @@
       getTreatCaloriesForDate: getTreatCaloriesForDate,
       getSetTypoWarning: getSetTypoWarning,
       getFixedCalorieTarget: getFixedCalorieTarget,
+      getDayTypeTargetLabel: getDayTypeTargetLabel,
+      getBigPortionWarning: getBigPortionWarning,
+      getRemainingCaloriesNotice: getRemainingCaloriesNotice,
+      getFatTargetRange: getFatTargetRange,
+      todayISO: todayISO,
       migrateLegacyFixedTarget: migrateLegacyFixedTarget
     };
   }

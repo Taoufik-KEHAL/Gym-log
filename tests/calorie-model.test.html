@@ -153,64 +153,74 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.classifyMaintenanceBand(-151).label === "Over maintenance");
   });
 
-  // ---------- adaptive TDEE ----------
+  // ---------- measured maintenance ----------
 
-  test("adaptiveTDEE formula: given avgIntake 2430, trend 107.3 -> 106.9kg, 28 days ~= 2540", function () {
+  test("getMeasuredMaintenance formula: given avgIntake 2430, first/last week avg 107.3 -> 106.9kg, 28 days ~= 2540", function () {
     // Direct check of the formula/constant the task specifies, independent of how
-    // adaptiveTDEE's own EMA/interpolation derives trendStart/trendEnd from raw logs
-    // (covered separately by the integration case below).
-    var avgIntake = 2430, trendStart = 107.3, trendEnd = 106.9, days = 28;
-    var tdee = avgIntake + (trendStart - trendEnd) * 7700 / days;
-    assert(approx(tdee, 2540, 1), "expected ~2540, got " + tdee);
+    // getMeasuredMaintenance derives the two week-averages from raw logs (covered
+    // separately by the integration case below).
+    var avgIntake = 2430, avgFirstWeek = 107.3, avgLastWeek = 106.9, days = 28;
+    var maintenance = avgIntake + (avgFirstWeek - avgLastWeek) * 7700 / days;
+    assert(approx(maintenance, 2540, 1), "expected ~2540, got " + maintenance);
   });
 
-  test("adaptiveTDEE: integration case, 28 days of logs declining ~107.3 -> 106.9kg at 2430 kcal/day", function () {
+  test("getMeasuredMaintenance: integration case, 28 days of logs, first/last week averaging 107.3 -> 106.9kg at 2430 kcal/day", function () {
     clearStorage();
     var daily = {};
     var endDate = "2026-09-28";
-    var startWeight = 107.3, endWeight = 106.9;
     for (var i = 0; i < 28; i++) {
       var d = new Date(endDate + "T00:00:00");
       d.setDate(d.getDate() - (27 - i));
       var iso = d.toISOString().slice(0, 10);
       var entry = { calories: 2430 };
-      // Skip a few scattered weigh-ins so the interpolation path is exercised too,
-      // while staying well above the >=21-days-with-both validity threshold.
-      if (i % 6 !== 3) {
-        entry.weight = Math.round((startWeight + (endWeight - startWeight) * (i / 27)) * 10) / 10;
-      }
+      // First week (i 0-6) averages 107.3, last week (i 21-27) averages 106.9 -- the
+      // middle days' weight is irrelevant to the formula, only logged here for realism.
+      if (i < 7) entry.weight = 107.3;
+      else if (i >= 21) entry.weight = 106.9;
+      else entry.weight = 107.1;
       daily[iso] = entry;
     }
     hooks.saveDaily(daily);
-    var tdee = hooks.adaptiveTDEE(endDate, 28);
-    assert(tdee != null, "expected a numeric result, got null (check validity gate)");
-    // Weight is declining while eating 2430/day, so true TDEE must read higher than
-    // that -- generous band around the ~2540 figure from the task, not an exact match,
-    // since the realistic EMA-smoothed path doesn't reproduce 107.3/106.9 as literal
-    // endpoints (see the formula-level case above for that exact check).
-    assert(tdee > 2430, "expected TDEE above avgIntake for a weight-losing window, got " + tdee);
-    assert(approx(tdee, 2540, 120), "expected roughly ~2540 (+-120), got " + tdee);
+    var result = hooks.getMeasuredMaintenance(endDate);
+    assert(result.source === "measured", "expected a measured result, got " + result.source);
+    assert(result.window === 28 && result.loggedDays === 28, "expected window 28 and 28 logged days, got " + JSON.stringify(result));
+    assert(approx(result.value, 2540, 10), "expected ~2540, got " + result.value);
   });
 
-  test("adaptiveTDEE: null when fewer than 21 days have both intake and weight logged", function () {
+  test("getMeasuredMaintenance: falls back to the settings estimate below 21 logged days", function () {
     clearStorage();
+    hooks.saveSettings({ maintenanceTdeeForTargets: 2600 });
     var daily = {};
     var endDate = "2026-09-28";
     for (var i = 0; i < 28; i++) {
       var d = new Date(endDate + "T00:00:00");
       d.setDate(d.getDate() - (27 - i));
       var iso = d.toISOString().slice(0, 10);
-      // Only 10 of the 28 days get both fields logged -- below the 21-day threshold.
+      // Only 10 of the 28 days get food logged -- below the 21-day threshold.
       daily[iso] = i < 10 ? { calories: 2400, weight: 90 } : {};
     }
     hooks.saveDaily(daily);
-    assert(hooks.adaptiveTDEE(endDate, 28) === null, "expected null below the validity threshold");
+    var result = hooks.getMeasuredMaintenance(endDate);
+    assert(result.source === "settings", "expected a settings fallback, got " + result.source);
+    assert(result.value === 2600, "expected the settings estimate 2600, got " + result.value);
+    assert(result.loggedDays === 10, "expected loggedDays to report the real count (10), got " + result.loggedDays);
   });
 
-  test("adaptiveTDEE: null with no logged weight at all", function () {
+  test("getMeasuredMaintenance: falls back to settings when a week has food logged but no real weigh-in", function () {
     clearStorage();
-    hooks.saveDaily({ "2026-09-28": { calories: 2400 } });
-    assert(hooks.adaptiveTDEE("2026-09-28", 28) === null, "expected null with zero weigh-ins");
+    hooks.saveSettings({ maintenanceTdeeForTargets: 2500 });
+    var daily = {};
+    var endDate = "2026-09-28";
+    for (var i = 0; i < 28; i++) {
+      var d = new Date(endDate + "T00:00:00");
+      d.setDate(d.getDate() - (27 - i));
+      var iso = d.toISOString().slice(0, 10);
+      daily[iso] = { calories: 2400 }; // food logged every day, but never a weight
+    }
+    hooks.saveDaily(daily);
+    var result = hooks.getMeasuredMaintenance(endDate);
+    assert(result.source === "settings", "expected a settings fallback with no weigh-ins, got " + result.source);
+    assert(result.value === 2500 && result.loggedDays === 28, "expected the settings value with loggedDays still reported, got " + JSON.stringify(result));
   });
 
   // ---------- goal plan ----------
@@ -827,6 +837,61 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     hooks.saveFoodTemplatesList(templates);
     var loaded = hooks.loadFoodTemplates();
     assert(loaded.length === 1 && loaded[0].name === "Breakfast" && loaded[0].items.length === 1, "expected the saved template to round-trip");
+  });
+
+  test("getDayTypeTargetLabel: names the target actually shown for each dayType", function () {
+    assert(hooks.getDayTypeTargetLabel("workout") === "lifting day", "expected workout -> lifting day");
+    assert(hooks.getDayTypeTargetLabel("cardio") === "cardio/rest day", "expected cardio -> cardio/rest day");
+    assert(hooks.getDayTypeTargetLabel("rest") === "cardio/rest day", "expected rest -> cardio/rest day");
+    assert(hooks.getDayTypeTargetLabel(null) === "cardio/rest day", "expected no dayType -> cardio/rest day, matching getFixedCalorieTarget's own fallback");
+  });
+
+  test("getBigPortionWarning: null for a normal entry, flags >700 kcal or >40g fat", function () {
+    assert(hooks.getBigPortionWarning(500, 20, 2000) === null, "expected no warning for a normal entry");
+    var byCalories = hooks.getBigPortionWarning(750, 10, 2000);
+    assert(byCalories !== null && byCalories.indexOf("750 kcal") !== -1, "expected a calorie-based warning, got: " + byCalories);
+    assert(byCalories.indexOf("38%") !== -1, "expected the % of target in the message, got: " + byCalories);
+    var byFat = hooks.getBigPortionWarning(600, 45, 2000);
+    assert(byFat !== null, "expected a warning for 45g fat even under the calorie threshold");
+    assert(hooks.getBigPortionWarning(700, 40, 2000) === null, "expected exactly 700kcal/40g to not trigger (threshold is 'above')");
+  });
+
+  test("getBigPortionWarning: omits the % clause when there's no valid target", function () {
+    var warning = hooks.getBigPortionWarning(800, 10, null);
+    assert(warning === "This entry is 800 kcal. Log it?", "expected no % clause with a null target, got: " + warning);
+  });
+
+  test("getRemainingCaloriesNotice: fires once logged calories pass 80% of target before 15:00", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
+    var today = hooks.todayISO();
+    var notice = hooks.getRemainingCaloriesNotice(today, { calories: 1700 }, new Date("2026-01-01T10:00:00"));
+    assert(notice === "300 kcal left for the rest of the day.", "expected a 300 kcal remaining notice, got: " + notice);
+  });
+
+  test("getRemainingCaloriesNotice: silent before the 80% threshold, after 15:00, or for a different date", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
+    var today = hooks.todayISO();
+    assert(hooks.getRemainingCaloriesNotice(today, { calories: 1000 }, new Date("2026-01-01T10:00:00")) === null, "expected null under 80%");
+    assert(hooks.getRemainingCaloriesNotice(today, { calories: 1900 }, new Date("2026-01-01T16:00:00")) === null, "expected null at/after 15:00");
+    assert(hooks.getRemainingCaloriesNotice("2020-01-01", { calories: 1900 }, new Date("2026-01-01T10:00:00")) === null, "expected null for a date other than today");
+    assert(hooks.getRemainingCaloriesNotice(today, {}, new Date("2026-01-01T10:00:00")) === null, "expected null with nothing logged yet");
+  });
+
+  test("getFatTargetRange: defaults to 60-75g, respects explicit settings", function () {
+    clearStorage();
+    var range = hooks.getFatTargetRange();
+    assert(range.low === 60 && range.high === 75, "expected the default 60-75g range, got " + JSON.stringify(range));
+    hooks.saveSettings({ fatTargetLow: 50, fatTargetHigh: 70 });
+    var range2 = hooks.getFatTargetRange();
+    assert(range2.low === 50 && range2.high === 70, "expected the explicit range, got " + JSON.stringify(range2));
+  });
+
+  test("applySettingsDefaults: backfills the fat target range too", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({});
+    assert(settings.fatTargetLow === 60 && settings.fatTargetHigh === 75, "expected real default values, got " + JSON.stringify(settings));
   });
 
   clearStorage();
