@@ -1038,9 +1038,16 @@
   function renderCardioTarget(date, daily) {
     var el = document.getElementById("sumCardioTarget");
     if (!el) return;
+    daily = daily || loadDaily();
+    var minutes = getCardioMinutesForDate(date);
+    var minutesTarget = getCardioMinutesTarget();
+    var entry = daily[date];
+    var steps = entry && entry.steps != null ? entry.steps : 0;
+    var stepsTarget = getStepTarget();
     var done = isCardioDoneForDate(date, daily);
     var adherence = getCardioAdherence7Day(date, daily);
-    el.textContent = (done ? "✅" : "⬜") + " Cardio done · " + adherence + "/7 this week";
+    el.textContent = (done ? "✅" : "⬜") + " " + minutes + "/" + minutesTarget + " min · " +
+      steps + "/" + stepsTarget + " steps · " + adherence + "/7 this week";
   }
 
   function renderDayStatus(entry, date, daily) {
