@@ -1397,26 +1397,30 @@
         todayMaintenance != null ? "Estimated (" + todayMaintenance + ")" : "Estimated";
     }
 
-    var todayMeasuredTdee = adaptiveTDEE(today, 28);
+    var measured = getMeasuredMaintenance(today);
     var measuredLegend = document.getElementById("trendsCaloriesMeasuredLegend");
-    if (todayMeasuredTdee != null) {
-      document.getElementById("trendsCaloriesMeasuredLegendLabel").textContent = "Measured (" + todayMeasuredTdee + ")";
-      measuredLegend.style.display = "flex";
-    } else {
-      measuredLegend.style.display = "none";
+    document.getElementById("trendsCaloriesMeasuredLegendLabel").textContent =
+      "Measured (" + measured.value + ")" + (measured.source === "settings" ? " — from settings" : "");
+    measuredLegend.style.display = "flex";
+
+    var measuredWindowHint = document.getElementById("trendsMeasuredWindowHint");
+    if (measuredWindowHint) {
+      measuredWindowHint.textContent = "last " + measured.window + " days, " + measured.loggedDays + " logged";
+      measuredWindowHint.style.display = "block";
     }
 
     var underLoggedHint = document.getElementById("trendsCaloriesUnderLoggedHint");
-    if (todayMeasuredTdee != null && todayMaintenance != null && (todayMaintenance - todayMeasuredTdee) > 500) {
+    if (measured.source === "measured" && todayMaintenance != null && (todayMaintenance - measured.value) > 500) {
       underLoggedHint.textContent = "Possible under-logged food or overestimated burn.";
       underLoggedHint.style.display = "block";
     } else {
       underLoggedHint.style.display = "none";
     }
 
-    // Prefer the measured TDEE as the deficit badge's maintenance figure once there's
-    // enough logged data to trust it; otherwise fall back to the formula estimate.
-    var badgeMaintenance = todayMeasuredTdee != null ? todayMeasuredTdee : todayMaintenance;
+    // The deficit badge always uses the measured figure -- the rolling 28-day window,
+    // never the formula estimate directly, since getMeasuredMaintenance already falls
+    // back to it (labeled) when there isn't enough logged data.
+    var badgeMaintenance = measured.value;
     renderCalorieAlignment(todayIntake, todayBmr, badgeMaintenance);
     drawMultiLineChart("trendsCaloriesChart", "trendsCaloriesEmpty", series);
   }
@@ -3669,10 +3673,10 @@
     return bmr + burned + tef;
   }
 
-  // ---------- adaptive TDEE (measured from logged data) ----------
+  // ---------- measured maintenance (from logged data) ----------
 
-  var ADAPTIVE_TDEE_MIN_LOGGED_DAYS = 21; // of the window's days, how many need both intake and weight logged to trust the result
-  var WEIGHT_EMA_ALPHA = 0.1;
+  var MEASURED_MAINTENANCE_WINDOW_DAYS = 28;
+  var MEASURED_MAINTENANCE_MIN_LOGGED_DAYS = 21; // of the window's days, how many need food logged to trust the result
   var KCAL_PER_KG = 7700; // rough energy-density-of-bodyweight-change constant
 
   // Builds a day-by-day weight value for every date in [startDate, endDate], linearly
@@ -3705,45 +3709,59 @@
     return series;
   }
 
-  // Exponential moving average (given alpha) over a { date, weight } series, in date order.
-  function computeWeightEMA(series, alpha) {
-    var ema = [];
-    var prev = null;
-    series.forEach(function (pt, i) {
-      var value = i === 0 ? pt.weight : alpha * pt.weight + (1 - alpha) * prev;
-      ema.push({ date: pt.date, value: value });
-      prev = value;
-    });
-    return ema;
+  function average(nums) {
+    return nums.reduce(function (a, b) { return a + b; }, 0) / nums.length;
   }
 
-  // TDEE measured from actually-logged intake and weight change, rather than the BMR
-  // formula + activity estimate. Only trustworthy with enough real data points, so it
-  // returns null below ADAPTIVE_TDEE_MIN_LOGGED_DAYS days of combined intake+weight logs.
-  function adaptiveTDEE(endDate, windowDays) {
-    windowDays = windowDays || 28;
+  // The actually-logged weight values (no interpolation) on each date in [start, end].
+  function getLoggedWeightsInRange(daily, start, end) {
+    var weights = [];
+    for (var d = start; d <= end; d = addDaysISO(d, 1)) {
+      var entry = daily[d];
+      if (entry && entry.weight != null) weights.push(entry.weight);
+    }
+    return weights;
+  }
+
+  // Maintenance measured from actually-logged intake and weight change over a rolling
+  // 28-day window ending on `endDate`, independent of whatever period a chart is
+  // showing: avgIntake is the mean of every day in the window with food logged; the
+  // weight-change term compares the average of real weigh-ins (never a single one) in
+  // the window's first 7 days to its last 7 days. Falls back to the Profile's
+  // maintenance estimate (source: "settings") when there isn't enough logged data to
+  // trust a measured figure -- fewer than MEASURED_MAINTENANCE_MIN_LOGGED_DAYS days with
+  // food logged, or no real weigh-in in either edge week.
+  function getMeasuredMaintenance(endDate) {
+    var windowDays = MEASURED_MAINTENANCE_WINDOW_DAYS;
     var daily = loadDaily();
     var startDate = addDaysISO(endDate, -(windowDays - 1));
 
-    var loggedBothCount = 0;
-    var intakeSum = 0, intakeCount = 0;
+    var intakeSum = 0, loggedDays = 0;
     for (var d = startDate; d <= endDate; d = addDaysISO(d, 1)) {
       var entry = daily[d];
-      if (!entry) continue;
-      if (entry.calories != null) { intakeSum += entry.calories; intakeCount++; }
-      if (entry.calories != null && entry.weight != null) loggedBothCount++;
+      if (entry && entry.calories != null) { intakeSum += entry.calories; loggedDays++; }
     }
-    if (loggedBothCount < ADAPTIVE_TDEE_MIN_LOGGED_DAYS) return null;
 
-    var weightSeries = buildInterpolatedWeightSeries(daily, startDate, endDate);
-    if (weightSeries == null) return null;
-    var ema = computeWeightEMA(weightSeries, WEIGHT_EMA_ALPHA);
-    var trendStart = ema[0].value;
-    var trendEnd = ema[ema.length - 1].value;
+    var result = { value: null, source: "settings", window: windowDays, loggedDays: loggedDays };
+    if (loggedDays < MEASURED_MAINTENANCE_MIN_LOGGED_DAYS) {
+      result.value = getMaintenanceTdeeForTargets();
+      return result;
+    }
 
-    var avgIntake = intakeSum / intakeCount;
-    var tdee = avgIntake + (trendStart - trendEnd) * KCAL_PER_KG / windowDays;
-    return Math.round(tdee / 10) * 10;
+    var firstWeekWeights = getLoggedWeightsInRange(daily, startDate, addDaysISO(startDate, 6));
+    var lastWeekWeights = getLoggedWeightsInRange(daily, addDaysISO(endDate, -6), endDate);
+    if (firstWeekWeights.length === 0 || lastWeekWeights.length === 0) {
+      result.value = getMaintenanceTdeeForTargets();
+      return result;
+    }
+
+    var avgIntake = intakeSum / loggedDays;
+    var avgFirstWeight = average(firstWeekWeights);
+    var avgLastWeight = average(lastWeekWeights);
+    var maintenance = avgIntake + (KCAL_PER_KG * (avgFirstWeight - avgLastWeight)) / windowDays;
+    result.value = Math.round(maintenance / 10) * 10;
+    result.source = "measured";
+    return result;
   }
 
   // ---------- init ----------
@@ -3909,7 +3927,7 @@
       estimateStepsCalories: estimateStepsCalories,
       computeTEF: computeTEF,
       classifyMaintenanceBand: classifyMaintenanceBand,
-      adaptiveTDEE: adaptiveTDEE,
+      getMeasuredMaintenance: getMeasuredMaintenance,
       loadSettings: loadSettings,
       saveSettings: saveSettings,
       loadDaily: loadDaily,
