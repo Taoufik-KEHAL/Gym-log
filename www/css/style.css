@@ -118,10 +118,28 @@ canvas {
   font-weight: 600;
 }
 
+.summary-group-title {
+  margin: 14px 0 8px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.summary-group-title:first-of-type {
+  margin-top: 0;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+}
+
+.summary-grid--2 {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .stat {
