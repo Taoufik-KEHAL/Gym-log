@@ -1074,58 +1074,6 @@
     });
   }
 
-  function nativeStepsAvailable() {
-    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() &&
-      window.Capacitor.Plugins && window.Capacitor.Plugins.Steps);
-  }
-
-  // Persists a freshly-read step count into today's entry and, if the Today form is
-  // currently showing today's date, reflects it in the UI immediately. Called both from
-  // the initial getTodaySteps() read and from every live "stepsUpdate" push event, so the
-  // step count stays in sync automatically without any manual sync action.
-  function applyStepsUpdate(steps) {
-    var today = todayISO();
-    var daily = loadDaily();
-    var entry = daily[today] || {};
-    entry.steps = steps;
-    daily[today] = entry;
-    saveDaily(daily);
-
-    var shownDate = document.getElementById("logDate").value || today;
-    if (shownDate === today) {
-      document.getElementById("stepsInput").value = steps;
-      document.getElementById("sumSteps").textContent = steps;
-    }
-  }
-
-  function startStepsSync() {
-    if (!nativeStepsAvailable()) return;
-    var Steps = window.Capacitor.Plugins.Steps;
-    Steps.addListener("stepsUpdate", function (data) {
-      applyStepsUpdate(data.steps);
-    });
-    Steps.getTodaySteps().then(function (result) {
-      applyStepsUpdate(result.steps);
-    }).catch(function () {});
-  }
-
-  // Recalibrates the native baseline so future sensor reads (auto-fill, the periodic
-  // background updates) report the given "steps so far today" value plus whatever new
-  // steps happen from now on, instead of the device's own possibly-stale baseline
-  // overwriting it.
-  function recalibrateNativeSteps(stepsValue) {
-    if (!nativeStepsAvailable()) return;
-    window.Capacitor.Plugins.Steps.setTodaySteps({ steps: stepsValue }).catch(function () {});
-  }
-
-  // If the imported backup includes today's step count, treat it as the accurate
-  // "steps so far" reference point.
-  function recalibrateStepsFromImport(daily) {
-    var entry = daily[todayISO()];
-    if (!entry || entry.steps == null) return;
-    recalibrateNativeSteps(entry.steps);
-  }
-
   function fillFormFromDate(iso) {
     var daily = loadDaily();
     var entry = daily[iso] || {};
@@ -1170,10 +1118,6 @@
       daily[date] = entry;
     }
     saveDaily(daily);
-    // A manually-entered steps count for today is the user's authoritative "steps so
-    // far" figure -- recalibrate the native baseline so it's the new reference point
-    // instead of being silently overwritten by the next sync/auto-fill.
-    if (date === todayISO() && entry.steps != null) recalibrateNativeSteps(entry.steps);
     toast("Saved " + formatDateLong(date));
     fillFormFromDate(date);
     renderToday();
@@ -3470,7 +3414,7 @@
       toast("Invalid JSON");
       return;
     }
-    if (payload.daily) { saveDaily(payload.daily); recalibrateStepsFromImport(payload.daily); }
+    if (payload.daily) saveDaily(payload.daily);
     if (payload.workouts) saveWorkouts(payload.workouts);
     if (payload.settings) saveSettings(payload.settings);
     if (payload.foodlog) saveFoodLog(payload.foodlog);
@@ -3873,8 +3817,6 @@
     document.getElementById("foodDate").value = todayISO();
     resetWeightTrendDateInputs();
     resetTrendsDateInputs();
-
-    startStepsSync();
 
     fillFormFromDate(todayISO());
 
