@@ -692,6 +692,7 @@
     document.getElementById("sumCalories").textContent = entry.calories != null ? entry.calories : "—";
     renderCaloriesVsBurned(entry, today, daily);
     renderCalorieTarget(today, entry, daily);
+    renderRemainingCaloriesNotice(today, entry);
     renderTreatBudget(today);
     document.getElementById("sumProtein").textContent = entry.protein != null ? entry.protein : "—";
     renderProteinTarget(entry);
@@ -838,6 +839,35 @@
     el.textContent = range.low === range.high
       ? "Target " + range.low
       : "Target " + range.low + "–" + range.high;
+  }
+
+  var REMAINING_CALORIES_NOTICE_PCT = 0.8; // fraction of target that triggers the notice
+  var REMAINING_CALORIES_NOTICE_HOUR_CUTOFF = 15; // only worth flagging with most of the day still ahead
+
+  // Null unless today's logged calories have passed 80% of target before 15:00 --
+  // a heads-up that there isn't much budget left for the rest of the day, while
+  // there's still time to act on it. `now` is injectable for testing.
+  function getRemainingCaloriesNotice(date, entry, now) {
+    now = now || new Date();
+    if (date !== todayISO() || now.getHours() >= REMAINING_CALORIES_NOTICE_HOUR_CUTOFF) return null;
+    if (entry.calories == null) return null;
+    var target = getGoalBaseCalorieTarget(entry.dayType);
+    if (!(target > 0)) return null;
+    if (entry.calories / target < REMAINING_CALORIES_NOTICE_PCT) return null;
+    return Math.max(0, target - entry.calories) + " kcal left for the rest of the day.";
+  }
+
+  function renderRemainingCaloriesNotice(date, entry) {
+    var el = document.getElementById("remainingCaloriesNotice");
+    if (!el) return;
+    var message = getRemainingCaloriesNotice(date, entry);
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = "⏳ " + message;
+    el.style.display = "block";
   }
 
   function getCardioMET(name, pace) {
@@ -2682,11 +2712,24 @@
       "<span><strong>" + fat + "</strong> g fat</span>";
   }
 
+  var BIG_PORTION_CALORIE_THRESHOLD = 700;
+  var BIG_PORTION_FAT_THRESHOLD_G = 40;
+
+  // Null for a normal-sized entry; otherwise a confirmation message for one that's
+  // unusually large by calories or fat -- a common place for a typo'd quantity to slip
+  // through unnoticed.
+  function getBigPortionWarning(entryCalories, entryFat, targetCalories) {
+    if (entryCalories <= BIG_PORTION_CALORIE_THRESHOLD && entryFat <= BIG_PORTION_FAT_THRESHOLD_G) return null;
+    var pctPart = targetCalories > 0 ? " (" + Math.round((entryCalories / targetCalories) * 100) + "% of today's target)" : "";
+    return "This entry is " + entryCalories + " kcal" + pctPart + ". Log it?";
+  }
+
   function handleAddFoodFromSearch() {
     if (!selectedFoodProduct) return;
     var grams = getEffectiveGrams();
     if (grams <= 0) { toast("Enter a quantity"); return; }
     var factor = grams / 100;
+    var date = document.getElementById("foodDate").value || todayISO();
     var updated = {
       grams: Math.round(grams),
       calories: Math.round(selectedFoodProduct.per100.calories * factor),
@@ -2703,11 +2746,15 @@
       updated.unitGrams = parseFloat(document.getElementById("foodUnitGramsInput").value) || 0;
     }
 
+    var dayType = (loadDaily()[date] || {}).dayType;
+    var target = getGoalBaseCalorieTarget(dayType);
+    var warning = getBigPortionWarning(updated.calories, updated.fat, target);
+    if (warning && !confirm(warning)) return;
+
     if (editingFoodLogEntry) {
       updateFoodLogEntryQuantity(editingFoodLogEntry.date, editingFoodLogEntry.id, updated);
       editingFoodLogEntry = null;
     } else {
-      var date = document.getElementById("foodDate").value || todayISO();
       updated.id = makeId();
       updated.name = selectedFoodProduct.name;
       addFoodEntry(date, updated);
@@ -3980,6 +4027,9 @@
       getSetTypoWarning: getSetTypoWarning,
       getFixedCalorieTarget: getFixedCalorieTarget,
       getDayTypeTargetLabel: getDayTypeTargetLabel,
+      getBigPortionWarning: getBigPortionWarning,
+      getRemainingCaloriesNotice: getRemainingCaloriesNotice,
+      todayISO: todayISO,
       migrateLegacyFixedTarget: migrateLegacyFixedTarget
     };
   }

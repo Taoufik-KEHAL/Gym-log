@@ -846,6 +846,39 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.getDayTypeTargetLabel(null) === "cardio/rest day", "expected no dayType -> cardio/rest day, matching getFixedCalorieTarget's own fallback");
   });
 
+  test("getBigPortionWarning: null for a normal entry, flags >700 kcal or >40g fat", function () {
+    assert(hooks.getBigPortionWarning(500, 20, 2000) === null, "expected no warning for a normal entry");
+    var byCalories = hooks.getBigPortionWarning(750, 10, 2000);
+    assert(byCalories !== null && byCalories.indexOf("750 kcal") !== -1, "expected a calorie-based warning, got: " + byCalories);
+    assert(byCalories.indexOf("38%") !== -1, "expected the % of target in the message, got: " + byCalories);
+    var byFat = hooks.getBigPortionWarning(600, 45, 2000);
+    assert(byFat !== null, "expected a warning for 45g fat even under the calorie threshold");
+    assert(hooks.getBigPortionWarning(700, 40, 2000) === null, "expected exactly 700kcal/40g to not trigger (threshold is 'above')");
+  });
+
+  test("getBigPortionWarning: omits the % clause when there's no valid target", function () {
+    var warning = hooks.getBigPortionWarning(800, 10, null);
+    assert(warning === "This entry is 800 kcal. Log it?", "expected no % clause with a null target, got: " + warning);
+  });
+
+  test("getRemainingCaloriesNotice: fires once logged calories pass 80% of target before 15:00", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
+    var today = hooks.todayISO();
+    var notice = hooks.getRemainingCaloriesNotice(today, { calories: 1700 }, new Date("2026-01-01T10:00:00"));
+    assert(notice === "300 kcal left for the rest of the day.", "expected a 300 kcal remaining notice, got: " + notice);
+  });
+
+  test("getRemainingCaloriesNotice: silent before the 80% threshold, after 15:00, or for a different date", function () {
+    clearStorage();
+    hooks.saveSettings({ fixedTargetsEnabled: true, cardioRestDayTarget: 2000 });
+    var today = hooks.todayISO();
+    assert(hooks.getRemainingCaloriesNotice(today, { calories: 1000 }, new Date("2026-01-01T10:00:00")) === null, "expected null under 80%");
+    assert(hooks.getRemainingCaloriesNotice(today, { calories: 1900 }, new Date("2026-01-01T16:00:00")) === null, "expected null at/after 15:00");
+    assert(hooks.getRemainingCaloriesNotice("2020-01-01", { calories: 1900 }, new Date("2026-01-01T10:00:00")) === null, "expected null for a date other than today");
+    assert(hooks.getRemainingCaloriesNotice(today, {}, new Date("2026-01-01T10:00:00")) === null, "expected null with nothing logged yet");
+  });
+
   clearStorage();
 
   // ---------- render ----------
