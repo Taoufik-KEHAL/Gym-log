@@ -698,6 +698,7 @@
     renderProteinTarget(entry);
     document.getElementById("sumCarbs").textContent = entry.carbs != null ? entry.carbs : "—";
     document.getElementById("sumFat").textContent = entry.fat != null ? entry.fat : "—";
+    renderFatTarget(entry);
     document.getElementById("sumSteps").textContent = entry.steps != null ? entry.steps : "—";
     renderCardioTarget(today, daily);
     renderGoalSummary(today);
@@ -771,6 +772,26 @@
     var target = getProteinTarget();
     var protein = entry.protein != null ? entry.protein : 0;
     el.textContent = protein + " / " + target + " g";
+  }
+
+  var FAT_TARGET_LOW_DEFAULT = 60;
+  var FAT_TARGET_HIGH_DEFAULT = 75;
+
+  function getFatTargetRange() {
+    var settings = loadSettings();
+    return {
+      low: settings.fatTargetLow != null ? settings.fatTargetLow : FAT_TARGET_LOW_DEFAULT,
+      high: settings.fatTargetHigh != null ? settings.fatTargetHigh : FAT_TARGET_HIGH_DEFAULT
+    };
+  }
+
+  function renderFatTarget(entry) {
+    var el = document.getElementById("sumFatTarget");
+    if (!el) return;
+    var range = getFatTargetRange();
+    var fat = entry.fat != null ? entry.fat : 0;
+    el.textContent = fat + " / " + range.low + "–" + range.high + " g";
+    el.classList.toggle("status-bad", fat > range.high);
   }
 
   var TREAT_BUDGET_DEFAULT = 150;
@@ -3577,6 +3598,8 @@
     if (settings.stepTarget == null) { settings.stepTarget = STEP_TARGET_DEFAULT; changed = true; }
     if (settings.liftingDayTarget == null) { settings.liftingDayTarget = LIFTING_DAY_TARGET_DEFAULT; changed = true; }
     if (settings.cardioRestDayTarget == null) { settings.cardioRestDayTarget = CARDIO_REST_DAY_TARGET_DEFAULT; changed = true; }
+    if (settings.fatTargetLow == null) { settings.fatTargetLow = FAT_TARGET_LOW_DEFAULT; changed = true; }
+    if (settings.fatTargetHigh == null) { settings.fatTargetHigh = FAT_TARGET_HIGH_DEFAULT; changed = true; }
     if (changed) saveSettings(settings);
     return settings;
   }
@@ -3592,6 +3615,8 @@
     document.getElementById("cardioRestDayTargetInput").value = settings.cardioRestDayTarget;
     document.getElementById("proteinTargetInput").value = settings.proteinTarget;
     document.getElementById("maintenanceTdeeInput").value = settings.maintenanceTdeeForTargets != null ? settings.maintenanceTdeeForTargets : "";
+    document.getElementById("fatTargetLowInput").value = settings.fatTargetLow;
+    document.getElementById("fatTargetHighInput").value = settings.fatTargetHigh;
     document.getElementById("treatBudgetInput").value = settings.treatBudget;
     document.getElementById("cardioMinutesTargetInput").value = settings.cardioMinutesTarget;
     document.getElementById("stepTargetInput").value = settings.stepTarget;
@@ -3626,6 +3651,22 @@
     var value = document.getElementById("proteinTargetInput").value;
     var settings = loadSettings();
     settings.proteinTarget = value !== "" ? Math.round(parseFloat(value)) : PROTEIN_TARGET_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleFatTargetLowChange() {
+    var value = document.getElementById("fatTargetLowInput").value;
+    var settings = loadSettings();
+    settings.fatTargetLow = value !== "" ? Math.round(parseFloat(value)) : FAT_TARGET_LOW_DEFAULT;
+    saveSettings(settings);
+    renderToday();
+  }
+
+  function handleFatTargetHighChange() {
+    var value = document.getElementById("fatTargetHighInput").value;
+    var settings = loadSettings();
+    settings.fatTargetHigh = value !== "" ? Math.round(parseFloat(value)) : FAT_TARGET_HIGH_DEFAULT;
     saveSettings(settings);
     renderToday();
   }
@@ -3875,6 +3916,8 @@
     document.getElementById("cardioRestDayTargetInput").addEventListener("change", handleCardioRestDayTargetChange);
     document.getElementById("proteinTargetInput").addEventListener("change", handleProteinTargetChange);
     document.getElementById("maintenanceTdeeInput").addEventListener("change", handleMaintenanceTdeeChange);
+    document.getElementById("fatTargetLowInput").addEventListener("change", handleFatTargetLowChange);
+    document.getElementById("fatTargetHighInput").addEventListener("change", handleFatTargetHighChange);
     document.getElementById("treatBudgetInput").addEventListener("change", handleTreatBudgetChange);
     document.getElementById("cardioMinutesTargetInput").addEventListener("change", handleCardioMinutesTargetChange);
     document.getElementById("stepTargetInput").addEventListener("change", handleStepTargetChange);
@@ -4029,6 +4072,7 @@
       getDayTypeTargetLabel: getDayTypeTargetLabel,
       getBigPortionWarning: getBigPortionWarning,
       getRemainingCaloriesNotice: getRemainingCaloriesNotice,
+      getFatTargetRange: getFatTargetRange,
       todayISO: todayISO,
       migrateLegacyFixedTarget: migrateLegacyFixedTarget
     };

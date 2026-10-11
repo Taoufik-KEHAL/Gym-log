@@ -879,6 +879,21 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.getRemainingCaloriesNotice(today, {}, new Date("2026-01-01T10:00:00")) === null, "expected null with nothing logged yet");
   });
 
+  test("getFatTargetRange: defaults to 60-75g, respects explicit settings", function () {
+    clearStorage();
+    var range = hooks.getFatTargetRange();
+    assert(range.low === 60 && range.high === 75, "expected the default 60-75g range, got " + JSON.stringify(range));
+    hooks.saveSettings({ fatTargetLow: 50, fatTargetHigh: 70 });
+    var range2 = hooks.getFatTargetRange();
+    assert(range2.low === 50 && range2.high === 70, "expected the explicit range, got " + JSON.stringify(range2));
+  });
+
+  test("applySettingsDefaults: backfills the fat target range too", function () {
+    clearStorage();
+    var settings = hooks.applySettingsDefaults({});
+    assert(settings.fatTargetLow === 60 && settings.fatTargetHigh === 75, "expected real default values, got " + JSON.stringify(settings));
+  });
+
   clearStorage();
 
   // ---------- render ----------

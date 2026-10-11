@@ -45,7 +45,7 @@
         <div class="stat"><div class="value" id="sumSteps">—</div><div class="label">Steps</div><div class="stat-sub" id="sumCardioTarget"></div></div>
         <div class="stat"><div class="value" id="sumProtein">—</div><div class="label">Protein (g)</div><div class="stat-sub" id="sumProteinTarget"></div></div>
         <div class="stat"><div class="value" id="sumCarbs">—</div><div class="label">Carbs (g)</div></div>
-        <div class="stat"><div class="value" id="sumFat">—</div><div class="label">Fat (g)</div></div>
+        <div class="stat"><div class="value" id="sumFat">—</div><div class="label">Fat (g)</div><div class="stat-sub" id="sumFatTarget"></div></div>
       </div>
       <div class="day-status" id="dayStatus" style="display:none;"></div>
       <p class="hint hint--tight" id="remainingCaloriesNotice" style="display:none;"></p>
@@ -439,6 +439,10 @@
       <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:10px;">
         <div class="mini-field"><label for="proteinTargetInput">Protein target (g)</label><input type="number" id="proteinTargetInput" step="5" min="0" inputmode="numeric" placeholder="e.g. 190" /></div>
         <div class="mini-field"><label for="maintenanceTdeeInput">Maintenance estimate (kcal)</label><input type="number" id="maintenanceTdeeInput" step="10" min="0" inputmode="numeric" placeholder="e.g. 2500" /></div>
+      </div>
+      <div class="add-set-row" style="grid-template-columns: 1fr 1fr; margin-top:10px;">
+        <div class="mini-field"><label for="fatTargetLowInput">Fat target low (g)</label><input type="number" id="fatTargetLowInput" step="5" min="0" inputmode="numeric" placeholder="e.g. 60" /></div>
+        <div class="mini-field"><label for="fatTargetHighInput">Fat target high (g)</label><input type="number" id="fatTargetHighInput" step="5" min="0" inputmode="numeric" placeholder="e.g. 75" /></div>
       </div>
       <div class="field" style="margin-top:10px;">
         <label for="treatBudgetInput">Daily treat budget (kcal)</label>
