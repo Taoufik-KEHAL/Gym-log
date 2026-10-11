@@ -817,11 +817,17 @@
     el.classList.toggle("status-bad", used > budget);
   }
 
+  // Matches getFixedCalorieTarget's own dayType grouping (workout = lifting, anything
+  // else = cardio/rest) so the label always names the target it's actually showing.
+  function getDayTypeTargetLabel(dayType) {
+    return dayType === "workout" ? "lifting day" : "cardio/rest day";
+  }
+
   function renderCalorieTarget(date, entry, daily) {
     var el = document.getElementById("sumCaloriesTarget");
     var fixed = getFixedCalorieTarget(entry.dayType);
     if (fixed != null) {
-      el.textContent = "Target " + fixed + " (fixed)";
+      el.textContent = "Target " + fixed + " (" + getDayTypeTargetLabel(entry.dayType) + ")";
       return;
     }
     var range = computeSuggestedCalorieRange(date, entry, daily);
@@ -3973,6 +3979,7 @@
       getTreatCaloriesForDate: getTreatCaloriesForDate,
       getSetTypoWarning: getSetTypoWarning,
       getFixedCalorieTarget: getFixedCalorieTarget,
+      getDayTypeTargetLabel: getDayTypeTargetLabel,
       migrateLegacyFixedTarget: migrateLegacyFixedTarget
     };
   }

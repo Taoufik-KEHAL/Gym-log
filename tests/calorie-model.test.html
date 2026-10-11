@@ -839,6 +839,13 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(loaded.length === 1 && loaded[0].name === "Breakfast" && loaded[0].items.length === 1, "expected the saved template to round-trip");
   });
 
+  test("getDayTypeTargetLabel: names the target actually shown for each dayType", function () {
+    assert(hooks.getDayTypeTargetLabel("workout") === "lifting day", "expected workout -> lifting day");
+    assert(hooks.getDayTypeTargetLabel("cardio") === "cardio/rest day", "expected cardio -> cardio/rest day");
+    assert(hooks.getDayTypeTargetLabel("rest") === "cardio/rest day", "expected rest -> cardio/rest day");
+    assert(hooks.getDayTypeTargetLabel(null) === "cardio/rest day", "expected no dayType -> cardio/rest day, matching getFixedCalorieTarget's own fallback");
+  });
+
   clearStorage();
 
   // ---------- render ----------
