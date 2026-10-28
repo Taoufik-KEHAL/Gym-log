@@ -259,6 +259,15 @@
     return best;
   }
 
+  // Total weight lifted (reps x weight summed across every set, every strength
+  // exercise) for one workout. Cardio exercises have no weight component.
+  function getWorkoutVolumeKg(exercises) {
+    return (exercises || []).reduce(function (sum, ex) {
+      if (ex.type === "cardio") return sum;
+      return sum + (ex.sets || []).reduce(function (s, set) { return s + set.reps * set.weight; }, 0);
+    }, 0);
+  }
+
   // Compares the best set logged so far in this in-progress session to the best set
   // from the last time this exercise was trained. Null until there's both a prior
   // session to compare against and at least one set logged today.
@@ -2060,6 +2069,15 @@
 
       list.appendChild(block);
     });
+
+    var volumeHint = document.getElementById("workoutVolumeHint");
+    var volume = getWorkoutVolumeKg(currentExercises);
+    if (volume > 0) {
+      volumeHint.textContent = "Total volume so far: " + Math.round(volume) + " kg";
+      volumeHint.style.display = "block";
+    } else {
+      volumeHint.style.display = "none";
+    }
   }
 
   var WALKING_RUNNING_PACE_THRESHOLD_MIN_KM = 7; // below this is running pace, not walking
@@ -3263,9 +3281,11 @@
         var workoutKcal = Math.round(w.exercises.reduce(function (sum, ex) {
           return sum + estimateExerciseCalories(ex, dayWeight, dayBmr);
         }, 0));
+        var workoutVolume = Math.round(getWorkoutVolumeKg(w.exercises));
         var summaryParts = [];
         if (totalSets > 0) summaryParts.push(totalSets + " sets");
         if (cardioCount > 0) summaryParts.push(cardioCount + " cardio");
+        if (workoutVolume > 0) summaryParts.push(workoutVolume + " kg total volume");
         if (workoutKcal > 0) summaryParts.push("~" + workoutKcal + " kcal burned");
 
         var headerRow = document.createElement("div");
@@ -4002,6 +4022,7 @@
       groupFoodLogByMeal: groupFoodLogByMeal,
       getLastSessionBestForExercise: getLastSessionBestForExercise,
       getProgressiveOverloadStatus: getProgressiveOverloadStatus,
+      getWorkoutVolumeKg: getWorkoutVolumeKg,
       isTrainingDay: isTrainingDay,
       getConsecutiveTrainingDaysBefore: getConsecutiveTrainingDaysBefore,
       getRestDayAdvice: getRestDayAdvice,

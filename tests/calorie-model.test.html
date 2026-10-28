@@ -553,6 +553,22 @@ functions exposed via <code>window.__gymLogTestHooks</code>. Open this file in a
     assert(hooks.getProgressiveOverloadStatus("Squat", [{ reps: 5, weight: 100 }], "2026-10-05") === null, "expected null with no prior session for this exercise");
   });
 
+  test("getWorkoutVolumeKg: sums reps x weight across all sets and strength exercises, ignoring cardio", function () {
+    var exercises = [
+      { name: "Bench Press", type: "strength", sets: [{ reps: 8, weight: 60 }, { reps: 6, weight: 65 }] },
+      { name: "Squat", type: "strength", sets: [{ reps: 5, weight: 100 }] },
+      { name: "Running", type: "cardio", duration: 30, pace: 6 }
+    ];
+    // (8*60) + (6*65) + (5*100) = 480 + 390 + 500 = 1370
+    assert(hooks.getWorkoutVolumeKg(exercises) === 1370, "expected 1370, got " + hooks.getWorkoutVolumeKg(exercises));
+  });
+
+  test("getWorkoutVolumeKg: 0 for an all-cardio workout or no exercises", function () {
+    assert(hooks.getWorkoutVolumeKg([{ name: "Cycling", type: "cardio", duration: 45 }]) === 0, "expected 0 for cardio-only");
+    assert(hooks.getWorkoutVolumeKg([]) === 0, "expected 0 for empty exercises");
+    assert(hooks.getWorkoutVolumeKg(null) === 0, "expected 0 for null exercises");
+  });
+
   test("isTrainingDay / getConsecutiveTrainingDaysBefore: counts a streak and stops at a gap", function () {
     clearStorage();
     hooks.saveWorkouts([
